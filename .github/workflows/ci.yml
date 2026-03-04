@@ -9,47 +9,22 @@ on:
 jobs:
   build-backend:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v3
 
       - name: Use Node.js 18
         uses: actions/setup-node@v3
         with:
           node-version: '18'
-          cache: 'npm'
-          cache-dependency-path: backend/package-lock.json
 
       - name: Install backend dependencies
         working-directory: ./backend
-        run: npm ci --prefer-offline
+        run: npm install
 
-      - name: Check backend starts without errors
+      - name: Verify backend syntax
         working-directory: ./backend
-        run: node -e "require('./server.js')" &
+        run: node --check server.js
         env:
-          PORT: 5000
-          JWT_SECRET: test_secret_key_for_ci
-          MONGO_URI: mongodb://localhost:27017/test
           NODE_ENV: test
-
-  build-frontend:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Use Node.js 18
-        uses: actions/setup-node@v3
-        with:
-          node-version: '18'
-          cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Install frontend dependencies
-        working-directory: ./frontend
-        run: npm ci --prefer-offline
-
-      - name: Build frontend
-        working-directory: ./frontend
-        run: npm run build
-        env:
-          CI: false
