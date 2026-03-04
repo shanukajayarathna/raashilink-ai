@@ -18,9 +18,14 @@ jobs:
       - name: Install backend dependencies
         working-directory: ./backend
         run: npm install
+      - name: Install backend dependencies
+        working-directory: ./backend
+        run: npm install
+
       - name: Run backend tests
         working-directory: ./backend
-        run: npm test
+        run: npx jest --coverage --passWithNoTests
         env:
           JWT_SECRET: test_secret
+          MONGO_URI: mongodb://localhost:27017/raashilink_test
           NODE_ENV: test
