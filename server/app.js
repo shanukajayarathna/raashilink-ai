@@ -45,7 +45,7 @@ app.use((req, res, next) => {
 
 app.use(express.json({ limit: '10mb' }));
 
-app.get('/health', (req, res) => {
+app.get(['/health', '/api/v1/health'], (req, res) => {
   res.json({ success: true, message: 'RaashiLink API healthy' });
 });
 

@@ -6,11 +6,24 @@ import AuthOtp from '../models/AuthOtp.js';
 import logger from '../utils/logger.js';
 
 const OTP_EXPIRY_MINUTES = 10;
+const SRI_LANKA_MOBILE_REGEX = /^7\d{8}$/;
 
 function normalizePhone(value = '') {
-  const cleaned = value.replace(/[\s-]/g, '');
-  if (!cleaned) return '';
-  return cleaned.startsWith('+') ? cleaned : `+${cleaned}`;
+  const digits = String(value).replace(/\D/g, '');
+  if (!digits) return '';
+
+  let localDigits = digits;
+  if (digits.startsWith('94')) {
+    localDigits = digits.slice(2);
+  } else if (digits.startsWith('0')) {
+    localDigits = digits.slice(1);
+  }
+
+  if (!SRI_LANKA_MOBILE_REGEX.test(localDigits)) {
+    return '';
+  }
+
+  return `+94${localDigits}`;
 }
 
 function generateOtp() {
@@ -117,6 +130,7 @@ function mapProfile(user) {
     profileType: user.profileType,
     name: user.name,
     age: user.age || null,
+    profilePic: mainPhoto || null,
     tagline: user.tagline || 'Building a meaningful future through shared values.',
     location: user.location || 'Sri Lanka',
     completion: getProfileCompletion(user),

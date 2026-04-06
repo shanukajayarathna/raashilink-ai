@@ -18,7 +18,8 @@ import {
   useTheme,
   useMediaQuery,
   Skeleton,
-  Button
+  Button,
+  Alert
 } from '@mui/material';
 import { 
   LayoutDashboard, 
@@ -176,7 +177,7 @@ export default function VendorPortal() {
   };
 
   const tabs = [
-    { label: 'Dashboard', icon: <LayoutDashboard size={20} />, component: <DashboardOverview stats={vendorData?.stats} /> },
+    { label: 'Dashboard', icon: <LayoutDashboard size={20} />, component: <DashboardOverview stats={vendorData?.stats} vendorProfile={vendorData?.vendorProfile || user?.vendorProfile} verification={vendorData?.verification || user?.verification} /> },
     { label: 'Quotes', icon: <MessageSquare size={20} />, component: <QuoteInbox /> },
     { label: 'Bookings', icon: <CheckCircle2 size={20} />, component: <BookingsManager /> },
     { label: 'Calendar', icon: <Calendar size={20} />, component: <VendorCalendar /> },
@@ -440,7 +441,7 @@ export default function VendorPortal() {
   );
 }
 
-const DashboardOverview = ({ stats }: any) => {
+const DashboardOverview = ({ stats, vendorProfile, verification }: any) => {
   if (!stats) return (
     <Grid container spacing={3}>
       {[1, 2, 3, 4].map((i) => (
@@ -451,11 +452,40 @@ const DashboardOverview = ({ stats }: any) => {
     </Grid>
   );
 
+  const showVerificationAlert = !verification?.emailVerified || !verification?.phoneVerified;
+  const businessNotVerified = vendorProfile?.verificationStatus === 'pending';
+
   return (
     <Box>
       <Typography variant="h5" sx={{ fontFamily: 'Playfair Display', fontWeight: 700, mb: 3, color: COLORS.primary }}>
         Welcome back!
       </Typography>
+
+      {/* Verification Status Alerts */}
+      {(showVerificationAlert || businessNotVerified) && (
+        <Box sx={{ mb: 3, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {businessNotVerified && (
+            <Alert severity="warning" sx={{ borderRadius: '16px', mb: 2 }}>
+              <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                🔍 Business Verification Pending
+              </Typography>
+              <Typography variant="caption" sx={{ display: 'block', lineHeight: 1.5 }}>
+                Your business profile is pending admin verification. You can still accept bookings, but full profile visibility will be enabled once verified.
+              </Typography>
+            </Alert>
+          )}
+          {showVerificationAlert && (
+            <Alert severity="info" sx={{ borderRadius: '16px' }}>
+              <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                ⚠️ Contact Verification Pending
+              </Typography>
+              <Typography variant="caption" sx={{ display: 'block', lineHeight: 1.5 }}>
+                {!verification?.emailVerified && 'Email '}{!verification?.emailVerified && !verification?.phoneVerified && '& '}{!verification?.phoneVerified && 'phone '} verification needed to enable client communication.
+              </Typography>
+            </Alert>
+          )}
+        </Box>
+      )}
       
       <Grid container spacing={3}>
         <Grid size={{ xs: 12, sm: 6, lg: 3 }}>

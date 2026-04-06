@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
+  Avatar,
   Box,
   Button,
   Card,
@@ -57,16 +58,24 @@ function formatWeddingDate(value?: string | null) {
 
 function VerificationPanel({
   verification,
+  email,
+  phone,
   onRequestOtp,
   onOpenVerify,
   busyChannel,
 }: {
   verification: any;
+  email: string;
+  phone: string;
   onRequestOtp: (channel: 'email' | 'phone') => Promise<void>;
   onOpenVerify: (channel: 'email' | 'phone') => void;
   busyChannel: 'email' | 'phone' | null;
 }) {
-  if (!verification || (verification.emailVerified && (!verification.phone || verification.phoneVerified))) {
+  // Show verification panel if email or phone is not verified
+  const emailNeeded = !verification?.emailVerified;
+  const phoneNeeded = phone && !verification?.phoneVerified;
+  
+  if (!emailNeeded && !phoneNeeded) {
     return null;
   }
 
@@ -85,10 +94,10 @@ function VerificationPanel({
       </Stack>
 
       <Stack spacing={2} sx={{ mt: 3 }}>
-        {!verification.emailVerified && (
+        {emailNeeded && (
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ xs: 'flex-start', sm: 'center' }}>
             <Typography variant="body2" sx={{ minWidth: 220, color: COLORS.textPrimary }}>
-              Verify email: {verification.email}
+              Verify email: {email || 'Not available'}
             </Typography>
             <Button variant="outlined" onClick={() => onRequestOtp('email')} disabled={busyChannel === 'email'} sx={{ borderRadius: '10px' }}>
               {busyChannel === 'email' ? 'Sending...' : 'Send OTP'}
@@ -99,10 +108,10 @@ function VerificationPanel({
           </Stack>
         )}
 
-        {verification.phone && !verification.phoneVerified && (
+        {phoneNeeded && (
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ xs: 'flex-start', sm: 'center' }}>
             <Typography variant="body2" sx={{ minWidth: 220, color: COLORS.textPrimary }}>
-              Verify phone: {verification.phone}
+              Verify phone: {phone || 'Not available'}
             </Typography>
             <Button variant="outlined" onClick={() => onRequestOtp('phone')} disabled={busyChannel === 'phone'} sx={{ borderRadius: '10px' }}>
               {busyChannel === 'phone' ? 'Sending...' : 'Send OTP'}
@@ -137,6 +146,7 @@ export default function CoupleDashboard() {
       try {
         const response = await userService.getProfile();
         setProfile(response);
+        dispatch(updateUser({ profilePic: response.profilePic || null }));
       } catch (error) {
         console.error('Failed to load couple dashboard profile', error);
       } finally {
@@ -271,12 +281,21 @@ export default function CoupleDashboard() {
         <Box sx={{ position: 'absolute', top: -20, right: -20, opacity: 0.1 }}>
           <Favorite sx={{ fontSize: 180 }} />
         </Box>
+        <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 2 }}>
+          <Avatar
+            src={profile.profilePic || undefined}
+            alt={user?.name || 'User'}
+            sx={{ width: 68, height: 68, border: '3px solid rgba(255,255,255,0.5)' }}
+          />
+          <Box>
         <Typography variant="overline" sx={{ letterSpacing: 2, opacity: 0.85 }}>
           Engaged Couple Dashboard
         </Typography>
         <Typography variant="h3" sx={{ fontFamily: 'Playfair Display', fontWeight: 700, mt: 1, mb: 1 }}>
           {user?.firstName || 'You'} and {partnerName}
         </Typography>
+          </Box>
+        </Stack>
         <Typography variant="body1" sx={{ maxWidth: 720, opacity: 0.92 }}>
           This space is focused on planning your wedding journey. Match discovery is hidden for couple accounts because your priority is now planning, coordination, and optional horoscope review.
         </Typography>
@@ -303,6 +322,8 @@ export default function CoupleDashboard() {
 
       <VerificationPanel
         verification={profile.verification}
+        email={profile.email}
+        phone={profile.personalInfo?.phone}
         onRequestOtp={handleRequestVerificationOtp}
         onOpenVerify={(channel) => {
           setVerifyDialog({ open: true, channel });

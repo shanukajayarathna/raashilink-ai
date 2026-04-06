@@ -5,6 +5,17 @@ import axiosInstance from '@/shared/config/axiosConfig';
  * Handles user login, registration, OTP verification, and password management.
  */
 const authService = {
+  /**
+   * Check if email or phone is already registered
+   * @param {string} email - Email to check
+   * @param {string} phone - Phone to check
+   * @returns {Promise<object>} - Availability status { emailAvailable, phoneAvailable }
+   */
+  checkAvailability: async (email?: string, phone?: string) => {
+    const response = await axiosInstance.post('/auth/check-availability', { email, phone });
+    return response.data?.data || {};
+  },
+
   requestRegistrationOtp: async (payload: any) => {
     const response = await axiosInstance.post('/auth/request-registration-otp', payload);
     return response.data;

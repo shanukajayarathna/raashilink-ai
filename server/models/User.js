@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 
 const { Schema } = mongoose;
+const SRI_LANKA_PHONE_REGEX = /^\+947\d{8}$/;
 
 const urlValidator = {
   validator: (value) => !value || /^https?:\/\/.+/i.test(value) || /^data:image\/[a-zA-Z+.-]+;base64,/i.test(value),
@@ -34,7 +35,7 @@ const personalInfoSchema = new Schema(
     phone: {
       type: String,
       trim: true,
-      match: [/^\+?[0-9\s-]{9,16}$/, 'Phone number format is invalid'],
+      match: [SRI_LANKA_PHONE_REGEX, 'Phone number must be a valid Sri Lankan mobile number'],
     },
     age: { type: Number, min: 18, max: 90 },
     gender: {

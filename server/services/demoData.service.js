@@ -238,6 +238,8 @@ const demoUsers = [
   },
 ];
 
+export const DEMO_USER_EMAILS = demoUsers.map((entry) => entry.email);
+
 export async function seedDemoUsers() {
   const passwordHash = await bcrypt.hash('password123', 10);
 

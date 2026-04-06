@@ -34,7 +34,7 @@ const axiosInstance = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 15000, // 15 seconds timeout
+  timeout: 30000, // 30 seconds timeout for slower compatibility and AI routes
 });
 
 // Request Interceptor: Attach JWT token to all outgoing requests
@@ -78,15 +78,19 @@ axiosInstance.interceptors.response.use(
 
     // Handle 401 Unauthorized (Token expired or invalid)
     if (response?.status === 401 && !isAuthEntryRequest) {
-      store.dispatch(logout());
-      store.dispatch(showNotification({
-        message: 'Session expired. Please login again.',
-        type: 'error'
-      }));
-      // Redirect to login if not already there
-      if (window.location.pathname !== '/login') {
-        window.location.href = '/login';
+      const hasToken = !!localStorage.getItem('token');
+      if (hasToken) {
+        store.dispatch(logout());
+        store.dispatch(showNotification({
+          message: 'Session expired. Please login again.',
+          type: 'error'
+        }));
+        // Redirect to login if not already there
+        if (window.location.pathname !== '/login') {
+          window.location.href = '/login';
+        }
       }
+      // If no token, user likely logged out, don't show session expired message
     }
 
     // Handle 500 Internal Server Error
@@ -98,11 +102,16 @@ axiosInstance.interceptors.response.use(
     }
 
     // Handle Network Errors / Timeout
-    else if (message === 'Network Error' || error.code === 'ECONNABORTED') {
+    else if (
+      message === 'Network Error' ||
+      error.code === 'ECONNABORTED' ||
+      error.code === 'ECONNREFUSED'
+    ) {
       store.dispatch(showNotification({
-        message: 'Could not reach the API server. If you are running locally, restart npm run dev and try again.',
+        message:
+          'Could not reach the API server. If you are running locally, make sure the backend is running and try again.',
         type: 'error',
-        action: 'retry'
+        action: 'retry',
       }));
     }
 

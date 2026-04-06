@@ -8,7 +8,7 @@ import LandingPage from '@/features/marketing/pages/LandingPage';
 import LoginPage from '@/features/auth/pages/LoginPage';
 import RegisterPage from '@/features/auth/pages/RegisterPage';
 import ForgotPasswordPage from '@/features/auth/pages/ForgotPasswordPage';
-import UserDashboard from '@/features/dashboard/pages/UserDashboard';
+import DashboardRouter from '@/features/dashboard/pages/DashboardRouter';
 import HoroscopeView from '@/features/horoscope/pages/HoroscopeView';
 import MatchRecommendations from '@/features/matchmaking/pages/MatchRecommendations';
 import WeddingDashboard from '@/features/wedding/pages/WeddingDashboard';
@@ -78,7 +78,7 @@ function AppShell() {
           
           {/* User Routes with MainLayout */}
           <Route element={<MainLayout />}>
-            <Route path="/dashboard" element={<ProtectedRoute><UserDashboard /></ProtectedRoute>} />
+            <Route path="/dashboard" element={<ProtectedRoute><DashboardRouter /></ProtectedRoute>} />
             <Route path="/horoscope" element={<ProtectedRoute><HoroscopeView /></ProtectedRoute>} />
             <Route path="/matches" element={<ProtectedRoute><MatchRecommendations /></ProtectedRoute>} />
             <Route path="/wedding" element={<ProtectedRoute><WeddingDashboard /></ProtectedRoute>} />
@@ -88,6 +88,7 @@ function AppShell() {
             <Route path="/honeymoon/:id" element={<ProtectedRoute><DestinationDetail /></ProtectedRoute>} />
             <Route path="/profile" element={<ProtectedRoute><UserProfile /></ProtectedRoute>} />
             <Route path="/edit-profile" element={<ProtectedRoute><EditProfile /></ProtectedRoute>} />
+            <Route path="/settings" element={<ProtectedRoute><EditProfile /></ProtectedRoute>} />
             <Route path="/vendors" element={<ProtectedRoute><VendorMarketplace /></ProtectedRoute>} />
             <Route path="/vendors/:id" element={<ProtectedRoute><VendorDetailPage /></ProtectedRoute>} />
           </Route>
@@ -115,5 +116,4 @@ export default function App() {
     </Provider>
   );
 }
-
 

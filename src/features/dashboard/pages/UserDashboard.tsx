@@ -63,7 +63,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { RootState } from '@/app/store/store';
-import api from '@/shared/lib/axios';
+import axiosInstance from '@/shared/config/axiosConfig';
 import DashboardSkeleton from '@/components/skeletons/DashboardSkeleton';
 import userService from '@/features/profile/services/userService';
 import { showToast } from '@/app/store/uiSlice';
@@ -85,6 +85,65 @@ const COLORS = {
 
 const MotionBox = motion(Box);
 const MotionPaper = motion(Paper);
+
+function buildWeeklyActivity(total: number) {
+  const labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const base = Math.max(0, total);
+  return labels.map((day, index) => ({
+    day,
+    views: Math.max(0, Math.round((base * (index + 1)) / labels.length)),
+  }));
+}
+
+function formatTopMatch(match: any) {
+  if (!match) return null;
+
+  return {
+    name: match.name,
+    age: match.age,
+    location: match.location,
+    photo: match.img,
+    compatibility: match.score,
+    scores: {
+      astrological: match.compatibility?.astroScore ?? 0,
+      personality: match.compatibility?.personalityScore ?? 0,
+      lifestyle: match.compatibility?.lifestyleScore ?? 0,
+      family: match.compatibility?.familyScore ?? 0,
+    },
+    band: match.band || 'GOOD',
+  };
+}
+
+function formatWeddingStatus(project: any, budget: any) {
+  const weddingDate = project?.weddingDate ? new Date(project.weddingDate) : null;
+  const daysToGo = weddingDate
+    ? Math.max(0, Math.ceil((weddingDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
+    : 0;
+
+  return {
+    daysToGo,
+    venue: project?.venueId ? 'Venue selected' : 'Venue not selected yet',
+    budget: {
+      spent: Number(budget?.totalSpent || 0),
+      total: Number(budget?.totalBudget || 0),
+    },
+    checklist: (project?.checklist || []).slice(0, 3).map((item: any, index: number) => ({
+      id: item._id || index + 1,
+      task: item.title,
+      completed: Boolean(item.completed),
+    })),
+  };
+}
+
+function formatVendors(vendors: any[]) {
+  return (vendors || []).slice(0, 3).map((vendor) => ({
+    id: vendor._id,
+    name: vendor.businessName,
+    category: vendor.category,
+    rating: Number(vendor.ratings?.average || 0).toFixed(1),
+    photo: vendor.portfolioImages?.[0] || '',
+  }));
+}
 
 const WidgetHeader = ({ title, action }: { title: string; action?: React.ReactNode }) => (
   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
@@ -159,7 +218,21 @@ const ProfileCompletionRing = ({ percentage, missingItems }: { percentage: numbe
 };
 
 const TopMatchCard = ({ match }: { match: any }) => {
-  if (!match) return null;
+  if (!match) {
+    return (
+      <MotionPaper
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.1 }}
+        sx={{ p: 3, borderRadius: '24px', height: '100%', bgcolor: COLORS.white, boxShadow: '0 2px 16px rgba(139,26,46,0.08)' }}
+      >
+        <WidgetHeader title="Today's Top Match" />
+        <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
+          No live recommendations are available yet. Complete more profile details and check back after new matches are generated.
+        </Typography>
+      </MotionPaper>
+    );
+  }
 
   return (
     <MotionPaper
@@ -321,106 +394,124 @@ const MatchStats = ({ stats }: { stats: any }) => {
 
 const VerificationSetupCard = ({
   verification,
+  email,
+  phone,
   onRequestOtp,
   onOpenVerify,
   busyChannel,
 }: {
   verification: any;
+  email: string;
+  phone?: string;
   onRequestOtp: (channel: 'email' | 'phone') => Promise<void>;
   onOpenVerify: (channel: 'email' | 'phone') => void;
   busyChannel: 'email' | 'phone' | null;
-}) => (
-  <MotionPaper
-    initial={{ opacity: 0, y: 20 }}
-    animate={{ opacity: 1, y: 0 }}
-    transition={{ duration: 0.5, delay: 0.05 }}
-    sx={{ p: 3, borderRadius: '24px', bgcolor: COLORS.white, boxShadow: '0 2px 16px rgba(139,26,46,0.08)' }}
-  >
-    <WidgetHeader title="Complete Account Setup" />
-    <Alert severity="warning" sx={{ mb: 2, borderRadius: '12px' }}>
-      Your profile is active, but some verification steps are still pending.
-    </Alert>
-    <Stack spacing={2}>
-      <Box sx={{ p: 2, borderRadius: '16px', bgcolor: COLORS.background }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-          <Email sx={{ color: COLORS.primary }} />
-          <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-            Email Verification
-          </Typography>
-          <Chip
-            size="small"
-            label={verification.emailVerified ? 'Verified' : 'Pending'}
-            sx={{
-              ml: 'auto',
-              bgcolor: verification.emailVerified ? '#E8F5E9' : '#FFF3E0',
-              color: verification.emailVerified ? '#2E7D32' : '#B26A00',
-              fontWeight: 700,
-            }}
-          />
-        </Box>
-        <Typography variant="body2" sx={{ color: COLORS.textSecondary, mb: 1.5 }}>
-          {verification.email || 'No email available'}
-        </Typography>
-        {!verification.emailVerified && (
-          <Stack direction="row" spacing={1}>
-            <Button
-              variant="outlined"
-              onClick={() => onRequestOtp('email')}
-              disabled={busyChannel === 'email'}
-              sx={{ borderRadius: '10px' }}
-            >
-              {busyChannel === 'email' ? 'Sending...' : 'Send OTP'}
-            </Button>
-            <Button variant="contained" onClick={() => onOpenVerify('email')} sx={{ borderRadius: '10px', bgcolor: COLORS.primary }}>
-              Enter OTP
-            </Button>
-          </Stack>
-        )}
-      </Box>
+}) => {
+  // Show card only if there are unverified channels
+  const emailNeedsVerification = !verification?.emailVerified;
+  const phoneNeedsVerification = phone && !verification?.phoneVerified;
+  
+  if (!emailNeedsVerification && !phoneNeedsVerification) {
+    return null;
+  }
 
-      {verification.phone && (
+  return (
+    <MotionPaper
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, delay: 0.05 }}
+      sx={{ p: 3, borderRadius: '24px', bgcolor: COLORS.white, boxShadow: '0 2px 16px rgba(139,26,46,0.08)' }}
+    >
+      <WidgetHeader title="Complete Account Setup" />
+      <Alert severity="warning" sx={{ mb: 2, borderRadius: '12px' }}>
+        Your profile is active, but some verification steps are still pending.
+      </Alert>
+      <Stack spacing={2}>
         <Box sx={{ p: 2, borderRadius: '16px', bgcolor: COLORS.background }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-            <Phone sx={{ color: COLORS.accent }} />
+            <Email sx={{ color: COLORS.primary }} />
             <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-              Phone Verification
+              Email Verification
             </Typography>
             <Chip
               size="small"
-              label={verification.phoneVerified ? 'Verified' : 'Pending'}
+              label={verification?.emailVerified ? 'Verified' : 'Pending'}
               sx={{
                 ml: 'auto',
-                bgcolor: verification.phoneVerified ? '#E8F5E9' : '#FFF3E0',
-                color: verification.phoneVerified ? '#2E7D32' : '#B26A00',
+                bgcolor: verification?.emailVerified ? '#E8F5E9' : '#FFF3E0',
+                color: verification?.emailVerified ? '#2E7D32' : '#B26A00',
                 fontWeight: 700,
               }}
             />
           </Box>
           <Typography variant="body2" sx={{ color: COLORS.textSecondary, mb: 1.5 }}>
-            {verification.phone}
+            {email || 'No email available'}
           </Typography>
-          {!verification.phoneVerified && (
+          {emailNeedsVerification && (
             <Stack direction="row" spacing={1}>
               <Button
                 variant="outlined"
-                onClick={() => onRequestOtp('phone')}
-                disabled={busyChannel === 'phone'}
+                onClick={() => onRequestOtp('email')}
+                disabled={busyChannel === 'email'}
                 sx={{ borderRadius: '10px' }}
               >
-                {busyChannel === 'phone' ? 'Sending...' : 'Send OTP'}
+                {busyChannel === 'email' ? 'Sending...' : 'Send OTP'}
               </Button>
-              <Button variant="contained" onClick={() => onOpenVerify('phone')} sx={{ borderRadius: '10px', bgcolor: COLORS.primary }}>
+              <Button variant="contained" onClick={() => onOpenVerify('email')} sx={{ borderRadius: '10px', bgcolor: COLORS.primary }}>
                 Enter OTP
               </Button>
             </Stack>
           )}
         </Box>
-      )}
-    </Stack>
-  </MotionPaper>
-);
+
+        {phone && (
+          <Box sx={{ p: 2, borderRadius: '16px', bgcolor: COLORS.background }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+              <Phone sx={{ color: COLORS.accent }} />
+              <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                Phone Verification
+              </Typography>
+              <Chip
+                size="small"
+                label={verification?.phoneVerified ? 'Verified' : 'Pending'}
+                sx={{
+                  ml: 'auto',
+                  bgcolor: verification?.phoneVerified ? '#E8F5E9' : '#FFF3E0',
+                  color: verification?.phoneVerified ? '#2E7D32' : '#B26A00',
+                  fontWeight: 700,
+                }}
+              />
+            </Box>
+            <Typography variant="body2" sx={{ color: COLORS.textSecondary, mb: 1.5 }}>
+              {phone}
+            </Typography>
+            {phoneNeedsVerification && (
+              <Stack direction="row" spacing={1}>
+                <Button
+                  variant="outlined"
+                  onClick={() => onRequestOtp('phone')}
+                  disabled={busyChannel === 'phone'}
+                  sx={{ borderRadius: '10px' }}
+                >
+                  {busyChannel === 'phone' ? 'Sending...' : 'Send OTP'}
+                </Button>
+                <Button variant="contained" onClick={() => onOpenVerify('phone')} sx={{ borderRadius: '10px', bgcolor: COLORS.primary }}>
+                  Enter OTP
+                </Button>
+              </Stack>
+            )}
+          </Box>
+        )}
+      </Stack>
+    </MotionPaper>
+  );
+};
 
 const WeddingProjectStatus = ({ status }: { status: any }) => {
+  const totalBudget = Number(status.budget.total || 0);
+  const spentBudget = Number(status.budget.spent || 0);
+  const budgetProgress = totalBudget > 0 ? (spentBudget / totalBudget) * 100 : 0;
+
   return (
     <MotionPaper
       initial={{ opacity: 0, y: 20 }}
@@ -449,11 +540,11 @@ const WeddingProjectStatus = ({ status }: { status: any }) => {
         <Box>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
             <Typography variant="caption" sx={{ color: COLORS.textSecondary }}>Budget Utilization</Typography>
-            <Typography variant="caption" sx={{ fontWeight: 700 }}>LKR {status.budget.spent.toLocaleString()} / {status.budget.total.toLocaleString()}</Typography>
+            <Typography variant="caption" sx={{ fontWeight: 700 }}>LKR {spentBudget.toLocaleString()} / {totalBudget.toLocaleString()}</Typography>
           </Box>
           <LinearProgress 
             variant="determinate" 
-            value={(status.budget.spent / status.budget.total) * 100} 
+            value={budgetProgress}
             sx={{ 
               height: 8, 
               borderRadius: 4, 
@@ -466,7 +557,7 @@ const WeddingProjectStatus = ({ status }: { status: any }) => {
         <Box>
           <Typography variant="caption" sx={{ fontWeight: 700, display: 'block', mb: 1 }}>Next Steps</Typography>
           <Stack spacing={1}>
-            {status.checklist.map((item: any) => (
+            {status.checklist.length > 0 ? status.checklist.map((item: any) => (
               <Box key={item.id} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 {item.completed ? 
                   <CheckCircleOutline sx={{ color: COLORS.accent, fontSize: 18 }} /> : 
@@ -479,7 +570,11 @@ const WeddingProjectStatus = ({ status }: { status: any }) => {
                   {item.task}
                 </Typography>
               </Box>
-            ))}
+            )) : (
+              <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
+                No wedding tasks yet. Add your first task in the wedding dashboard.
+              </Typography>
+            )}
           </Stack>
         </Box>
         
@@ -560,7 +655,7 @@ const VendorRecommendations = ({ vendors }: { vendors: any[] }) => {
     >
       <WidgetHeader title="Recommended Vendors" />
       <Stack spacing={2}>
-        {vendors.map((vendor) => (
+        {vendors.length > 0 ? vendors.map((vendor) => (
           <Box key={vendor.id} sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 1.5, borderRadius: '16px', border: '1px solid #F0F0F0', '&:hover': { bgcolor: COLORS.background } }}>
             <Avatar src={vendor.photo} variant="rounded" sx={{ width: 50, height: 50 }} />
             <Box sx={{ flex: 1 }}>
@@ -577,7 +672,11 @@ const VendorRecommendations = ({ vendors }: { vendors: any[] }) => {
             </Box>
             <IconButton size="small"><ArrowForward sx={{ fontSize: 16 }} /></IconButton>
           </Box>
-        ))}
+        )) : (
+          <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
+            No verified vendors available right now.
+          </Typography>
+        )}
         <Button 
           variant="text" 
           endIcon={<ArrowForward />} 
@@ -670,81 +769,68 @@ export default function UserDashboard() {
     const fetchDashboardData = async () => {
       try {
         const profile = await userService.getProfile();
-        // In a real app, we would call these endpoints
-        // const [summary, matches, wedding] = await Promise.all([
-        //   api.get('/api/v1/dashboard/summary'),
-        //   api.get('/api/v1/matches/today'),
-        //   api.get('/api/v1/wedding/status')
-        // ]);
-        
-        // Mocking API delay
-        await new Promise(resolve => setTimeout(resolve, 1500));
+        dispatch(updateUser({ profilePic: profile.profilePic || null }));
+        const [recommendationsResponse, weddingProjectResponse, budgetResponse, vendorsResponse] =
+          await Promise.allSettled([
+            axiosInstance.get('/matches/recommendations'),
+            axiosInstance.get('/wedding/project'),
+            axiosInstance.get('/wedding/budget'),
+            axiosInstance.get('/wedding/vendors'),
+          ]);
+
+        const recommendationItems =
+          recommendationsResponse.status === 'fulfilled'
+            ? recommendationsResponse.value.data?.data?.items || []
+            : [];
+        const topMatch = formatTopMatch(recommendationItems[0]);
+        const mutualInterests = recommendationItems.filter((item: any) => item.mutualMatch).length;
+
+        const weddingProject =
+          weddingProjectResponse.status === 'fulfilled'
+            ? weddingProjectResponse.value.data?.data
+            : null;
+        const budget =
+          budgetResponse.status === 'fulfilled'
+            ? budgetResponse.value.data?.data
+            : null;
+        const weddingStatus = formatWeddingStatus(weddingProject, budget);
+
+        const vendorItems =
+          vendorsResponse.status === 'fulfilled'
+            ? vendorsResponse.value.data?.data?.items || []
+            : [];
+        const recommendedVendors = formatVendors(vendorItems);
         
         setData({
           summary: {
-            name: user?.firstName || "Shanuka",
+            name: user?.firstName || profile?.name || 'User',
             nakshatra: profile.verification?.emailVerified || profile.verification?.phoneVerified
-              ? (profile.astrology?.nakshatra || "Pending")
-              : (profile.astrology?.nakshatra || "Pending"),
-            auspiciousTime: "10:30 AM - 12:00 PM",
+              ? (profile.astrology?.nakshatra || 'Pending')
+              : (profile.astrology?.nakshatra || 'Pending'),
+            auspiciousTime: '10:30 AM - 12:00 PM',
             profileCompletion: profile.completion || 75,
-            missingItems: profile.verification?.missingItems || ["Add Profile Photo", "Complete Personality Quiz"],
+            missingItems: profile.verification?.missingItems || ['Add Profile Photo', 'Complete Personality Quiz'],
             matchStats: {
-              todayMatches: 12,
-              mutualInterests: 5,
-              profileViews: 48,
-              weeklyActivity: [
-                { day: 'Mon', views: 24 },
-                { day: 'Tue', views: 32 },
-                { day: 'Wed', views: 45 },
-                { day: 'Thu', views: 48 },
-                { day: 'Fri', views: 38 },
-                { day: 'Sat', views: 52 },
-                { day: 'Sun', views: 41 },
-              ]
-            }
-          },
-          todayMatch: {
-            name: "Kavindi Jayawardena",
-            age: 24,
-            location: "Colombo",
-            photo: "https://picsum.photos/seed/kavindi/200/200",
-            compatibility: 87,
-            scores: {
-              astrological: 87,
-              personality: 92,
-              lifestyle: 85,
-              family: 88
+              todayMatches: recommendationItems.length,
+              mutualInterests,
+              profileViews: 0,
+              weeklyActivity: buildWeeklyActivity(recommendationItems.length),
             },
-            band: "EXCELLENT"
           },
-          weddingStatus: {
-            daysToGo: 127,
-            venue: "Galle Face Hotel",
-            budget: {
-              spent: 450000,
-              total: 800000
-            },
-            checklist: [
-              { id: 1, task: "Book photographer", completed: false },
-              { id: 2, task: "Select Venue", completed: true },
-              { id: 3, task: "Finalize Guest List", completed: false }
-            ]
-          },
+          profilePic: profile.profilePic || user?.profilePic || null,
+          email: user?.email || profile?.email,
+          phone: user?.phone || profile?.personalInfo?.phone,
+          todayMatch: topMatch,
+          weddingStatus,
           chatbot: {
-            lastMessage: "Your horoscope matching for the new profile is ready!",
-            online: true
+            lastMessage: 'Your horoscope matching for the new profile is ready!',
+            online: true,
           },
-          vendors: [
-            { id: 1, name: "Studio 3000", category: "Photography", rating: 4.8, photo: "https://picsum.photos/seed/studio/100/100" },
-            { id: 2, name: "Lassana Flora", category: "Decor", rating: 4.9, photo: "https://picsum.photos/seed/flora/100/100" }
-          ],
+          vendors: recommendedVendors,
           verification: profile.verification,
           notifications: [
-            { id: 1, text: "Kavindi liked your profile", time: "2h ago", read: false },
-            { id: 2, text: "New match recommendation", time: "5h ago", read: true },
-            { id: 3, text: "Wedding checklist reminder: Book photographer", time: "1d ago", read: false }
-          ]
+            { id: 1, text: 'Dashboard data synced from your live profile', time: 'now', read: false },
+          ],
         });
         setLoading(false);
       } catch (error) {
@@ -839,11 +925,17 @@ export default function UserDashboard() {
   return (
     <Box sx={{ p: { xs: 2, md: 4 }, bgcolor: COLORS.background, minHeight: '100vh', position: 'relative' }}>
       {/* Header Section */}
-      <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+      <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2 }}>
+        <Avatar
+          src={data.profilePic || undefined}
+          alt={data.summary.name}
+          sx={{ width: 64, height: 64, border: `3px solid ${alpha(COLORS.secondary, 0.5)}`, boxShadow: '0 8px 24px rgba(139,26,46,0.12)' }}
+        />
         <MotionBox
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.8 }}
+          sx={{ display: 'flex', alignItems: 'center', gap: 2 }}
         >
           <Typography variant="h4" sx={{ fontFamily: 'Playfair Display', fontWeight: 700, color: COLORS.primary, mb: 1 }}>
             Good morning, {data.summary.name} ✨
@@ -874,6 +966,8 @@ export default function UserDashboard() {
           <Grid size={{ xs: 12 }}>
             <VerificationSetupCard
               verification={data.verification}
+              email={data.email}
+              phone={data.phone}
               onRequestOtp={handleRequestVerificationOtp}
               onOpenVerify={(channel) => {
                 setVerifyDialog({ open: true, channel });
@@ -1000,5 +1094,3 @@ export default function UserDashboard() {
     </Box>
   );
 }
-
-

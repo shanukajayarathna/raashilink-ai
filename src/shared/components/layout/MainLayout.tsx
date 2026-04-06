@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
-import { useMediaQuery, useTheme } from '@mui/material';
+import { Avatar, useMediaQuery, useTheme } from '@mui/material';
 import { RootState } from '@/app/store/store';
 import { logout } from '@/features/auth/store/authSlice';
 import { 
@@ -23,6 +23,7 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
   const theme = useTheme();
   const isLargeScreen = useMediaQuery(theme.breakpoints.up('lg'));
   const isCouple = user?.profileType === 'couple';
+  const avatarSrc = user?.profilePic || user?.photos?.find?.((photo: any) => photo?.isMain)?.url || undefined;
 
   const partnerNavItems = [
     { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
@@ -102,9 +103,19 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
               onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
               className="flex items-center gap-2 p-1 hover:bg-primary/5 rounded-full transition-colors"
             >
-              <div className="w-9 h-9 bg-secondary/20 rounded-full flex items-center justify-center border border-secondary/30">
-                <User className="w-5 h-5 text-primary" />
-              </div>
+              <Avatar
+                src={avatarSrc}
+                alt={user?.name || 'User'}
+                sx={{
+                  width: 36,
+                  height: 36,
+                  bgcolor: 'rgba(201,168,76,0.2)',
+                  color: '#8B1A2E',
+                  border: '1px solid rgba(201,168,76,0.3)',
+                }}
+              >
+                {!avatarSrc && <User className="w-5 h-5 text-primary" />}
+              </Avatar>
             </button>
 
             <AnimatePresence>
@@ -124,10 +135,10 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
                       <p className="text-sm font-semibold text-textPrimary">{user?.name || 'User'}</p>
                       <p className="text-xs text-textSecondary truncate">{user?.email || 'user@example.com'}</p>
                     </div>
-                    <Link to="/profile" className="flex items-center gap-3 px-4 py-2 text-sm text-textSecondary hover:bg-primary/5 hover:text-primary transition-colors">
+                    <Link to="/profile" onClick={() => setIsUserMenuOpen(false)} className="flex items-center gap-3 px-4 py-2 text-sm text-textSecondary hover:bg-primary/5 hover:text-primary transition-colors">
                       <User className="w-4 h-4" /> Profile
                     </Link>
-                    <Link to="/settings" className="flex items-center gap-3 px-4 py-2 text-sm text-textSecondary hover:bg-primary/5 hover:text-primary transition-colors">
+                    <Link to="/settings" onClick={() => setIsUserMenuOpen(false)} className="flex items-center gap-3 px-4 py-2 text-sm text-textSecondary hover:bg-primary/5 hover:text-primary transition-colors">
                       <Settings className="w-4 h-4" /> Settings
                     </Link>
                     <button 

@@ -185,21 +185,59 @@ export async function calculateCompatibility({ userAId, userBId }) {
     throw new ApiError(404, 'One or both users were not found');
   }
 
-  if (!userA.horoscope || !userB.horoscope) {
-    throw new ApiError(422, 'Both users must have horoscope data');
+  const userAHoroscope = userA.horoscope || (userA.birthData ? {
+    dateOfBirth: userA.birthData.dateOfBirth,
+    timeOfBirth: userA.birthData.timeOfBirth || '12:00',
+    placeOfBirth: userA.birthData.placeOfBirth,
+    nakshatra: userA.horoscopeData?.nakshatra,
+    rashi: userA.horoscopeData?.rashi,
+    moonSign: userA.horoscopeData?.moonSign,
+  } : null);
+
+  const userBHoroscope = userB.horoscope || (userB.birthData ? {
+    dateOfBirth: userB.birthData.dateOfBirth,
+    timeOfBirth: userB.birthData.timeOfBirth || '12:00',
+    placeOfBirth: userB.birthData.placeOfBirth,
+    nakshatra: userB.horoscopeData?.nakshatra,
+    rashi: userB.horoscopeData?.rashi,
+    moonSign: userB.horoscopeData?.moonSign,
+  } : null);
+
+  let astroScore = 50;
+  let astroResponse = { totalScore: 18, subScores: {} };
+  let astroNotes = [];
+
+  if (userAHoroscope && userBHoroscope) {
+    logger.info('Running horoscope compatibility calculation', {
+      userAId: String(userAId),
+      userBId: String(userBId),
+    });
+
+    const astroResponseRaw = await runHoroscopeEngine({
+      userA: userAHoroscope,
+      userB: userBHoroscope,
+    });
+
+    astroScore = normalizeScore(astroResponseRaw.totalScore, 36);
+    astroResponse = astroResponseRaw;
+  } else {
+    if (!userAHoroscope && !userBHoroscope) {
+      astroNotes.push('Neither user had horoscope data, using baseline astrological compatibility.');
+    } else if (!userAHoroscope) {
+      astroNotes.push('Current user is missing horoscope data, using baseline astrological compatibility.');
+    } else if (!userBHoroscope) {
+      astroNotes.push('Matching candidate is missing horoscope data, using baseline astrological compatibility.');
+    }
   }
 
-  logger.info('Running horoscope compatibility calculation', {
-    userAId: String(userAId),
-    userBId: String(userBId),
-  });
+  if (astroNotes.length) {
+    logger.warn('Missing horoscope details for compatibility calculation', {
+      userAId: String(userAId),
+      userBId: String(userBId),
+      notes: astroNotes,
+    });
+  }
 
-  const astroResponse = await runHoroscopeEngine({
-    userA: userA.horoscope,
-    userB: userB.horoscope,
-  });
-
-  const astroScore = normalizeScore(astroResponse.totalScore, 36);
   const personalityScore = calculatePersonalityScore(userA, userB);
   const lifestyleScore = calculateLifestyleScore(userA, userB);
   const familyScore = calculateFamilyScore(userA, userB);

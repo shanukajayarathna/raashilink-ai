@@ -12,7 +12,7 @@ const authOtpSchema = new Schema(
       required: true,
     },
     codeHash: { type: String, required: true },
-    expiresAt: { type: Date, required: true, index: true },
+    expiresAt: { type: Date, required: true },
     attempts: { type: Number, default: 0, min: 0 },
   },
   {

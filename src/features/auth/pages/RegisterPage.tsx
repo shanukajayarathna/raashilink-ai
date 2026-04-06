@@ -41,6 +41,7 @@ import {
   InfoOutlined,
   LocationOn,
   CheckCircle,
+  HighlightOff,
   AccountCircle,
   Favorite,
   Storefront,
@@ -73,6 +74,26 @@ const COLORS = {
 const SRI_LANKAN_CITIES = [
   'Colombo', 'Kandy', 'Galle', 'Jaffna', 'Negombo', 'Anuradhapura', 'Ratnapura', 'Badulla', 'Matara', 'Batticaloa', 'Trincomalee', 'Kurunegala', 'Gampaha', 'Kalutara', 'Puttalam'
 ];
+const SRI_LANKA_MOBILE_REGEX = /^7\d{8}$/;
+
+function normalizeSriLankanPhoneInput(value: string) {
+  const digits = value.replace(/\D/g, '');
+  if (!digits) return '';
+
+  if (digits.startsWith('94')) {
+    return digits.slice(2, 11);
+  }
+
+  if (digits.startsWith('0')) {
+    return digits.slice(1, 10);
+  }
+
+  return digits.slice(0, 9);
+}
+
+function isValidSriLankanPhoneInput(value: string) {
+  return SRI_LANKA_MOBILE_REGEX.test(normalizeSriLankanPhoneInput(value));
+}
 
 const MotionBox = motion(Box);
 const MotionCard = motion(Card);
@@ -90,6 +111,7 @@ const RegisterPage = () => {
   const [otpSending, setOtpSending] = useState(false);
   const [otpRequested, setOtpRequested] = useState(false);
   const [errorDetails, setErrorDetails] = useState<string[]>([]);
+  const [fieldErrors, setFieldErrors] = useState<{[key: string]: string}>({});
 
     // Form Data
     const [formData, setFormData] = useState({
@@ -128,6 +150,40 @@ const RegisterPage = () => {
 
   const [showPassword, setShowPassword] = useState(false);
   const [passwordStrength, setPasswordStrength] = useState(0);
+  const [availability, setAvailability] = useState({
+    emailAvailable: null as boolean | null,
+    phoneAvailable: null as boolean | null,
+    checking: false,
+  });
+
+  // Debounced availability check
+  useEffect(() => {
+    const checkAvail = async () => {
+      if (!formData.email && !formData.phone) {
+        setAvailability({ emailAvailable: null, phoneAvailable: null, checking: false });
+        return;
+      }
+
+      setAvailability((prev) => ({ ...prev, checking: true }));
+      try {
+        const response = await authService.checkAvailability(
+          formData.email || undefined,
+          formData.phone || undefined
+        );
+        setAvailability({
+          emailAvailable: response?.emailAvailable ?? null,
+          phoneAvailable: response?.phoneAvailable ?? null,
+          checking: false,
+        });
+      } catch (error) {
+        console.error('Error checking availability:', error);
+        setAvailability((prev) => ({ ...prev, checking: false }));
+      }
+    };
+
+    const timer = setTimeout(checkAvail, 500); // Debounce 500ms
+    return () => clearTimeout(timer);
+  }, [formData.email, formData.phone]);
 
   const getSteps = () => {
     const baseSteps = ['Account Type', 'Basic Info'];
@@ -142,17 +198,43 @@ const RegisterPage = () => {
   };
 
   const steps = getSteps();
+  const normalizedPhoneInput = normalizeSriLankanPhoneInput(formData.phone);
+  const phoneHasInput = normalizedPhoneInput.length > 0;
+  const phoneIsValid = isValidSriLankanPhoneInput(formData.phone);
+  const phoneHelperText = availability.phoneAvailable === false
+    ? 'Already registered'
+    : availability.phoneAvailable === true && phoneIsValid
+      ? 'Valid Sri Lankan mobile number'
+      : phoneHasInput && !phoneIsValid
+        ? 'Enter 9 mobile digits after +94, or type 0771234567'
+        : 'Sri Lankan mobile only';
 
   const handleProfilePicChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      // Check file size (2MB limit)
+      const maxSize = 2 * 1024 * 1024; // 2MB
+      if (file.size > maxSize) {
+        setError('Profile picture must be less than 2MB.');
+        return;
+      }
+
+      // Check file type
+      if (!file.type.startsWith('image/')) {
+        setError('Please select a valid image file.');
+        return;
+      }
+
       const reader = new FileReader();
       reader.onloadend = () => {
         setFormData({ ...formData, profilePic: reader.result as string });
+        setError(null); // Clear any previous error
       };
       reader.readAsDataURL(file);
     }
   };
+
+  const [passwordMatch, setPasswordMatch] = useState(false);
 
   // Password strength calculation
   useEffect(() => {
@@ -164,6 +246,11 @@ const RegisterPage = () => {
     setPasswordStrength(strength);
   }, [formData.password]);
 
+  // Password match check
+  useEffect(() => {
+    setPasswordMatch(formData.password === formData.confirmPassword && formData.confirmPassword.length > 0);
+  }, [formData.password, formData.confirmPassword]);
+
   const handleNext = () => {
     const validationError = validateCurrentStep();
     if (validationError) {
@@ -174,6 +261,7 @@ const RegisterPage = () => {
 
     setError(null);
     setErrorDetails([]);
+    setFieldErrors({});
     if (activeStep < steps.length - 1) {
       setActiveStep((prev) => prev + 1);
       window.scrollTo(0, 0);
@@ -189,43 +277,77 @@ const RegisterPage = () => {
 
   const validateCurrentStep = () => {
     const currentStepLabel = steps[activeStep];
+    const newFieldErrors: {[key: string]: string} = {};
 
     if (currentStepLabel === 'Basic Info') {
       if (!formData.firstName || !formData.lastName || !formData.email || !formData.phone) {
+        if (!formData.firstName) newFieldErrors.firstName = 'Required';
+        if (!formData.lastName) newFieldErrors.lastName = 'Required';
+        if (!formData.email) newFieldErrors.email = 'Required';
+        if (!formData.phone) newFieldErrors.phone = 'Required';
         return 'First name, last name, email, and phone number are required.';
       }
       if (!/\S+@\S+\.\S+/.test(formData.email)) {
+        newFieldErrors.email = 'Invalid email format';
         return 'Please enter a valid email address.';
       }
-      if (!/^\+?[0-9\s-]{9,16}$/.test(formData.phone)) {
-        return 'Please enter a valid phone number.';
+      if (!phoneIsValid) {
+        newFieldErrors.phone = 'Invalid Sri Lankan mobile number';
+        return 'Please enter a valid Sri Lankan mobile number.';
+      }
+      // Check availability
+      if (availability.emailAvailable === false) {
+        newFieldErrors.email = 'Already registered';
+        return 'This email is already registered. Please use a different email.';
+      }
+      if (availability.phoneAvailable === false) {
+        newFieldErrors.phone = 'Already registered';
+        return 'This phone number is already registered. Please use a different number.';
       }
       if (!formData.password || formData.password.length < 8) {
+        newFieldErrors.password = 'Must be at least 8 characters';
         return 'Password must be at least 8 characters.';
       }
       if (formData.password !== formData.confirmPassword) {
+        newFieldErrors.confirmPassword = 'Passwords do not match';
         return 'Passwords do not match.';
       }
     }
 
     if (currentStepLabel === 'Birth Details') {
-      if (!formData.dob || !formData.pob) {
-        return 'Date of birth and place of birth are required.';
+      if (!formData.dob) {
+        newFieldErrors.dob = 'Required';
+        return 'Date of birth is required.';
+      }
+      if (!formData.pob) {
+        newFieldErrors.pob = 'Required';
+        return 'Place of birth is required.';
       }
       if (!formData.unknownTime && !formData.tob) {
+        newFieldErrors.tob = 'Required unless unknown';
         return 'Time of birth is required unless marked unknown.';
       }
     }
 
     if (currentStepLabel === 'Wedding Details') {
-      if (!formData.partnerName || !formData.weddingDate) {
-        return 'Partner name and wedding date are required.';
+      if (!formData.partnerName) {
+        newFieldErrors.partnerName = 'Required';
+        return 'Partner name is required.';
+      }
+      if (!formData.weddingDate) {
+        newFieldErrors.weddingDate = 'Required';
+        return 'Wedding date is required.';
       }
     }
 
     if (currentStepLabel === 'Business Details') {
-      if (!formData.businessName || !formData.businessCategory) {
-        return 'Business name and category are required.';
+      if (!formData.businessName) {
+        newFieldErrors.businessName = 'Required';
+        return 'Business name is required.';
+      }
+      if (!formData.businessCategory) {
+        newFieldErrors.businessCategory = 'Required';
+        return 'Business category is required.';
       }
     }
 
@@ -239,7 +361,8 @@ const RegisterPage = () => {
       }
     }
 
-    return null;
+    setFieldErrors(newFieldErrors);
+    return Object.keys(newFieldErrors).length > 0 ? 'Please correct the highlighted fields.' : null;
   };
 
   const handleSendOtp = async () => {
@@ -259,7 +382,7 @@ const RegisterPage = () => {
     try {
       const response = await authService.requestRegistrationOtp({
         email: formData.email,
-        phone: formData.phone,
+        phone: `+94${normalizedPhoneInput}`,
       });
       setOtpRequested(true);
       dispatch(showToast({
@@ -285,7 +408,42 @@ const RegisterPage = () => {
     setErrorDetails([]);
     dispatch(setLoading(true));
     try {
-      await authService.register(formData);
+      // Clean up form data before sending to backend
+      const cleanedData: Record<string, unknown> = {
+        role: formData.role,
+        firstName: formData.firstName.trim(),
+        lastName: formData.lastName.trim(),
+        email: formData.email.toLowerCase().trim(),
+        phone: `+94${normalizedPhoneInput}`,
+        password: formData.password,
+        confirmPassword: formData.confirmPassword,
+        terms: formData.terms,
+        visibility: formData.visibility,
+        religion: formData.religion.trim(),
+        ethnicity: formData.ethnicity.trim(),
+        locationRadius: formData.locationRadius,
+        otp: formData.otp,
+        ...(formData.profilePic && { profilePic: formData.profilePic }),
+      };
+
+      // Add role-specific fields
+      if (formData.role === 'partner') {
+        cleanedData.dob = formData.dob;
+        cleanedData.tob = formData.unknownTime ? '12:00' : formData.tob;
+        cleanedData.pob = formData.pob;
+        cleanedData.unknownTime = formData.unknownTime;
+        cleanedData.personality = formData.personality;
+      } else if (formData.role === 'couple') {
+        cleanedData.partnerName = formData.partnerName.trim();
+        cleanedData.weddingDate = formData.weddingDate;
+        cleanedData.budget = formData.budget;
+      } else if (formData.role === 'vendor') {
+        cleanedData.businessName = formData.businessName.trim();
+        cleanedData.businessCategory = formData.businessCategory;
+        cleanedData.portfolioUrl = formData.portfolioUrl.trim();
+      }
+
+      await authService.register(cleanedData);
       setSuccess(true);
       dispatch(showToast({ type: 'success', message: 'Registration completed. Please log in with your credentials.' }));
       setTimeout(() => navigate('/login'), 1000);
@@ -413,26 +571,77 @@ const RegisterPage = () => {
 
       <Grid container spacing={3}>
         <Grid size={{ xs: 12, sm: 6 }}>
-          <TextField fullWidth label="First Name" value={formData.firstName} onChange={(e) => setFormData({ ...formData, firstName: e.target.value })} sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} />
+          <TextField fullWidth label="First Name" value={formData.firstName} onChange={(e) => setFormData({ ...formData, firstName: e.target.value })} sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} error={!!fieldErrors.firstName} helperText={fieldErrors.firstName} />
         </Grid>
         <Grid size={{ xs: 12, sm: 6 }}>
-          <TextField fullWidth label="Last Name" value={formData.lastName} onChange={(e) => setFormData({ ...formData, lastName: e.target.value })} sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} />
+          <TextField fullWidth label="Last Name" value={formData.lastName} onChange={(e) => setFormData({ ...formData, lastName: e.target.value })} sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} error={!!fieldErrors.lastName} helperText={fieldErrors.lastName} />
         </Grid>
         <Grid size={{ xs: 12 }}>
-          <TextField fullWidth label="Email Address" type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} InputProps={{ startAdornment: <InputAdornment position="start"><MailOutline /></InputAdornment> }} sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} />
+          <TextField 
+            fullWidth 
+            label="Email Address" 
+            type="email" 
+            value={formData.email} 
+            onChange={(e) => setFormData({ ...formData, email: e.target.value })} 
+            InputProps={{ 
+              startAdornment: <InputAdornment position="start"><MailOutline /></InputAdornment>,
+              endAdornment: formData.email && (
+                <InputAdornment position="end">
+                  {availability.checking ? (
+                    <CircularProgress size={20} />
+                  ) : availability.emailAvailable === true ? (
+                    <CheckCircle sx={{ color: '#4CAF50' }} />
+                  ) : availability.emailAvailable === false ? (
+                    <HighlightOff sx={{ color: '#F44336' }} />
+                  ) : null}
+                </InputAdornment>
+              )
+            }} 
+            sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }}
+            error={!!fieldErrors.email}
+            helperText={fieldErrors.email || (availability.emailAvailable === false ? '❌ Already registered' : availability.emailAvailable === true ? '✓ Available' : '')}
+          />
         </Grid>
         <Grid size={{ xs: 12 }}>
-          <TextField fullWidth label="Phone Number" placeholder="+94 7X XXX XXXX" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} InputProps={{ startAdornment: <InputAdornment position="start"><PhoneIphone /></InputAdornment> }} sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} />
+          <TextField 
+            fullWidth 
+            label="Phone Number" 
+            placeholder="771234567" 
+            value={normalizedPhoneInput} 
+            onChange={(e) => setFormData({ ...formData, phone: normalizeSriLankanPhoneInput(e.target.value) })} 
+            InputProps={{ 
+              startAdornment: (
+                <InputAdornment position="start">
+                  <PhoneIphone sx={{ mr: 1 }} />
+                  +94
+                </InputAdornment>
+              ),
+              endAdornment: normalizedPhoneInput && (
+                <InputAdornment position="end">
+                  {availability.checking ? (
+                    <CircularProgress size={20} />
+                  ) : availability.phoneAvailable === true && phoneIsValid ? (
+                    <CheckCircle sx={{ color: '#4CAF50' }} />
+                  ) : availability.phoneAvailable === false || !phoneIsValid ? (
+                    <HighlightOff sx={{ color: '#F44336' }} />
+                  ) : null}
+                </InputAdornment>
+              )
+            }} 
+            sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }}
+            error={phoneHasInput && (!phoneIsValid || availability.phoneAvailable === false || !!fieldErrors.phone)}
+            helperText={fieldErrors.phone || phoneHelperText}
+          />
         </Grid>
         <Grid size={{ xs: 12, sm: 6 }}>
-          <TextField fullWidth label="Password" type={showPassword ? 'text' : 'password'} value={formData.password} onChange={(e) => setFormData({ ...formData, password: e.target.value })} InputProps={{ startAdornment: <InputAdornment position="start"><LockOutlined /></InputAdornment>, endAdornment: <InputAdornment position="end"><IconButton onClick={() => setShowPassword(!showPassword)}>{showPassword ? <VisibilityOff /> : <Visibility />}</IconButton></InputAdornment> }} sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} />
+          <TextField fullWidth label="Password" type={showPassword ? 'text' : 'password'} value={formData.password} onChange={(e) => setFormData({ ...formData, password: e.target.value })} InputProps={{ startAdornment: <InputAdornment position="start"><LockOutlined /></InputAdornment>, endAdornment: <InputAdornment position="end"><IconButton onClick={() => setShowPassword(!showPassword)}>{showPassword ? <VisibilityOff /> : <Visibility />}</IconButton></InputAdornment> }} sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} error={!!fieldErrors.password} helperText={fieldErrors.password} />
           <Box sx={{ mt: 1 }}>
             <LinearProgress variant="determinate" value={passwordStrength} sx={{ height: 6, borderRadius: 3, bgcolor: '#eee', '& .MuiLinearProgress-bar': { bgcolor: passwordStrength < 50 ? '#F44336' : passwordStrength < 100 ? '#FFC107' : '#4CAF50' } }} />
             <Typography variant="caption" sx={{ color: COLORS.textSecondary }}>Strength: {passwordStrength < 50 ? 'Weak' : passwordStrength < 100 ? 'Medium' : 'Strong'}</Typography>
           </Box>
         </Grid>
         <Grid size={{ xs: 12, sm: 6 }}>
-          <TextField fullWidth label="Confirm Password" type="password" value={formData.confirmPassword} onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })} sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} />
+          <TextField fullWidth label="Confirm Password" type="password" value={formData.confirmPassword} onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })} InputProps={{ startAdornment: <InputAdornment position="start"><LockOutlined /></InputAdornment>, endAdornment: formData.confirmPassword && ( <InputAdornment position="end"> {passwordMatch ? <CheckCircle sx={{ color: '#4CAF50' }} /> : <HighlightOff sx={{ color: '#F44336' }} />} </InputAdornment> ) }} sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} error={!!fieldErrors.confirmPassword} helperText={fieldErrors.confirmPassword || (formData.confirmPassword ? (passwordMatch ? '✓ Passwords match' : '✗ Passwords do not match') : '')} />
         </Grid>
       </Grid>
     </MotionBox>
@@ -456,12 +665,12 @@ const RegisterPage = () => {
       <Grid container spacing={4}>
         <Grid size={{ xs: 12, md: 6 }}>
           <Stack spacing={3}>
-            <TextField fullWidth type="date" label="Date of Birth" InputLabelProps={{ shrink: true }} value={formData.dob} onChange={(e) => setFormData({ ...formData, dob: e.target.value })} InputProps={{ startAdornment: <InputAdornment position="start"><CalendarMonth /></InputAdornment> }} sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} />
+            <TextField fullWidth type="date" label="Date of Birth" InputLabelProps={{ shrink: true }} value={formData.dob} onChange={(e) => setFormData({ ...formData, dob: e.target.value })} InputProps={{ startAdornment: <InputAdornment position="start"><CalendarMonth /></InputAdornment> }} sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} error={!!fieldErrors.dob} helperText={fieldErrors.dob} />
             <Box>
-              <TextField fullWidth type="time" label="Time of Birth" disabled={formData.unknownTime} InputLabelProps={{ shrink: true }} value={formData.tob} onChange={(e) => setFormData({ ...formData, tob: e.target.value })} InputProps={{ startAdornment: <InputAdornment position="start"><AccessTime /></InputAdornment> }} sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} />
+              <TextField fullWidth type="time" label="Time of Birth" disabled={formData.unknownTime} InputLabelProps={{ shrink: true }} value={formData.tob} onChange={(e) => setFormData({ ...formData, tob: e.target.value })} InputProps={{ startAdornment: <InputAdornment position="start"><AccessTime /></InputAdornment> }} sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} error={!!fieldErrors.tob} helperText={fieldErrors.tob} />
               <FormControlLabel control={<Checkbox checked={formData.unknownTime} onChange={(e) => setFormData({ ...formData, unknownTime: e.target.checked })} />} label="I don't know my exact birth time" />
             </Box>
-            <Autocomplete options={SRI_LANKAN_CITIES} renderInput={(params) => <TextField {...params} label="Place of Birth" InputProps={{ ...params.InputProps, startAdornment: <InputAdornment position="start"><LocationOn /></InputAdornment> }} sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} />} value={formData.pob} onChange={(_, v) => setFormData({ ...formData, pob: v || '' })} />
+            <Autocomplete freeSolo options={SRI_LANKAN_CITIES} renderInput={(params) => <TextField {...params} label="Place of Birth" InputProps={{ ...params.InputProps, startAdornment: <InputAdornment position="start"><LocationOn /></InputAdornment> }} sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} error={!!fieldErrors.pob} helperText={fieldErrors.pob} />} value={formData.pob} onChange={(_, v) => setFormData({ ...formData, pob: v || '' })} onInputChange={(_, v) => setFormData({ ...formData, pob: v || '' })} />
           </Stack>
         </Grid>
         <Grid size={{ xs: 12, md: 6 }}>
@@ -552,10 +761,10 @@ const RegisterPage = () => {
       </Typography>
       <Grid container spacing={3}>
         <Grid size={{ xs: 12 }}>
-          <TextField fullWidth label="Partner's Name" value={formData.partnerName} onChange={(e) => setFormData({ ...formData, partnerName: e.target.value })} sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} />
+          <TextField fullWidth label="Partner's Name" value={formData.partnerName} onChange={(e) => setFormData({ ...formData, partnerName: e.target.value })} sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} error={!!fieldErrors.partnerName} helperText={fieldErrors.partnerName} />
         </Grid>
         <Grid size={{ xs: 12, sm: 6 }}>
-          <TextField fullWidth type="date" label="Planned Wedding Date" InputLabelProps={{ shrink: true }} value={formData.weddingDate} onChange={(e) => setFormData({ ...formData, weddingDate: e.target.value })} sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} />
+          <TextField fullWidth type="date" label="Planned Wedding Date" InputLabelProps={{ shrink: true }} value={formData.weddingDate} onChange={(e) => setFormData({ ...formData, weddingDate: e.target.value })} sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} error={!!fieldErrors.weddingDate} helperText={fieldErrors.weddingDate} />
         </Grid>
         <Grid size={{ xs: 12, sm: 6 }}>
           <FormControl fullWidth sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }}>
@@ -583,10 +792,10 @@ const RegisterPage = () => {
       </Typography>
       <Grid container spacing={3}>
         <Grid size={{ xs: 12 }}>
-          <TextField fullWidth label="Business Name" value={formData.businessName} onChange={(e) => setFormData({ ...formData, businessName: e.target.value })} sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} />
+          <TextField fullWidth label="Business Name" value={formData.businessName} onChange={(e) => setFormData({ ...formData, businessName: e.target.value })} sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} error={!!fieldErrors.businessName} helperText={fieldErrors.businessName} />
         </Grid>
         <Grid size={{ xs: 12, sm: 6 }}>
-          <FormControl fullWidth sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }}>
+          <FormControl fullWidth sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} error={!!fieldErrors.businessCategory}>
             <InputLabel>Business Category</InputLabel>
             <Select value={formData.businessCategory} label="Business Category" onChange={(e) => setFormData({ ...formData, businessCategory: e.target.value })}>
               <MenuItem value="Photography">Photography</MenuItem>
@@ -596,6 +805,7 @@ const RegisterPage = () => {
               <MenuItem value="Music">Music & Entertainment</MenuItem>
               <MenuItem value="Decor">Decor & Flowers</MenuItem>
             </Select>
+            {fieldErrors.businessCategory && <Typography variant="caption" sx={{ color: 'error.main', ml: 2 }}>{fieldErrors.businessCategory}</Typography>}
           </FormControl>
         </Grid>
         <Grid size={{ xs: 12, sm: 6 }}>
@@ -628,9 +838,9 @@ const RegisterPage = () => {
         </Grid>
         <Grid size={{ xs: 12, md: 6 }}>
           <Paper sx={{ p: 3, borderRadius: '24px', bgcolor: COLORS.cream }}>
-            <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 700 }}>Verification</Typography>
+            <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 700 }}>Optional Verification</Typography>
             <Typography variant="caption" sx={{ display: 'block', mb: 2 }}>
-              OTP is optional during registration. If you skip it now, you can verify your email and phone later from the dashboard.
+              Verify your account now for immediate access, or skip and verify later from your dashboard.
             </Typography>
             <Button
               variant="outlined"
@@ -638,7 +848,7 @@ const RegisterPage = () => {
               disabled={otpSending}
               sx={{ mb: 2, borderRadius: '10px' }}
             >
-              {otpSending ? 'Sending OTP...' : otpRequested ? 'Resend OTP' : 'Send OTP'}
+              {otpSending ? 'Sending OTP...' : otpRequested ? 'Resend OTP' : 'Send Verification OTP'}
             </Button>
             <Stack direction="row" spacing={1} justifyContent="center">
               {formData.otp.map((digit, i) => (
@@ -651,7 +861,7 @@ const RegisterPage = () => {
                     const next = document.getElementById(`otp-${i + 1}`);
                     next?.focus();
                   }
-                }} id={`otp-${i}`} variant="outlined" sx={{ width: 45, '& .MuiOutlinedInput-root': { borderRadius: '8px', textAlign: 'center' } }} inputProps={{ style: { textAlign: 'center' } }} />
+                }} id={`otp-${i}`} variant="outlined" sx={{ width: 60, '& .MuiOutlinedInput-root': { borderRadius: '8px', textAlign: 'center' } }} inputProps={{ style: { textAlign: 'center' } }} />
               ))}
             </Stack>
             <Typography variant="caption" sx={{ display: 'block', mt: 2, color: COLORS.textSecondary }}>
@@ -797,5 +1007,3 @@ const RegisterPage = () => {
 };
 
 export default RegisterPage;
-
-

@@ -27,6 +27,7 @@ const CITY_COORDS = {
 
 const REGISTRATION_ROLES = ['partner', 'couple', 'vendor'];
 const OTP_EXPIRY_MINUTES = 10;
+const SRI_LANKA_MOBILE_REGEX = /^7\d{8}$/;
 
 function buildToken(user) {
   return jwt.sign(
@@ -45,9 +46,21 @@ function average(values) {
 }
 
 function normalizePhone(value = '') {
-  const cleaned = value.replace(/[\s-]/g, '');
-  if (!cleaned) return '';
-  return cleaned.startsWith('+') ? cleaned : `+${cleaned}`;
+  const digits = String(value).replace(/\D/g, '');
+  if (!digits) return '';
+
+  let localDigits = digits;
+  if (digits.startsWith('94')) {
+    localDigits = digits.slice(2);
+  } else if (digits.startsWith('0')) {
+    localDigits = digits.slice(1);
+  }
+
+  if (!SRI_LANKA_MOBILE_REGEX.test(localDigits)) {
+    return '';
+  }
+
+  return `+94${localDigits}`;
 }
 
 function normalizeIdentifier(value = '') {
@@ -90,6 +103,7 @@ function sanitizeUser(user) {
     profileType: user.profileType,
     location: user.location,
     profilePic: user.profilePic || user.photos?.find((photo) => photo.isMain)?.url || null,
+    photos: user.photos || [],
     verification: {
       emailVerified: Boolean(user.verification?.emailVerified),
       phoneVerified: Boolean(user.verification?.phoneVerified),
@@ -139,17 +153,19 @@ function splitHoroscopeData(horoscope) {
 }
 
 function buildPersonalInfo(input) {
+  const defaultLocation = input.pob || 'Sri Lanka';
+  
   return {
-    firstName: input.firstName,
-    lastName: input.lastName,
+    firstName: input.firstName?.trim() || '',
+    lastName: input.lastName?.trim() || '',
     phone: normalizePhone(input.phone),
-    profilePic: input.profilePic,
-    location: input.pob || 'Sri Lanka',
-    ethnicity: input.ethnicity,
+    profilePic: input.profilePic || undefined,
+    location: defaultLocation,
+    ethnicity: input.ethnicity?.trim() || '',
     bio:
       input.role === 'vendor'
-        ? `${input.businessName || input.firstName}'s vendor profile on RaashiLink.AI.`
-        : `${input.firstName} is looking for a meaningful match on RaashiLink.AI.`,
+        ? `${(input.businessName || input.firstName)?.trim()}'s vendor profile on RaashiLink.AI.`
+        : `${input.firstName?.trim() || 'User'} is looking for a meaningful match on RaashiLink.AI.`,
     photos: input.profilePic ? [{ url: input.profilePic, isMain: true }] : [],
   };
 }
@@ -177,8 +193,10 @@ function validateRegistrationInput(input) {
     throw new ApiError(400, 'Enter a valid email address', ['Email address format is invalid']);
   }
 
-  if (!/^\+?[0-9\s-]{9,16}$/.test(input.phone)) {
-    throw new ApiError(400, 'Enter a valid phone number', ['Phone number format is invalid']);
+  if (!normalizePhone(input.phone)) {
+    throw new ApiError(400, 'Enter a valid phone number', [
+      'Phone number must be a valid Sri Lankan mobile number in 0771234567 or 771234567 format',
+    ]);
   }
 
   if (input.password !== input.confirmPassword) {
@@ -311,6 +329,54 @@ async function verifyOtpCode({ identifier, purpose, otp, consume = true }) {
   return true;
 }
 
+export const checkAvailability = asyncHandler(async (req, res) => {
+  let { email, phone } = req.body ?? {};
+  
+  let emailAvailable = true;
+  let phoneAvailable = true;
+  let emailError = null;
+  let phoneError = null;
+
+  // Normalize and validate incoming values
+  if (email != null) {
+    email = String(email).toLowerCase().trim();
+  }
+  if (phone != null) {
+    phone = String(phone).trim();
+  }
+
+  // Check email availability
+  if (email) {
+    const existingEmail = await User.findOne({ email }).lean();
+    if (existingEmail) {
+      emailAvailable = false;
+      emailError = 'This email is already registered';
+    }
+  }
+
+  // Check phone availability
+  if (phone) {
+    const normalizedPhone = normalizePhone(phone);
+    if (normalizedPhone) {
+      const existingPhone = await User.findOne({ 'personalInfo.phone': normalizedPhone }).lean();
+      if (existingPhone) {
+        phoneAvailable = false;
+        phoneError = 'This phone number is already registered';
+      }
+    }
+  }
+
+  res.status(200).json({
+    success: true,
+    data: {
+      emailAvailable,
+      phoneAvailable,
+      emailError,
+      phoneError,
+    },
+  });
+});
+
 export const requestRegistrationOtp = asyncHandler(async (req, res) => {
   const { email, phone } = req.body ?? {};
   const otpTarget = phone?.trim() ? phone : email;
@@ -419,6 +485,15 @@ export const register = asyncHandler(async (req, res) => {
     }
   }
 
+  // Parse and validate weddingDate if provided
+  let parsedWeddingDate = undefined;
+  if (role === 'couple' && weddingDate) {
+    const dateObj = new Date(weddingDate);
+    if (!isNaN(dateObj.getTime())) {
+      parsedWeddingDate = dateObj;
+    }
+  }
+
   const user = await User.create({
     email: email.toLowerCase(),
     passwordHash,
@@ -447,18 +522,18 @@ export const register = asyncHandler(async (req, res) => {
     weddingProject:
       role === 'couple'
         ? {
-            partnerName,
-            weddingDate: weddingDate ? new Date(weddingDate) : undefined,
-            budget,
+            partnerName: partnerName?.trim() || '',
+            weddingDate: parsedWeddingDate,
+            budget: budget?.trim() || '',
             status: 'planning',
           }
         : undefined,
     vendorProfile:
       role === 'vendor'
         ? {
-            businessName,
-            businessCategory,
-            portfolioUrl,
+            businessName: businessName?.trim() || '',
+            businessCategory: businessCategory?.trim() || '',
+            portfolioUrl: portfolioUrl?.trim() || '',
             verificationStatus: 'pending',
           }
         : undefined,

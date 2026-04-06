@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import {
+  checkAvailability,
   requestRegistrationOtp,
   verifyOTP,
   login,
@@ -12,6 +13,7 @@ import {
 
 const router = Router();
 
+router.post('/check-availability', checkAvailability);
 router.post('/request-registration-otp', requestRegistrationOtp);
 router.post('/verify-otp', verifyOTP);
 router.post('/register', register);
