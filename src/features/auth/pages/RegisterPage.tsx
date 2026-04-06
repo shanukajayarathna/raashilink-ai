@@ -1,0 +1,801 @@
+import React, { useState, useEffect } from 'react';
+import { 
+  Box, 
+  Container, 
+  Typography, 
+  TextField, 
+  Button, 
+  Grid, 
+  Paper, 
+  Divider, 
+  IconButton, 
+  InputAdornment,
+  Alert,
+  CircularProgress,
+  Stack,
+  Stepper,
+  Step,
+  StepLabel,
+  Card,
+  CardContent,
+  Slider,
+  Tooltip,
+  Autocomplete,
+  Checkbox,
+  FormControlLabel,
+  LinearProgress,
+  useTheme,
+  useMediaQuery,
+  Avatar,
+  Badge,
+  MenuItem,
+  Select,
+  FormControl,
+  InputLabel
+} from '@mui/material';
+import { 
+  Visibility, 
+  VisibilityOff, 
+  ArrowForward,
+  ArrowBack,
+  InfoOutlined,
+  LocationOn,
+  CheckCircle,
+  AccountCircle,
+  Favorite,
+  Storefront,
+  AccessTime,
+  CalendarMonth,
+  LockOutlined,
+  MailOutline,
+  PhoneIphone,
+  PhotoCamera,
+  CloudUpload
+} from '@mui/icons-material';
+import { motion, AnimatePresence } from 'motion/react';
+import { useNavigate, Link } from 'react-router-dom';
+import { useDispatch } from 'react-redux';
+import { setLoading, showToast } from '@/app/store/uiSlice';
+import authService from '@/features/auth/services/authService';
+import MandalaBackground from '@/components/MandalaBackground';
+
+// --- Design Constants ---
+const COLORS = {
+  primary: '#8B1A2E',
+  secondary: '#C9A84C',
+  accent: '#1A6B72',
+  cream: '#FAF7F2',
+  white: '#FFFFFF',
+  textPrimary: '#1C1C1C',
+  textSecondary: '#555555',
+};
+
+const SRI_LANKAN_CITIES = [
+  'Colombo', 'Kandy', 'Galle', 'Jaffna', 'Negombo', 'Anuradhapura', 'Ratnapura', 'Badulla', 'Matara', 'Batticaloa', 'Trincomalee', 'Kurunegala', 'Gampaha', 'Kalutara', 'Puttalam'
+];
+
+const MotionBox = motion(Box);
+const MotionCard = motion(Card);
+
+const RegisterPage = () => {
+  const navigate = useNavigate();
+  const dispatch = useDispatch();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  
+  const [activeStep, setActiveStep] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
+  const [otpSending, setOtpSending] = useState(false);
+  const [otpRequested, setOtpRequested] = useState(false);
+  const [errorDetails, setErrorDetails] = useState<string[]>([]);
+
+    // Form Data
+    const [formData, setFormData] = useState({
+      // Step 1
+      role: '',
+      // Step 2
+      firstName: '',
+      lastName: '',
+      email: '',
+      phone: '',
+      password: '',
+      confirmPassword: '',
+      profilePic: null as string | null,
+      // Role Specific
+      partnerName: '',
+      weddingDate: '',
+      budget: '',
+      businessName: '',
+      businessCategory: '',
+      portfolioUrl: '',
+      // Step 3 (Partner only)
+      dob: '',
+      tob: '',
+      pob: '',
+      unknownTime: false,
+      // Step 4 (Partner only)
+      personality: [3, 3, 3, 3, 3, 3, 3, 3, 3, 3],
+      // Final Step
+      visibility: 'Everyone',
+      religion: '',
+      ethnicity: '',
+      locationRadius: 50,
+      terms: false,
+      otp: ['', '', '', '', '', '']
+    });
+
+  const [showPassword, setShowPassword] = useState(false);
+  const [passwordStrength, setPasswordStrength] = useState(0);
+
+  const getSteps = () => {
+    const baseSteps = ['Account Type', 'Basic Info'];
+    if (formData.role === 'partner') {
+      return [...baseSteps, 'Birth Details', 'Personality', 'Finalize'];
+    } else if (formData.role === 'couple') {
+      return [...baseSteps, 'Wedding Details', 'Finalize'];
+    } else if (formData.role === 'vendor') {
+      return [...baseSteps, 'Business Details', 'Finalize'];
+    }
+    return [...baseSteps, 'Details', 'Finalize'];
+  };
+
+  const steps = getSteps();
+
+  const handleProfilePicChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setFormData({ ...formData, profilePic: reader.result as string });
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  // Password strength calculation
+  useEffect(() => {
+    let strength = 0;
+    if (formData.password.length >= 8) strength += 25;
+    if (/[A-Z]/.test(formData.password)) strength += 25;
+    if (/[0-9]/.test(formData.password)) strength += 25;
+    if (/[^A-Za-z0-9]/.test(formData.password)) strength += 25;
+    setPasswordStrength(strength);
+  }, [formData.password]);
+
+  const handleNext = () => {
+    const validationError = validateCurrentStep();
+    if (validationError) {
+      setError(validationError);
+      setErrorDetails([]);
+      return;
+    }
+
+    setError(null);
+    setErrorDetails([]);
+    if (activeStep < steps.length - 1) {
+      setActiveStep((prev) => prev + 1);
+      window.scrollTo(0, 0);
+    } else {
+      handleSubmit();
+    }
+  };
+
+  const handleBack = () => {
+    setActiveStep((prev) => prev - 1);
+    window.scrollTo(0, 0);
+  };
+
+  const validateCurrentStep = () => {
+    const currentStepLabel = steps[activeStep];
+
+    if (currentStepLabel === 'Basic Info') {
+      if (!formData.firstName || !formData.lastName || !formData.email || !formData.phone) {
+        return 'First name, last name, email, and phone number are required.';
+      }
+      if (!/\S+@\S+\.\S+/.test(formData.email)) {
+        return 'Please enter a valid email address.';
+      }
+      if (!/^\+?[0-9\s-]{9,16}$/.test(formData.phone)) {
+        return 'Please enter a valid phone number.';
+      }
+      if (!formData.password || formData.password.length < 8) {
+        return 'Password must be at least 8 characters.';
+      }
+      if (formData.password !== formData.confirmPassword) {
+        return 'Passwords do not match.';
+      }
+    }
+
+    if (currentStepLabel === 'Birth Details') {
+      if (!formData.dob || !formData.pob) {
+        return 'Date of birth and place of birth are required.';
+      }
+      if (!formData.unknownTime && !formData.tob) {
+        return 'Time of birth is required unless marked unknown.';
+      }
+    }
+
+    if (currentStepLabel === 'Wedding Details') {
+      if (!formData.partnerName || !formData.weddingDate) {
+        return 'Partner name and wedding date are required.';
+      }
+    }
+
+    if (currentStepLabel === 'Business Details') {
+      if (!formData.businessName || !formData.businessCategory) {
+        return 'Business name and category are required.';
+      }
+    }
+
+    if (currentStepLabel === 'Finalize') {
+      if (!formData.terms) {
+        return 'You must accept the terms to continue.';
+      }
+      const otpValue = formData.otp.join('');
+      if (otpValue.length > 0 && otpValue.length !== 6) {
+        return 'If you enter OTP now, it must be a full 6-digit code.';
+      }
+    }
+
+    return null;
+  };
+
+  const handleSendOtp = async () => {
+    const basicValidation = ['firstName', 'lastName', 'email', 'phone', 'password'].every(
+      (field) => Boolean((formData as any)[field])
+    );
+
+    if (!basicValidation) {
+      setError('Complete your basic information before requesting OTP.');
+      setErrorDetails([]);
+      return;
+    }
+
+    setOtpSending(true);
+    setError(null);
+    setErrorDetails([]);
+    try {
+      const response = await authService.requestRegistrationOtp({
+        email: formData.email,
+        phone: formData.phone,
+      });
+      setOtpRequested(true);
+      dispatch(showToast({
+        type: 'success',
+        message:
+          response.devOtp
+            ? `OTP sent. Development OTP: ${response.devOtp}`
+            : 'OTP sent successfully.',
+      }));
+    } catch (err: any) {
+      const message = err.response?.data?.message || 'Failed to send OTP.';
+      setError(message);
+      setErrorDetails(Array.isArray(err.response?.data?.details) ? err.response.data.details : []);
+      dispatch(showToast({ type: 'error', message }));
+    } finally {
+      setOtpSending(false);
+    }
+  };
+
+  const handleSubmit = async () => {
+    setIsLoading(true);
+    setError(null);
+    setErrorDetails([]);
+    dispatch(setLoading(true));
+    try {
+      await authService.register(formData);
+      setSuccess(true);
+      dispatch(showToast({ type: 'success', message: 'Registration completed. Please log in with your credentials.' }));
+      setTimeout(() => navigate('/login'), 1000);
+    } catch (err: any) {
+      const details = Array.isArray(err.response?.data?.details) ? err.response.data.details : [];
+      const message =
+        err.response?.data?.message ||
+        (err.code === 'ERR_NETWORK'
+          ? 'Could not reach the server. Check that the backend is running and try again.'
+          : 'Registration failed. Please check the highlighted details.');
+      setError(message);
+      setErrorDetails(details);
+      dispatch(showToast({ type: 'error', message }));
+    } finally {
+      setIsLoading(false);
+      dispatch(setLoading(false));
+    }
+  };
+
+  const renderAccountType = () => (
+    <MotionBox
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={{ duration: 0.5 }}
+    >
+      <Typography variant="h5" sx={{ fontFamily: 'Playfair Display', fontWeight: 700, mb: 4, textAlign: 'center' }}>
+        Choose Your Journey
+      </Typography>
+      <Grid container spacing={3}>
+        {[
+          { id: 'partner', title: 'Looking for a Partner', icon: <Favorite />, benefits: ['AI Matchmaking', 'Horoscope Check', 'Personality Matching'] },
+          { id: 'couple', title: 'Engaged Couple', icon: <AccountCircle />, benefits: ['Wedding Planning', 'Budget Management', 'Vendor Search'] },
+          { id: 'vendor', title: 'Wedding Vendor', icon: <Storefront />, benefits: ['Reach Clients', 'Portfolio Showcase', 'Booking Management'] }
+        ].map((role) => (
+          <Grid size={{ xs: 12, md: 4 }} key={role.id}>
+            <MotionCard
+              whileHover={{ y: -10 }}
+              onClick={() => setFormData({ ...formData, role: role.id })}
+              sx={{ 
+                cursor: 'pointer',
+                height: '100%',
+                borderRadius: '24px',
+                border: formData.role === role.id 
+                  ? `3px solid ${COLORS.secondary}` 
+                  : `1px solid #E0E0E0`,
+                boxShadow: formData.role === role.id 
+                  ? `0 12px 30px rgba(201,168,76,0.25)` 
+                  : '0 4px 12px rgba(0,0,0,0.03)',
+                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                bgcolor: formData.role === role.id ? 'rgba(201,168,76,0.08)' : 'white',
+                '&:hover': {
+                  borderColor: formData.role === role.id ? COLORS.secondary : COLORS.primary,
+                  boxShadow: '0 12px 24px rgba(139,26,46,0.08)'
+                }
+              }}
+            >
+              <CardContent sx={{ textAlign: 'center', p: 4 }}>
+                <Box sx={{ 
+                  width: 60, 
+                  height: 60, 
+                  bgcolor: formData.role === role.id ? COLORS.secondary : COLORS.cream, 
+                  borderRadius: '50%', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center',
+                  mx: 'auto',
+                  mb: 3,
+                  color: formData.role === role.id ? 'white' : COLORS.primary
+                }}>
+                  {role.icon}
+                </Box>
+                <Typography variant="h6" sx={{ fontWeight: 800, mb: 2 }}>{role.title}</Typography>
+                <Stack spacing={1} sx={{ textAlign: 'left' }}>
+                  {role.benefits.map((b, i) => (
+                    <Box key={i} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <CheckCircle sx={{ fontSize: 16, color: COLORS.accent }} />
+                      <Typography variant="caption" sx={{ color: COLORS.textSecondary }}>{b}</Typography>
+                    </Box>
+                  ))}
+                </Stack>
+              </CardContent>
+            </MotionCard>
+          </Grid>
+        ))}
+      </Grid>
+    </MotionBox>
+  );
+
+  const renderBasicInfo = () => (
+    <MotionBox
+      initial={{ opacity: 0, x: 50 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ duration: 0.5 }}
+    >
+      <Typography variant="h5" sx={{ fontFamily: 'Playfair Display', fontWeight: 700, mb: 4, textAlign: 'center' }}>
+        Basic Information
+      </Typography>
+      
+      <Box sx={{ display: 'flex', justifyContent: 'center', mb: 6 }}>
+        <Badge
+          overlap="circular"
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+          badgeContent={
+            <IconButton
+              component="label"
+              sx={{ 
+                bgcolor: COLORS.primary, 
+                color: 'white',
+                '&:hover': { bgcolor: COLORS.secondary }
+              }}
+            >
+              <PhotoCamera />
+              <input hidden accept="image/*" type="file" onChange={handleProfilePicChange} />
+            </IconButton>
+          }
+        >
+          <Avatar 
+            src={formData.profilePic || undefined} 
+            sx={{ width: 120, height: 120, border: `4px solid ${COLORS.cream}`, boxShadow: '0 8px 24px rgba(0,0,0,0.1)' }}
+          >
+            {!formData.profilePic && <AccountCircle sx={{ fontSize: 80 }} />}
+          </Avatar>
+        </Badge>
+      </Box>
+
+      <Grid container spacing={3}>
+        <Grid size={{ xs: 12, sm: 6 }}>
+          <TextField fullWidth label="First Name" value={formData.firstName} onChange={(e) => setFormData({ ...formData, firstName: e.target.value })} sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} />
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6 }}>
+          <TextField fullWidth label="Last Name" value={formData.lastName} onChange={(e) => setFormData({ ...formData, lastName: e.target.value })} sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} />
+        </Grid>
+        <Grid size={{ xs: 12 }}>
+          <TextField fullWidth label="Email Address" type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} InputProps={{ startAdornment: <InputAdornment position="start"><MailOutline /></InputAdornment> }} sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} />
+        </Grid>
+        <Grid size={{ xs: 12 }}>
+          <TextField fullWidth label="Phone Number" placeholder="+94 7X XXX XXXX" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} InputProps={{ startAdornment: <InputAdornment position="start"><PhoneIphone /></InputAdornment> }} sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} />
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6 }}>
+          <TextField fullWidth label="Password" type={showPassword ? 'text' : 'password'} value={formData.password} onChange={(e) => setFormData({ ...formData, password: e.target.value })} InputProps={{ startAdornment: <InputAdornment position="start"><LockOutlined /></InputAdornment>, endAdornment: <InputAdornment position="end"><IconButton onClick={() => setShowPassword(!showPassword)}>{showPassword ? <VisibilityOff /> : <Visibility />}</IconButton></InputAdornment> }} sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} />
+          <Box sx={{ mt: 1 }}>
+            <LinearProgress variant="determinate" value={passwordStrength} sx={{ height: 6, borderRadius: 3, bgcolor: '#eee', '& .MuiLinearProgress-bar': { bgcolor: passwordStrength < 50 ? '#F44336' : passwordStrength < 100 ? '#FFC107' : '#4CAF50' } }} />
+            <Typography variant="caption" sx={{ color: COLORS.textSecondary }}>Strength: {passwordStrength < 50 ? 'Weak' : passwordStrength < 100 ? 'Medium' : 'Strong'}</Typography>
+          </Box>
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6 }}>
+          <TextField fullWidth label="Confirm Password" type="password" value={formData.confirmPassword} onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })} sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} />
+        </Grid>
+      </Grid>
+    </MotionBox>
+  );
+
+  const renderBirthDetails = () => (
+    <MotionBox
+      initial={{ opacity: 0, x: 50 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ duration: 0.5 }}
+    >
+      <Typography variant="h5" sx={{ fontFamily: 'Playfair Display', fontWeight: 700, mb: 2, textAlign: 'center' }}>
+        Birth Details
+      </Typography>
+      <Typography variant="body2" sx={{ color: COLORS.textSecondary, mb: 4, textAlign: 'center' }}>
+        Used for your personalized Vedic horoscope calculation.
+        <Tooltip title="Why do we need this? → For your personalized Vedic horoscope calculation">
+          <IconButton size="small"><InfoOutlined fontSize="small" /></IconButton>
+        </Tooltip>
+      </Typography>
+      <Grid container spacing={4}>
+        <Grid size={{ xs: 12, md: 6 }}>
+          <Stack spacing={3}>
+            <TextField fullWidth type="date" label="Date of Birth" InputLabelProps={{ shrink: true }} value={formData.dob} onChange={(e) => setFormData({ ...formData, dob: e.target.value })} InputProps={{ startAdornment: <InputAdornment position="start"><CalendarMonth /></InputAdornment> }} sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} />
+            <Box>
+              <TextField fullWidth type="time" label="Time of Birth" disabled={formData.unknownTime} InputLabelProps={{ shrink: true }} value={formData.tob} onChange={(e) => setFormData({ ...formData, tob: e.target.value })} InputProps={{ startAdornment: <InputAdornment position="start"><AccessTime /></InputAdornment> }} sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} />
+              <FormControlLabel control={<Checkbox checked={formData.unknownTime} onChange={(e) => setFormData({ ...formData, unknownTime: e.target.checked })} />} label="I don't know my exact birth time" />
+            </Box>
+            <Autocomplete options={SRI_LANKAN_CITIES} renderInput={(params) => <TextField {...params} label="Place of Birth" InputProps={{ ...params.InputProps, startAdornment: <InputAdornment position="start"><LocationOn /></InputAdornment> }} sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} />} value={formData.pob} onChange={(_, v) => setFormData({ ...formData, pob: v || '' })} />
+          </Stack>
+        </Grid>
+        <Grid size={{ xs: 12, md: 6 }}>
+          <Paper sx={{ p: 3, borderRadius: '24px', bgcolor: COLORS.cream, height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', border: `1px dashed ${COLORS.secondary}` }}>
+            <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 700 }}>Birth Chart Preview</Typography>
+            <Box sx={{ width: 180, height: 180, position: 'relative' }}>
+              <motion.svg viewBox="0 0 100 100" style={{ width: '100%', height: '100%' }}>
+                <rect x="5" y="5" width="90" height="90" fill="none" stroke={COLORS.secondary} strokeWidth="1" />
+                <line x1="5" y1="5" x2="95" y2="95" stroke={COLORS.secondary} strokeWidth="1" />
+                <line x1="95" y1="5" x2="5" y2="95" stroke={COLORS.secondary} strokeWidth="1" />
+                <line x1="50" y1="5" x2="95" y2="50" stroke={COLORS.secondary} strokeWidth="1" />
+                <line x1="95" y1="50" x2="50" y2="95" stroke={COLORS.secondary} strokeWidth="1" />
+                <line x1="50" y1="95" x2="5" y2="50" stroke={COLORS.secondary} strokeWidth="1" />
+                <line x1="5" y1="50" x2="50" y2="5" stroke={COLORS.secondary} strokeWidth="1" />
+              </motion.svg>
+              {formData.dob && (
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ position: 'absolute', top: '45%', left: '45%', fontSize: '10px', fontWeight: 'bold', color: COLORS.primary }}>ASC</motion.div>
+              )}
+            </Box>
+            <Typography variant="caption" sx={{ mt: 2, color: COLORS.textSecondary, textAlign: 'center' }}>AI is calculating your planetary positions...</Typography>
+          </Paper>
+        </Grid>
+      </Grid>
+    </MotionBox>
+  );
+
+  const renderPersonalityQuiz = () => (
+    <MotionBox
+      initial={{ opacity: 0, x: 50 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ duration: 0.5 }}
+    >
+      <Typography variant="h5" sx={{ fontFamily: 'Playfair Display', fontWeight: 700, mb: 2, textAlign: 'center' }}>
+        Personality Quiz
+      </Typography>
+      <Typography variant="body2" sx={{ color: COLORS.textSecondary, mb: 4, textAlign: 'center' }}>
+        Help us understand your personality for better matching.
+      </Typography>
+      <Stack spacing={4}>
+        {[
+          "I enjoy meeting new people",
+          "I prefer organized plans",
+          "I am easily stressed",
+          "I enjoy creative activities",
+          "I am helpful and unselfish",
+          "I am talkative and outgoing",
+          "I am reliable and hardworking",
+          "I am curious about many things",
+          "I am forgiving of others",
+          "I am calm and emotionally stable"
+        ].map((q, i) => (
+          <Box key={i}>
+            <Typography variant="body1" sx={{ fontWeight: 600, mb: 1 }}>{i + 1}. {q}</Typography>
+            <Stack direction="row" spacing={2} alignItems="center">
+              <Typography variant="caption">Disagree</Typography>
+              <Slider value={formData.personality[i]} onChange={(_, v) => {
+                const newP = [...formData.personality];
+                newP[i] = v as number;
+                setFormData({ ...formData, personality: newP });
+              }} min={1} max={5} step={1} marks sx={{ color: COLORS.primary }} />
+              <Typography variant="caption">Agree</Typography>
+            </Stack>
+          </Box>
+        ))}
+      </Stack>
+      <Box sx={{ mt: 6 }}>
+        <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 700 }}>Personality Profile</Typography>
+        <Grid container spacing={2}>
+          {['Extraversion', 'Conscientiousness', 'Neuroticism', 'Openness', 'Agreeableness'].map((trait, i) => (
+            <Grid size={{ xs: 12 }} key={trait}>
+              <Typography variant="caption">{trait}</Typography>
+              <LinearProgress variant="determinate" value={formData.personality[i] * 20} sx={{ height: 8, borderRadius: 4, bgcolor: '#eee', '& .MuiLinearProgress-bar': { bgcolor: COLORS.accent } }} />
+            </Grid>
+          ))}
+        </Grid>
+      </Box>
+    </MotionBox>
+  );
+
+  const renderWeddingDetails = () => (
+    <MotionBox
+      initial={{ opacity: 0, x: 50 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ duration: 0.5 }}
+    >
+      <Typography variant="h5" sx={{ fontFamily: 'Playfair Display', fontWeight: 700, mb: 4, textAlign: 'center' }}>
+        Wedding Details
+      </Typography>
+      <Grid container spacing={3}>
+        <Grid size={{ xs: 12 }}>
+          <TextField fullWidth label="Partner's Name" value={formData.partnerName} onChange={(e) => setFormData({ ...formData, partnerName: e.target.value })} sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} />
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6 }}>
+          <TextField fullWidth type="date" label="Planned Wedding Date" InputLabelProps={{ shrink: true }} value={formData.weddingDate} onChange={(e) => setFormData({ ...formData, weddingDate: e.target.value })} sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} />
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6 }}>
+          <FormControl fullWidth sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }}>
+            <InputLabel>Estimated Budget (LKR)</InputLabel>
+            <Select value={formData.budget} label="Estimated Budget (LKR)" onChange={(e) => setFormData({ ...formData, budget: e.target.value })}>
+              <MenuItem value="< 1M">Less than 1 Million</MenuItem>
+              <MenuItem value="1M - 3M">1 - 3 Million</MenuItem>
+              <MenuItem value="3M - 5M">3 - 5 Million</MenuItem>
+              <MenuItem value="> 5M">More than 5 Million</MenuItem>
+            </Select>
+          </FormControl>
+        </Grid>
+      </Grid>
+    </MotionBox>
+  );
+
+  const renderBusinessDetails = () => (
+    <MotionBox
+      initial={{ opacity: 0, x: 50 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ duration: 0.5 }}
+    >
+      <Typography variant="h5" sx={{ fontFamily: 'Playfair Display', fontWeight: 700, mb: 4, textAlign: 'center' }}>
+        Business Details
+      </Typography>
+      <Grid container spacing={3}>
+        <Grid size={{ xs: 12 }}>
+          <TextField fullWidth label="Business Name" value={formData.businessName} onChange={(e) => setFormData({ ...formData, businessName: e.target.value })} sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} />
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6 }}>
+          <FormControl fullWidth sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }}>
+            <InputLabel>Business Category</InputLabel>
+            <Select value={formData.businessCategory} label="Business Category" onChange={(e) => setFormData({ ...formData, businessCategory: e.target.value })}>
+              <MenuItem value="Photography">Photography</MenuItem>
+              <MenuItem value="Catering">Catering</MenuItem>
+              <MenuItem value="Venue">Venue</MenuItem>
+              <MenuItem value="Attire">Attire & Jewelry</MenuItem>
+              <MenuItem value="Music">Music & Entertainment</MenuItem>
+              <MenuItem value="Decor">Decor & Flowers</MenuItem>
+            </Select>
+          </FormControl>
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6 }}>
+          <TextField fullWidth label="Portfolio / Website URL" value={formData.portfolioUrl} onChange={(e) => setFormData({ ...formData, portfolioUrl: e.target.value })} InputProps={{ startAdornment: <InputAdornment position="start"><CloudUpload /></InputAdornment> }} sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} />
+        </Grid>
+      </Grid>
+    </MotionBox>
+  );
+
+  const renderFinalize = () => (
+    <MotionBox
+      initial={{ opacity: 0, x: 50 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ duration: 0.5 }}
+    >
+      <Typography variant="h5" sx={{ fontFamily: 'Playfair Display', fontWeight: 700, mb: 4, textAlign: 'center' }}>
+        Privacy & Verification
+      </Typography>
+      <Grid container spacing={4}>
+        <Grid size={{ xs: 12, md: 6 }}>
+          <Stack spacing={3}>
+            <Autocomplete options={['Everyone', 'Matches Only', 'Private']} renderInput={(params) => <TextField {...params} label="Who can see your profile?" sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} />} value={formData.visibility} onChange={(_, v) => setFormData({ ...formData, visibility: v || 'Everyone' })} />
+            <TextField fullWidth label="Religion" value={formData.religion} onChange={(e) => setFormData({ ...formData, religion: e.target.value })} sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} />
+            <TextField fullWidth label="Ethnicity" value={formData.ethnicity} onChange={(e) => setFormData({ ...formData, ethnicity: e.target.value })} sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} />
+            <Box>
+              <Typography variant="caption">Location Radius: {formData.locationRadius}km</Typography>
+              <Slider value={formData.locationRadius} onChange={(_, v) => setFormData({ ...formData, locationRadius: v as number })} min={5} max={200} sx={{ color: COLORS.accent }} />
+            </Box>
+          </Stack>
+        </Grid>
+        <Grid size={{ xs: 12, md: 6 }}>
+          <Paper sx={{ p: 3, borderRadius: '24px', bgcolor: COLORS.cream }}>
+            <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 700 }}>Verification</Typography>
+            <Typography variant="caption" sx={{ display: 'block', mb: 2 }}>
+              OTP is optional during registration. If you skip it now, you can verify your email and phone later from the dashboard.
+            </Typography>
+            <Button
+              variant="outlined"
+              onClick={handleSendOtp}
+              disabled={otpSending}
+              sx={{ mb: 2, borderRadius: '10px' }}
+            >
+              {otpSending ? 'Sending OTP...' : otpRequested ? 'Resend OTP' : 'Send OTP'}
+            </Button>
+            <Stack direction="row" spacing={1} justifyContent="center">
+              {formData.otp.map((digit, i) => (
+                <TextField key={i} value={digit} onChange={(e) => {
+                  const val = e.target.value.slice(-1);
+                  const newOtp = [...formData.otp];
+                  newOtp[i] = val;
+                  setFormData({ ...formData, otp: newOtp });
+                  if (val && i < 5) {
+                    const next = document.getElementById(`otp-${i + 1}`);
+                    next?.focus();
+                  }
+                }} id={`otp-${i}`} variant="outlined" sx={{ width: 45, '& .MuiOutlinedInput-root': { borderRadius: '8px', textAlign: 'center' } }} inputProps={{ style: { textAlign: 'center' } }} />
+              ))}
+            </Stack>
+            <Typography variant="caption" sx={{ display: 'block', mt: 2, color: COLORS.textSecondary }}>
+              Enter OTP only if you requested one now. Your account will still be created without OTP verification.
+            </Typography>
+            <Box sx={{ mt: 4 }}>
+              <FormControlLabel control={<Checkbox checked={formData.terms} onChange={(e) => setFormData({ ...formData, terms: e.target.checked })} />} label={<Typography variant="caption">I agree to the Terms of Service and Privacy Policy</Typography>} />
+            </Box>
+          </Paper>
+        </Grid>
+      </Grid>
+    </MotionBox>
+  );
+
+  const renderStepContent = (step: number) => {
+    const currentStepLabel = steps[step];
+
+    switch (currentStepLabel) {
+      case 'Account Type':
+        return renderAccountType();
+      case 'Basic Info':
+        return renderBasicInfo();
+      case 'Birth Details':
+        return renderBirthDetails();
+      case 'Personality':
+        return renderPersonalityQuiz();
+      case 'Wedding Details':
+        return renderWeddingDetails();
+      case 'Business Details':
+        return renderBusinessDetails();
+      case 'Finalize':
+        return renderFinalize();
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <Box sx={{ minHeight: '100vh', bgcolor: COLORS.cream, py: 6, position: 'relative', overflow: 'hidden' }}>
+      <MandalaBackground size={420} sx={{ top: -100, right: -120 }} />
+      <MandalaBackground size={320} opacity={0.035} sx={{ bottom: -80, left: -80 }} />
+      <Container maxWidth="lg">
+        <MotionBox
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          sx={{ mb: 6, textAlign: 'center' }}
+        >
+          <Typography variant="h3" sx={{ fontFamily: 'Playfair Display', fontWeight: 700, color: COLORS.primary, mb: 1 }}>
+            Join RaashiLink.AI
+          </Typography>
+          <Typography variant="body1" sx={{ color: COLORS.textSecondary }}>
+            Start your journey towards a cosmic connection.
+          </Typography>
+        </MotionBox>
+
+        <Paper elevation={0} sx={{ p: { xs: 3, md: 6 }, borderRadius: '32px', boxShadow: '0 20px 60px rgba(139,26,46,0.05)', position: 'relative', overflow: 'hidden' }}>
+          {/* Progress Indicator */}
+          <Box sx={{ mb: 6 }}>
+            <Stepper activeStep={activeStep} alternativeLabel={!isMobile}>
+              {steps.map((label) => (
+                <Step key={label} sx={{ '& .MuiStepLabel-label': { color: COLORS.textSecondary }, '& .Mui-active .MuiStepLabel-label': { color: COLORS.primary, fontWeight: 700 }, '& .Mui-completed .MuiStepLabel-label': { color: COLORS.accent } }}>
+                  <StepLabel>{label}</StepLabel>
+                </Step>
+              ))}
+            </Stepper>
+            <LinearProgress variant="determinate" value={((activeStep + 1) / steps.length) * 100} sx={{ mt: 4, height: 4, borderRadius: 2, bgcolor: '#eee', '& .MuiLinearProgress-bar': { bgcolor: COLORS.secondary } }} />
+          </Box>
+
+          <AnimatePresence mode="wait">
+            {success ? (
+              <MotionBox
+                key="success"
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                sx={{ textAlign: 'center', py: 8 }}
+              >
+                <CheckCircle sx={{ fontSize: 80, color: '#4CAF50', mb: 3 }} />
+                <Typography variant="h4" sx={{ fontFamily: 'Playfair Display', fontWeight: 700, mb: 2 }}>Registration Complete!</Typography>
+                <Typography variant="body1" sx={{ color: COLORS.textSecondary }}>Welcome to the family. Redirecting you now...</Typography>
+              </MotionBox>
+            ) : (
+              <Box key={activeStep}>
+                {renderStepContent(activeStep)}
+                
+                {error && (
+                  <Alert severity="error" sx={{ mt: 4, borderRadius: '12px' }}>
+                    <Typography variant="body2" sx={{ fontWeight: 700, mb: errorDetails.length > 0 ? 1 : 0 }}>
+                      {error}
+                    </Typography>
+                    {errorDetails.length > 0 && (
+                      <Box component="ul" sx={{ pl: 2, my: 0 }}>
+                        {errorDetails.map((detail) => (
+                          <Typography key={detail} component="li" variant="body2">
+                            {detail}
+                          </Typography>
+                        ))}
+                      </Box>
+                    )}
+                  </Alert>
+                )}
+
+                <Stack direction="row" spacing={2} justifyContent="space-between" sx={{ mt: 8 }}>
+                  <Button
+                    disabled={activeStep === 0 || isLoading}
+                    onClick={handleBack}
+                    startIcon={<ArrowBack />}
+                    sx={{ color: COLORS.textSecondary, fontWeight: 700 }}
+                  >
+                    Back
+                  </Button>
+                  <Button
+                    variant="contained"
+                    onClick={handleNext}
+                    disabled={isLoading || (activeStep === 0 && !formData.role)}
+                    endIcon={isLoading ? <CircularProgress size={20} color="inherit" /> : <ArrowForward />}
+                    sx={{ 
+                      bgcolor: COLORS.primary, 
+                      color: 'white', 
+                      px: 6, 
+                      py: 1.5, 
+                      borderRadius: '12px', 
+                      fontWeight: 700,
+                      '&:hover': { bgcolor: '#6B1424' }
+                    }}
+                  >
+                    {activeStep === steps.length - 1 ? 'Complete Registration' : 'Continue'}
+                  </Button>
+                </Stack>
+              </Box>
+            )}
+          </AnimatePresence>
+        </Paper>
+
+        <Box sx={{ textAlign: 'center', mt: 4 }}>
+          <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
+            Already have an account?{' '}
+            <Typography component={Link} to="/login" sx={{ color: COLORS.primary, fontWeight: 700, textDecoration: 'none' }}>Login here</Typography>
+          </Typography>
+        </Box>
+      </Container>
+    </Box>
+  );
+};
+
+export default RegisterPage;
+
+

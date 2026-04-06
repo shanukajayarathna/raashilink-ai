@@ -1,0 +1,72 @@
+import axiosInstance from '@/shared/config/axiosConfig';
+
+/**
+ * User Service for RaashiLink.AI
+ * Handles user profile management, photo uploads, and account settings.
+ */
+const userService = {
+  /**
+   * Get current user's profile information.
+   * @returns {Promise<object>} - User profile data.
+   */
+  getProfile: async () => {
+    const response = await axiosInstance.get('/users/profile');
+    return response.data;
+  },
+
+  requestVerificationOtp: async (channel: 'email' | 'phone') => {
+    const response = await axiosInstance.post('/users/verification/request', { channel });
+    return response.data;
+  },
+
+  confirmVerificationOtp: async (payload: { channel: 'email' | 'phone'; otp: string }) => {
+    const response = await axiosInstance.post('/users/verification/confirm', payload);
+    return response.data;
+  },
+
+  /**
+   * Update current user's profile information.
+   * @param {object} profileData - Updated user profile details.
+   * @returns {Promise<object>} - Updated user profile data.
+   */
+  updateProfile: async (profileData: any) => {
+    const response = await axiosInstance.put('/users/profile', profileData);
+    return response.data;
+  },
+
+  /**
+   * Upload current user's profile photo.
+   * @param {FormData} photoData - User's profile photo file.
+   * @returns {Promise<object>} - Uploaded photo URL.
+   */
+  uploadPhoto: async (photoData: FormData) => {
+    const response = await axiosInstance.post('/users/profile/photo', photoData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  },
+
+  /**
+   * Permanently delete current user's account.
+   * @returns {Promise<object>} - Deletion status.
+   */
+  deleteAccount: async () => {
+    const response = await axiosInstance.delete('/users/account');
+    return response.data;
+  },
+
+  /**
+   * Export current user's data in JSON format.
+   * @returns {Promise<object>} - Exported user data.
+   */
+  exportData: async () => {
+    const response = await axiosInstance.get('/users/export');
+    return response.data;
+  },
+};
+
+export default userService;
+
+

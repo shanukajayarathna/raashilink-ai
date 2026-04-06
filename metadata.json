@@ -1,0 +1,9 @@
+{
+  "name": "RaashiLink.AI",
+  "description": "Intelligent Sri Lankan matchmaking, horoscope compatibility, and wedding planning platform powered by AI.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ]
+}
