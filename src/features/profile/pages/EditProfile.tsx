@@ -42,8 +42,9 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
 import { RootState } from '@/app/store/store';
+import { logout } from '@/features/auth/store/authSlice';
 import { motion } from 'motion/react';
-import api from '@/shared/lib/axios';
+import userService from '../services/userService';
 
 const COLORS = {
   primary: '#8B1A2E',
@@ -60,6 +61,7 @@ const MotionPaper = motion(Paper);
 export default function EditProfile() {
   const navigate = useNavigate();
   const { user, token } = useSelector((state: RootState) => state.auth);
+  const dispatch = useDispatch();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -101,46 +103,15 @@ export default function EditProfile() {
     const fetchProfile = async () => {
       setLoading(true);
       try {
-        const response = await api.get('/api/v1/user/profile');
-        if (response.data) {
-          setFormData({
-            ...formData,
-            ...response.data,
-            privacy: { ...formData.privacy, ...response.data.privacy }
-          });
-        }
-      } catch (err) {
-        console.error('Failed to fetch profile:', err);
-        // Using mock data if API fails for demo
+        const response = await userService.getProfile();
         setFormData({
           ...formData,
-          name: user?.name || 'Shanuka Jayarathna',
-          bio: "I'm a passionate software engineer who loves exploring new technologies and building meaningful products. In my free time, I enjoy traveling across Sri Lanka, photography, and playing cricket.",
-          tagline: "Building the future, one line of code at a time.",
-          location: "Colombo, Western Province",
-          birthDate: "1995-11-15",
-          birthTime: "08:30",
-          birthPlace: "Colombo",
-          education: "BSc in Computer Science",
-          occupation: "Senior Software Engineer",
-          religion: "Buddhist",
-          ethnicity: "Sinhalese",
-          height: "5'10\"",
-          hobbies: ['Travel', 'Photography', 'Cricket', 'Coding', 'Music'],
-          diet: 'Non-veg',
-          exercise: 'Regularly',
-          smoking: 'Never',
-          drinking: 'Never',
-          familyPlans: 'Want children',
-          socialPreference: 65,
-          privacy: {
-            showLastSeen: true,
-            showHoroscope: true,
-            showPhone: false,
-            whoCanMessage: 'Matches Only',
-            whoCanSeePhotos: 'Matches Only'
-          }
+          ...response,
+          privacy: { ...formData.privacy, ...response.privacy }
         });
+      } catch (err) {
+        console.error('Failed to fetch profile:', err);
+        setError('Failed to load profile data. Please try again.');
       } finally {
         setLoading(false);
       }
@@ -166,17 +137,13 @@ export default function EditProfile() {
     setSaving(true);
     setError(null);
     try {
-      await api.put('/api/v1/user/profile', formData);
+      await userService.updateProfile(formData);
       setSuccess(true);
       setHasUnsavedChanges(false);
       setTimeout(() => navigate('/profile'), 1500);
     } catch (err) {
       console.error('Failed to save profile:', err);
       setError('Failed to save changes. Please try again.');
-      // For demo purposes, still show success
-      setSuccess(true);
-      setHasUnsavedChanges(false);
-      setTimeout(() => navigate('/profile'), 1500);
     } finally {
       setSaving(false);
     }
@@ -187,6 +154,24 @@ export default function EditProfile() {
       setShowExitDialog(true);
     } else {
       navigate('/profile');
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    try {
+      setSaving(true);
+      await userService.deleteAccount();
+      
+      // Dispatch logout to clear Redux state
+      dispatch(logout());
+      
+      // Navigate to login page
+      navigate('/auth/login');
+    } catch (error: any) {
+      setError(error.response?.data?.message || 'Failed to delete account. Please try again.');
+    } finally {
+      setSaving(false);
+      setShowDeleteDialog(false);
     }
   };
 
@@ -551,7 +536,14 @@ export default function EditProfile() {
         </DialogContent>
         <DialogActions sx={{ p: 3 }}>
           <Button onClick={() => setShowDeleteDialog(false)} sx={{ color: COLORS.textSecondary }}>Cancel</Button>
-          <Button variant="contained" color="error">Delete Permanently</Button>
+          <Button 
+            variant="contained" 
+            color="error" 
+            onClick={handleDeleteAccount}
+            disabled={saving}
+          >
+            {saving ? 'Deleting...' : 'Delete Permanently'}
+          </Button>
         </DialogActions>
       </Dialog>
 

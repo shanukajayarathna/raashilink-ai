@@ -63,21 +63,58 @@ export async function startServer() {
   const mongoUri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/raashilink';
   const port = Number(process.env.PORT || 5000);
 
+  // Add MongoDB connection monitoring
+  mongoose.connection.on('disconnected', () => {
+    logger.warn('MongoDB connection lost');
+  });
+
+  mongoose.connection.on('error', (error) => {
+    logger.error('MongoDB connection error', { message: error.message });
+  });
+
   await mongoose.connect(mongoUri);
   logger.info('MongoDB connected');
 
   await seedDemoUsers();
   await connectRedis();
 
-  app.listen(port, () => {
+  const server = app.listen(port, () => {
     logger.info(`Server listening on port ${port}`);
   });
+
+  // Add server error handler
+  server.on('error', (error) => {
+    logger.error('Server error', { message: error.message, code: error.code });
+    if (error.code === 'EADDRINUSE') {
+      logger.error(`Port ${port} is already in use`);
+      process.exit(1);
+    }
+  });
+
+  return server;
 }
 
 if (process.env.NODE_ENV !== 'test') {
   startServer().catch((error) => {
     logger.error('Server startup failed', { message: error.message });
     process.exit(1);
+  });
+
+  // Global error handlers to prevent server crashes
+  process.on('unhandledRejection', (reason, promise) => {
+    logger.error('Unhandled Promise Rejection', {
+      reason: reason instanceof Error ? reason.message : String(reason),
+      stack: reason instanceof Error ? reason.stack : undefined,
+    });
+  });
+
+  process.on('uncaughtException', (error) => {
+    logger.error('Uncaught Exception', {
+      message: error.message,
+      stack: error.stack,
+    });
+    // Give time for logs to flush before exit
+    setTimeout(() => process.exit(1), 1000);
   });
 }
 

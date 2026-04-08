@@ -123,7 +123,7 @@ function formatDate(value) {
 }
 
 function mapProfile(user) {
-  const mainPhoto = user.photos?.find((photo) => photo.isMain)?.url || user.profilePic;
+  const mainPhoto = user.photos?.find((photo) => photo.isMain)?.url || user.personalInfo?.profilePic;
   const personality = user.personality || {};
 
   return {
@@ -131,18 +131,24 @@ function mapProfile(user) {
     name: user.name,
     age: user.age || null,
     profilePic: mainPhoto || null,
+    coverPhoto: user.coverPhoto || null,
     tagline: user.tagline || 'Building a meaningful future through shared values.',
     location: user.location || 'Sri Lanka',
     completion: getProfileCompletion(user),
     status: 'Online Now',
     bio: user.bio || '',
     personalInfo: {
-      height: user.height || 'Not specified',
-      education: user.lifestyle?.educationLevel || 'Not specified',
-      occupation: user.lifestyle?.professionType || 'Not specified',
-      religion: user.lifestyle?.religion || 'Not specified',
-      ethnicity: user.ethnicity || 'Not specified',
-      languages: ['Sinhala', 'English'],
+      firstName: user.personalInfo?.firstName || 'Not provided',
+      lastName: user.personalInfo?.lastName || 'Not provided',
+      phone: user.phone || 'Not provided',
+      age: user.age || 'Not provided',
+      gender: user.gender || 'Not provided',
+      height: user.height || 'Not provided',
+      education: user.lifestyle?.educationLevel || 'Not provided',
+      occupation: user.lifestyle?.professionType || 'Not provided',
+      religion: user.lifestyle?.religion || 'Not provided',
+      ethnicity: user.ethnicity || 'Not provided',
+      languages: user.lifestyle?.languages || ['Not provided'],
     },
     personality: [
       { subject: 'Openness', A: Math.round((personality.openness ?? 0.5) * 100), fullMark: 100 },
@@ -168,28 +174,24 @@ function mapProfile(user) {
       },
     ],
     astrology: {
-      birthDate: formatDate(user.horoscope?.dateOfBirth),
-      birthTime: user.horoscope?.timeOfBirth || 'Unknown',
-      birthPlace: user.horoscope?.placeOfBirth?.city || user.location || 'Sri Lanka',
-      rashi: user.horoscope?.rashi || user.horoscope?.moonSign || 'Pending',
-      nakshatra: user.horoscope?.nakshatra || 'Pending',
-      ascendant: user.horoscope?.moonSign || 'Pending',
-      sunSign: user.horoscope?.moonSign || 'Pending',
+      birthDate: formatDate(user.horoscope?.dateOfBirth) || 'Not provided',
+      birthTime: user.horoscope?.timeOfBirth || 'Not provided',
+      birthPlace: user.horoscope?.placeOfBirth?.city || user.location || 'Not provided',
+      rashi: user.horoscope?.rashi || user.horoscope?.moonSign || 'Not provided',
+      nakshatra: user.horoscope?.nakshatra || 'Not provided',
+      ascendant: user.horoscope?.moonSign || 'Not provided',
+      sunSign: user.horoscope?.moonSign || 'Not provided',
       luckyColors: ['#8B1A2E', '#C9A84C'],
       auspiciousDays: ['Tuesday', 'Thursday'],
       favorablePartners: ['Aries', 'Leo', 'Cancer'],
     },
     lifestyle: {
-      hobbies: [
-        { label: 'Travel', icon: 'Travel' },
-        { label: 'Cooking', icon: 'Cooking' },
-        { label: 'Reading', icon: 'Reading' },
-      ],
+      hobbies: user.lifestyle?.hobbies || ['Not provided'],
       exercise: 'Regularly',
-      diet: user.lifestyle?.diet || 'Not specified',
-      smoking: user.lifestyle?.smoking || 'Not specified',
-      drinking: user.lifestyle?.drinking || 'Not specified',
-      careerAmbitions: user.lifestyle?.professionType || 'Growth-focused',
+      diet: user.lifestyle?.diet || 'Not provided',
+      smoking: user.lifestyle?.smoking || 'Not provided',
+      drinking: user.lifestyle?.drinking || 'Not provided',
+      careerAmbitions: user.lifestyle?.professionType || 'Not provided',
       familyPlans: 'Looking for a serious long-term relationship',
       socialPreference: Math.round((user.personality?.extraversion ?? 0.5) * 100),
     },
@@ -239,12 +241,16 @@ export const getProfile = asyncHandler(async (req, res) => {
 });
 
 export const updateProfile = asyncHandler(async (req, res) => {
-  const allowedFields = ['tagline', 'bio', 'location', 'ethnicity', 'height'];
+  const allowedFields = [
+    'tagline', 'bio', 'location', 'ethnicity', 'height', 'coverPhoto',
+    'personalInfo.firstName', 'personalInfo.lastName', 'personalInfo.phone', 'personalInfo.age', 'personalInfo.gender',
+    'lifestyle.educationLevel', 'lifestyle.professionType', 'lifestyle.religion', 'lifestyle.diet', 'lifestyle.smoking', 'lifestyle.drinking', 'lifestyle.hobbies', 'lifestyle.languages'
+  ];
 
   const updates = {};
   for (const [key, value] of Object.entries(req.body ?? {})) {
     if (allowedFields.includes(key)) {
-      updates[`personalInfo.${key}`] = value;
+      updates[key] = value;
     }
   }
 
@@ -346,9 +352,80 @@ export const confirmContactVerification = asyncHandler(async (req, res) => {
   });
 });
 
+export const uploadCoverPhoto = asyncHandler(async (req, res) => {
+  if (!req.file) {
+    throw new ApiError(400, 'No cover photo file provided');
+  }
+
+  // For demo purposes, we'll use a placeholder URL based on user ID for consistency
+  const coverPhotoUrl = `https://picsum.photos/seed/user-cover-${req.user._id}/1200/400`;
+
+  const user = await User.findByIdAndUpdate(
+    req.user._id,
+    { $set: { 'personalInfo.coverPhoto': coverPhotoUrl } },
+    { new: true }
+  ).lean({ virtuals: true });
+
+  if (!user) {
+    throw new ApiError(404, 'User profile not found');
+  }
+
+  res.status(200).json({
+    success: true,
+    coverPhoto: coverPhotoUrl,
+    message: 'Cover photo uploaded successfully',
+  });
+});
+
+export const uploadProfilePhoto = asyncHandler(async (req, res) => {
+  if (!req.file) {
+    throw new ApiError(400, 'No profile photo file provided');
+  }
+
+  // For demo purposes, we'll use a placeholder URL based on user ID for consistency
+  const profilePhotoUrl = `https://picsum.photos/seed/user-${req.user._id}/400/400`;
+
+  const user = await User.findByIdAndUpdate(
+    req.user._id,
+    { $set: { 'personalInfo.profilePic': profilePhotoUrl } },
+    { new: true }
+  ).lean({ virtuals: true });
+
+  if (!user) {
+    throw new ApiError(404, 'User profile not found');
+  }
+
+  res.status(200).json({
+    success: true,
+    profilePic: profilePhotoUrl,
+    message: 'Profile photo uploaded successfully',
+  });
+});
+
+export const deleteAccount = asyncHandler(async (req, res) => {
+  const userId = req.user._id;
+
+  // Delete the user and all associated data
+  await User.findByIdAndDelete(userId);
+
+  // Note: In a production app, you might want to:
+  // - Soft delete instead of hard delete
+  // - Delete related data (messages, matches, etc.)
+  // - Send confirmation email
+  // - Log the deletion for compliance
+
+  res.status(200).json({
+    success: true,
+    message: 'Account deleted successfully',
+  });
+});
+
 export default {
   getProfile,
   updateProfile,
+  uploadCoverPhoto,
+  uploadProfilePhoto,
   requestContactVerification,
   confirmContactVerification,
+  deleteAccount,
 };

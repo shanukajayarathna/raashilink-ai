@@ -13,6 +13,11 @@
 }
 
 @layer base {
+  html {
+    overflow-y: scroll; /* Always reserve space for scrollbar to prevent layout shift */
+    scrollbar-gutter: stable; /* Even more stable scrollbar handling for modern browsers */
+  }
+
   body {
     @apply bg-cream text-[#1C1C1C] font-sans;
   }

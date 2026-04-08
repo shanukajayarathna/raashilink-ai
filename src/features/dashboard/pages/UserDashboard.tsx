@@ -217,7 +217,26 @@ const ProfileCompletionRing = ({ percentage, missingItems }: { percentage: numbe
   );
 };
 
-const TopMatchCard = ({ match }: { match: any }) => {
+const TopMatchCard = ({ match, loading }: { match: any; loading?: boolean }) => {
+  if (loading) {
+    return (
+      <MotionPaper
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.1 }}
+        sx={{ p: 3, borderRadius: '24px', height: '100%', bgcolor: COLORS.white, boxShadow: '0 2px 16px rgba(139,26,46,0.08)' }}
+      >
+        <WidgetHeader title="Today's Top Match" />
+        <Stack spacing={2}>
+          <Skeleton variant="rectangular" width="100%" height={140} sx={{ borderRadius: '20px' }} />
+          <Skeleton width="60%" />
+          <Skeleton width="40%" />
+          <Skeleton width="80%" />
+        </Stack>
+      </MotionPaper>
+    );
+  }
+
   if (!match) {
     return (
       <MotionPaper
@@ -342,7 +361,24 @@ const TopMatchCard = ({ match }: { match: any }) => {
   );
 };
 
-const MatchStats = ({ stats }: { stats: any }) => {
+const MatchStats = ({ stats, loading }: { stats: any; loading?: boolean }) => {
+  if (loading) {
+    return (
+      <MotionPaper
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.2 }}
+        sx={{ p: 3, borderRadius: '24px', height: '100%', bgcolor: COLORS.white, boxShadow: '0 2px 16px rgba(139,26,46,0.08)' }}
+      >
+        <WidgetHeader title="Match Stats" />
+        <Stack spacing={2}>
+          <Skeleton width="40%" />
+          <Skeleton width="100%" height={90} sx={{ borderRadius: '20px' }} />
+        </Stack>
+      </MotionPaper>
+    );
+  }
+
   return (
     <MotionPaper
       initial={{ opacity: 0, y: 20 }}
@@ -645,7 +681,32 @@ const ChatbotQuickAccess = ({ chatbot }: { chatbot: any }) => {
   );
 };
 
-const VendorRecommendations = ({ vendors }: { vendors: any[] }) => {
+const VendorRecommendations = ({ vendors, loading }: { vendors: any[]; loading?: boolean }) => {
+  if (loading) {
+    return (
+      <MotionPaper
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.5 }}
+        sx={{ p: 3, borderRadius: '24px', height: '100%', bgcolor: COLORS.white, boxShadow: '0 2px 16px rgba(139,26,46,0.08)' }}
+      >
+        <WidgetHeader title="Recommended Vendors" />
+        <Stack spacing={2}>
+          <Skeleton width="50%" />
+          {[...Array(3)].map((_, index) => (
+            <Box key={index} sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 1.5, borderRadius: '16px', border: '1px solid #F0F0F0' }}>
+              <Skeleton variant="circular" width={50} height={50} />
+              <Box sx={{ flex: 1 }}>
+                <Skeleton width="60%" />
+                <Skeleton width="40%" />
+              </Box>
+            </Box>
+          ))}
+        </Stack>
+      </MotionPaper>
+    );
+  }
+
   return (
     <MotionPaper
       initial={{ opacity: 0, y: 20 }}
@@ -755,7 +816,39 @@ export default function UserDashboard() {
   }
   
   const [loading, setLoading] = useState(true);
-  const [data, setData] = useState<any>(null);
+  const [widgetLoading, setWidgetLoading] = useState(true);
+  const [data, setData] = useState<any>(() => {
+    const userData = user || JSON.parse(localStorage.getItem('user') || 'null') || {};
+    return {
+      summary: {
+        name: userData.firstName || userData.name || 'User',
+        nakshatra: 'Pending',
+        auspiciousTime: '10:30 AM - 12:00 PM',
+        profileCompletion: 75,
+        missingItems: ['Add Profile Photo', 'Complete Personality Quiz'],
+        matchStats: {
+          todayMatches: 0,
+          mutualInterests: 0,
+          profileViews: 0,
+          weeklyActivity: buildWeeklyActivity(0),
+        },
+      },
+      profilePic: userData.profilePic || null,
+      email: userData.email || '',
+      phone: userData.phone || '',
+      todayMatch: null,
+      weddingStatus: formatWeddingStatus(null, null),
+      chatbot: {
+        lastMessage: 'Your horoscope matching for the new profile is ready!',
+        online: true,
+      },
+      vendors: [],
+      verification: userData.verification || {},
+      notifications: [
+        { id: 1, text: 'Dashboard is updating your recommendations…', time: 'now', read: false },
+      ],
+    };
+  });
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [verifyDialog, setVerifyDialog] = useState<{ open: boolean; channel: 'email' | 'phone' | null }>({
     open: false,
@@ -766,10 +859,37 @@ export default function UserDashboard() {
   const [verifying, setVerifying] = useState(false);
 
   useEffect(() => {
-    const fetchDashboardData = async () => {
+    let mounted = true;
+
+    const fetchProfile = async () => {
       try {
         const profile = await userService.getProfile();
+        if (!mounted) return;
+
         dispatch(updateUser({ profilePic: profile.profilePic || null }));
+        setData((prev: any) => ({
+          ...prev,
+          summary: {
+            ...prev.summary,
+            name: user?.firstName || profile?.name || 'User',
+            nakshatra: profile.astrology?.nakshatra || 'Pending',
+            profileCompletion: profile.completion || prev.summary.profileCompletion,
+            missingItems: profile.verification?.missingItems || prev.summary.missingItems,
+          },
+          profilePic: profile.profilePic || user?.profilePic || null,
+          email: user?.email || profile?.email || '',
+          phone: user?.phone || profile?.personalInfo?.phone || '',
+          verification: profile.verification,
+        }));
+      } catch (error) {
+        console.error('Error fetching dashboard profile', error);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+
+    const fetchWidgets = async () => {
+      try {
         const [recommendationsResponse, weddingProjectResponse, budgetResponse, vendorsResponse] =
           await Promise.allSettled([
             axiosInstance.get('/matches/recommendations'),
@@ -777,6 +897,8 @@ export default function UserDashboard() {
             axiosInstance.get('/wedding/budget'),
             axiosInstance.get('/wedding/vendors'),
           ]);
+
+        if (!mounted) return;
 
         const recommendationItems =
           recommendationsResponse.status === 'fulfilled'
@@ -800,16 +922,14 @@ export default function UserDashboard() {
             ? vendorsResponse.value.data?.data?.items || []
             : [];
         const recommendedVendors = formatVendors(vendorItems);
-        
-        setData({
+
+        setData((prev: any) => ({
+          ...prev,
+          todayMatch: topMatch,
+          weddingStatus,
+          vendors: recommendedVendors,
           summary: {
-            name: user?.firstName || profile?.name || 'User',
-            nakshatra: profile.verification?.emailVerified || profile.verification?.phoneVerified
-              ? (profile.astrology?.nakshatra || 'Pending')
-              : (profile.astrology?.nakshatra || 'Pending'),
-            auspiciousTime: '10:30 AM - 12:00 PM',
-            profileCompletion: profile.completion || 75,
-            missingItems: profile.verification?.missingItems || ['Add Profile Photo', 'Complete Personality Quiz'],
+            ...prev.summary,
             matchStats: {
               todayMatches: recommendationItems.length,
               mutualInterests,
@@ -817,29 +937,46 @@ export default function UserDashboard() {
               weeklyActivity: buildWeeklyActivity(recommendationItems.length),
             },
           },
-          profilePic: profile.profilePic || user?.profilePic || null,
-          email: user?.email || profile?.email,
-          phone: user?.phone || profile?.personalInfo?.phone,
-          todayMatch: topMatch,
-          weddingStatus,
-          chatbot: {
-            lastMessage: 'Your horoscope matching for the new profile is ready!',
-            online: true,
-          },
-          vendors: recommendedVendors,
-          verification: profile.verification,
           notifications: [
-            { id: 1, text: 'Dashboard data synced from your live profile', time: 'now', read: false },
+            { id: 1, text: 'Dashboard synced with your live profile', time: 'now', read: false },
           ],
-        });
-        setLoading(false);
+        }));
       } catch (error) {
-        console.error("Error fetching dashboard data", error);
-        setLoading(false);
+        console.error('Error fetching dashboard widgets', error);
+      } finally {
+        if (mounted) setWidgetLoading(false);
       }
     };
 
-    fetchDashboardData();
+    fetchProfile().then(fetchWidgets);
+
+    return () => {
+      mounted = false;
+    };
+  }, [user, dispatch]);
+
+  // Update profile picture when user state changes
+  useEffect(() => {
+    setData((prev: any) => ({
+      ...prev,
+      profilePic: user?.profilePic || prev.profilePic,
+    }));
+  }, [user?.profilePic]);
+
+  // Update other user data when user state changes
+  useEffect(() => {
+    if (user) {
+      setData((prev: any) => ({
+        ...prev,
+        summary: {
+          ...prev.summary,
+          name: user.firstName || user.name || prev.summary.name,
+        },
+        email: user.email || prev.email,
+        phone: user.phone || prev.phone,
+        verification: user.verification || prev.verification,
+      }));
+    }
   }, [user]);
 
   const handleRequestVerificationOtp = async (channel: 'email' | 'phone') => {
@@ -925,34 +1062,35 @@ export default function UserDashboard() {
   return (
     <Box sx={{ p: { xs: 2, md: 4 }, bgcolor: COLORS.background, minHeight: '100vh', position: 'relative' }}>
       {/* Header Section */}
-      <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2 }}>
+      <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: { xs: 1, md: 3 }, flexWrap: 'wrap' }}>
         <Avatar
-          src={data.profilePic || undefined}
+          src={data.profilePic || user?.profilePic || undefined}
           alt={data.summary.name}
-          sx={{ width: 64, height: 64, border: `3px solid ${alpha(COLORS.secondary, 0.5)}`, boxShadow: '0 8px 24px rgba(139,26,46,0.12)' }}
+          sx={{ width: 64, height: 64, border: `3px solid ${alpha(COLORS.secondary, 0.5)}`, boxShadow: '0 8px 24px rgba(139,26,46,0.12)', flexShrink: 0 }}
         />
         <MotionBox
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.8 }}
-          sx={{ display: 'flex', alignItems: 'center', gap: 2 }}
+          sx={{ display: 'flex', flexDirection: 'column', gap: 1, flex: 1, minWidth: 0 }}
         >
-          <Typography variant="h4" sx={{ fontFamily: 'Playfair Display', fontWeight: 700, color: COLORS.primary, mb: 1 }}>
+          <Typography variant="h4" sx={{ fontFamily: 'Playfair Display', fontWeight: 700, color: COLORS.primary, wordWrap: 'break-word', overflowWrap: 'break-word', whiteSpace: 'normal' }}>
             Good morning, {data.summary.name} ✨
           </Typography>
-          <Stack direction="row" spacing={2} alignItems="center">
-            <Box sx={{ color: COLORS.textSecondary, fontSize: '0.875rem', display: 'flex', alignItems: 'center', gap: 1 }}>
-              {getGregorianDate()} | <Chip label={`${data.summary.nakshatra} Nakshatra`} size="small" sx={{ bgcolor: COLORS.secondary, color: COLORS.primary, fontWeight: 700, height: 20 }} />
-            </Box>
+          <Stack direction="row" spacing={1} alignItems="center" sx={{ flexWrap: 'wrap', gap: 1 }}>
+            <Typography variant="body2" sx={{ color: COLORS.textSecondary, fontSize: '0.875rem', whiteSpace: 'nowrap' }}>
+              {getGregorianDate()} |
+            </Typography>
+            <Chip label={`${data.summary.nakshatra} Nakshatra`} size="small" sx={{ bgcolor: COLORS.secondary, color: COLORS.primary, fontWeight: 700, height: 24 }} />
           </Stack>
-          <Typography variant="caption" sx={{ color: COLORS.accent, fontWeight: 700, mt: 1, display: 'block' }}>
+          <Typography variant="caption" sx={{ color: COLORS.accent, fontWeight: 700 }}>
             Your auspicious time today: {data.summary.auspiciousTime}
           </Typography>
         </MotionBox>
         
         <IconButton 
           onClick={() => setDrawerOpen(true)}
-          sx={{ bgcolor: COLORS.white, boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}
+          sx={{ bgcolor: COLORS.white, boxShadow: '0 4px 12px rgba(0,0,0,0.05)', flexShrink: 0 }}
         >
           <Badge badgeContent={data.notifications.filter((n: any) => !n.read).length} color="error">
             <Notifications sx={{ color: COLORS.primary }} />
@@ -982,10 +1120,10 @@ export default function UserDashboard() {
           <ProfileCompletionRing percentage={data.summary.profileCompletion} missingItems={data.summary.missingItems} />
         </Grid>
         <Grid size={{ xs: 12, md: 4 }}>
-          <TopMatchCard match={data.todayMatch} />
+          <TopMatchCard match={data.todayMatch} loading={widgetLoading} />
         </Grid>
         <Grid size={{ xs: 12, md: 4 }}>
-          <MatchStats stats={data.summary.matchStats} />
+          <MatchStats stats={data.summary.matchStats} loading={widgetLoading} />
         </Grid>
 
         {/* Row 2 */}
@@ -996,7 +1134,7 @@ export default function UserDashboard() {
           <HoneymoonWidget />
         </Grid>
         <Grid size={{ xs: 12, md: 4 }}>
-          <VendorRecommendations vendors={data.vendors} />
+          <VendorRecommendations vendors={data.vendors} loading={widgetLoading} />
         </Grid>
 
         {/* Row 3 */}

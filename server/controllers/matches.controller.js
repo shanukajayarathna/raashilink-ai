@@ -6,6 +6,8 @@ import Match from '../models/Match.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import ApiError from '../utils/ApiError.js';
 import compatibilityService from '../services/compatibility.service.js';
+import redisClient from '../lib/redis.js';
+import logger from '../utils/logger.js';
 
 function mainPhoto(user) {
   return (
@@ -110,12 +112,32 @@ function buildDetail(user, compatibility, mutualMatch) {
 
 export const getRecommendations = asyncHandler(async (req, res) => {
   const currentUserId = String(req.user._id);
+  const page = Math.max(1, Number(req.query.page) || 1);
+  const pageSize = Math.min(20, Number(req.query.pageSize) || 10);
+  const skip = (page - 1) * pageSize;
 
+  // Check cache first
+  const cacheKey = `recommendations:${currentUserId}:${page}:${pageSize}`;
+  try {
+    const cached = await redisClient.get(cacheKey);
+    if (cached) {
+      logger.info('Recommendations cache hit', { cacheKey });
+      return res.status(200).json(JSON.parse(cached));
+    }
+  } catch (error) {
+    logger.warn('Cache read failed, continuing', { message: error.message });
+  }
+
+  // Select only necessary fields for performance
   const users = await User.find({
     _id: { $ne: req.user._id },
     role: 'user',
     birthData: { $exists: true, $ne: null },
-  }).lean({ virtuals: true });
+  })
+    .select('_id name personalInfo horoscope photos profilePic lifestyle personality')
+    .lean()
+    .skip(skip)
+    .limit(pageSize);
 
   const scored = [];
 
@@ -130,7 +152,7 @@ export const getRecommendations = asyncHandler(async (req, res) => {
         { fromUser: req.user._id, toUser: candidate._id, status: 'mutual' },
         { fromUser: candidate._id, toUser: req.user._id, status: 'mutual' },
       ],
-    }).lean();
+    }).lean().select('_id');
 
     await persistMatch(req.user._id, candidate._id, compatibility, Boolean(mutualInterest));
 
@@ -139,15 +161,24 @@ export const getRecommendations = asyncHandler(async (req, res) => {
 
   scored.sort((a, b) => b.score - a.score);
 
-  res.status(200).json({
+  const response = {
     success: true,
     data: {
       items: scored,
       total: scored.length,
-      page: 1,
-      pageSize: scored.length,
+      page,
+      pageSize,
     },
-  });
+  };
+
+  // Cache for 1 hour (3600 seconds)
+  try {
+    await redisClient.setEx(cacheKey, 3600, JSON.stringify(response));
+  } catch (error) {
+    logger.warn('Cache write failed, continuing without cache', { message: error.message });
+  }
+
+  res.status(200).json(response);
 });
 
 export const getMatchDetail = asyncHandler(async (req, res) => {

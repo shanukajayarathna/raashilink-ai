@@ -18,7 +18,13 @@ import {
   Slider,
   Skeleton,
   alpha,
-  Tooltip
+  Tooltip,
+  TextField,
+  Card,
+  CardContent,
+  CardHeader,
+  LinearProgress,
+  CircularProgress
 } from '@mui/material';
 import { 
   MapPin, 
@@ -40,11 +46,14 @@ import {
   Activity,
   Coffee,
   Users,
-  X
+  X,
+  Edit
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { useSelector } from 'react-redux';
+import { useSelector, useDispatch } from 'react-redux';
 import { RootState } from '@/app/store/store';
+import { updateUser } from '@/features/auth/store/authSlice';
+import { showToast } from '@/app/store/uiSlice';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Radar, 
@@ -54,6 +63,7 @@ import {
   PolarRadiusAxis, 
   ResponsiveContainer 
 } from 'recharts';
+import CoverPhotoUpload from '../components/CoverPhotoUpload';
 import ProfilePhotoUpload from '../components/ProfilePhotoUpload';
 import userService from '../services/userService';
 
@@ -97,10 +107,12 @@ function CustomTabPanel(props: TabPanelProps) {
 
 export default function UserProfile() {
   const navigate = useNavigate();
-  const { user, token } = useSelector((state: RootState) => state.auth);
-  const [tabValue, setTabValue] = useState(0);
+  const { user, token } = useSelector((state: RootState) => state.auth);  const dispatch = useDispatch();  const [tabValue, setTabValue] = useState(0);
   const [loading, setLoading] = useState(false);
   const [profileData, setProfileData] = useState<any>(null);
+  const [editing, setEditing] = useState(false);
+  const [editData, setEditData] = useState<any>({});
+  const [uploadingCover, setUploadingCover] = useState(false);
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -108,65 +120,56 @@ export default function UserProfile() {
       try {
         const response = await userService.getProfile();
         setProfileData(response);
+        setEditData(response);
       } catch (err) {
         console.error('Failed to fetch profile:', err);
-        // Mock data for demo
+        // Fallback to user data
         setProfileData({
-          name: user?.name || 'Shanuka Jayarathna',
-          age: 28,
-          tagline: "Building the future, one line of code at a time.",
-          location: "Colombo, Western Province",
+          name: user?.name || 'User',
+          age: user?.age || null,
+          tagline: user?.tagline || 'Building a meaningful future through shared values.',
+          location: user?.location || 'Sri Lanka',
           completion: 75,
           status: "Online Now",
-          bio: "I'm a passionate software engineer who loves exploring new technologies and building meaningful products. In my free time, I enjoy traveling across Sri Lanka, photography, and playing cricket. I value family traditions and am looking for a partner who shares similar values and a zest for life.",
+          bio: user?.bio || '',
+          coverPhoto: user?.coverPhoto || null,
+          profilePic: user?.profilePic || null,
           personalInfo: {
-            height: "5'10\"",
-            education: "BSc in Computer Science",
-            occupation: "Senior Software Engineer",
-            religion: "Buddhist",
-            ethnicity: "Sinhalese",
-            languages: ['Sinhala', 'English', 'Tamil']
+            firstName: user?.personalInfo?.firstName || 'Not provided',
+            lastName: user?.personalInfo?.lastName || 'Not provided',
+            phone: user?.phone || 'Not provided',
+            age: user?.age || 'Not provided',
+            gender: user?.gender || 'Not provided',
+            height: user?.height || 'Not provided',
+            education: user?.lifestyle?.educationLevel || 'Not provided',
+            occupation: user?.lifestyle?.professionType || 'Not provided',
+            religion: user?.lifestyle?.religion || 'Not provided',
+            ethnicity: user?.ethnicity || 'Not provided',
+            languages: user?.lifestyle?.languages || ['Not provided'],
           },
-          personality: [
-            { subject: 'Openness', A: 85, fullMark: 100 },
-            { subject: 'Conscientiousness', A: 75, fullMark: 100 },
-            { subject: 'Extraversion', A: 65, fullMark: 100 },
-            { subject: 'Agreeableness', A: 80, fullMark: 100 },
-            { subject: 'Neuroticism', A: 40, fullMark: 100 },
-          ],
           astrology: {
-            birthDate: "Nov 15, 1995",
-            birthTime: "08:30 AM",
-            birthPlace: "Colombo, SL",
-            rashi: "Scorpio",
-            nakshatra: "Jyeshtha",
-            ascendant: "Aries",
-            sunSign: "Scorpio",
+            birthDate: 'Not provided',
+            birthTime: 'Not provided',
+            birthPlace: 'Not provided',
+            rashi: 'Not provided',
+            nakshatra: 'Not provided',
+            ascendant: 'Not provided',
+            sunSign: 'Not provided',
             luckyColors: ['#8B1A2E', '#C9A84C'],
             auspiciousDays: ['Tuesday', 'Thursday'],
             favorablePartners: ['Aries', 'Leo', 'Sagittarius']
           },
           lifestyle: {
-            hobbies: [
-              { label: 'Music', icon: '🎵' },
-              { label: 'Cooking', icon: '🍳' },
-              { label: 'Travel', icon: '✈️' },
-              { label: 'Reading', icon: '📚' }
-            ],
+            hobbies: user?.lifestyle?.hobbies || ['Not provided'],
             exercise: 'Regularly',
-            diet: 'Non-veg',
-            smoking: 'Never',
-            drinking: 'Never',
-            careerAmbitions: 'Tech Entrepreneur',
-            familyPlans: 'Want children, 2 kids ideally',
+            diet: user?.lifestyle?.diet || 'Not provided',
+            smoking: user?.lifestyle?.smoking || 'Not provided',
+            drinking: user?.lifestyle?.drinking || 'Not provided',
+            careerAmbitions: user?.lifestyle?.professionType || 'Not provided',
+            familyPlans: 'Looking for a serious long-term relationship',
             socialPreference: 65
           },
-          photos: [
-            { id: 1, url: 'https://picsum.photos/seed/p1/400/400', isMain: true },
-            { id: 2, url: 'https://picsum.photos/seed/p2/400/400', isMain: false },
-            { id: 3, url: 'https://picsum.photos/seed/p3/400/400', isMain: false },
-            { id: 4, url: 'https://picsum.photos/seed/p4/400/400', isMain: false },
-          ],
+          photos: [],
           privacy: {
             showLastSeen: true,
             showHoroscope: true,
@@ -188,8 +191,66 @@ export default function UserProfile() {
   };
 
   const handlePhotoUpload = async (file: File) => {
-    // API call to upload photo
-    console.log('Uploading photo:', file);
+    try {
+      setLoading(true);
+      const formData = new FormData();
+      formData.append('photo', file);
+      
+      const response = await userService.uploadPhoto(formData);
+      
+      if (response && response.profilePic) {
+        dispatch(updateUser({ profilePic: response.profilePic }));
+        setProfileData(prev => prev ? {
+          ...prev,
+          photos: [{ id: 1, url: response.profilePic, isMain: true }, ...(prev.photos?.filter((p: any) => !p.isMain) || [])]
+        } : null);
+      }
+      
+      dispatch(showToast({ type: 'success', message: 'Profile picture updated successfully!' }));
+    } catch (error: any) {
+      console.error('Error uploading photo:', error);
+      dispatch(showToast({ type: 'error', message: error.response?.data?.message || 'Failed to upload photo. Please try again.' }));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCoverPhotoUpload = async (file: File) => {
+    setUploadingCover(true);
+    try {
+      const response = await userService.uploadCoverPhoto(file);
+      setProfileData((prev: any) => ({
+        ...prev,
+        coverPhoto: response.coverPhoto
+      }));
+      setEditData((prev: any) => ({
+        ...prev,
+        coverPhoto: response.coverPhoto
+      }));
+      dispatch(showToast({ type: 'success', message: 'Cover photo updated successfully!' }));
+    } catch (err) {
+      console.error('Failed to upload cover photo:', err);
+      dispatch(showToast({ type: 'error', message: 'Failed to upload cover photo. Please try again.' }));
+    } finally {
+      setUploadingCover(false);
+    }
+  };
+
+  const handleSaveProfile = async () => {
+    try {
+      const response = await userService.updateProfile(editData);
+      setProfileData(response);
+      setEditing(false);
+      dispatch(showToast({ type: 'success', message: 'Profile updated successfully!' }));
+    } catch (err) {
+      console.error('Failed to update profile:', err);
+      dispatch(showToast({ type: 'error', message: 'Failed to update profile. Please try again.' }));
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditData(profileData);
+    setEditing(false);
   };
 
   if (loading || !profileData) {
@@ -229,17 +290,19 @@ export default function UserProfile() {
         <Box 
           sx={{ 
             height: { xs: 180, md: 280 }, 
-            background: `linear-gradient(135deg, ${COLORS.primary} 0%, ${COLORS.secondary} 100%)`,
+            background: profileData.coverPhoto 
+              ? `url(${profileData.coverPhoto}) center/cover no-repeat`
+              : `linear-gradient(135deg, ${COLORS.primary} 0%, ${COLORS.secondary} 100%)`,
             position: 'relative',
             overflow: 'hidden'
           }}
         >
           <Box sx={{ position: 'absolute', inset: 0, opacity: 0.1, backgroundImage: 'radial-gradient(circle, #fff 1px, transparent 1px)', backgroundSize: '20px 20px' }} />
-          <IconButton 
-            sx={{ position: 'absolute', top: 16, right: 16, bgcolor: 'rgba(255,255,255,0.2)', color: 'white', '&:hover': { bgcolor: 'rgba(255,255,255,0.3)' } }}
-          >
-            <Camera size={20} />
-          </IconButton>
+          <CoverPhotoUpload 
+            currentPhoto={profileData.coverPhoto}
+            onUpload={handleCoverPhotoUpload}
+            isUploading={uploadingCover}
+          />
         </Box>
 
         {/* Profile Info Area */}
@@ -247,7 +310,7 @@ export default function UserProfile() {
           {/* Profile Photo - Offset */}
           <Box sx={{ position: 'absolute', top: { xs: -60, md: -80 }, left: { xs: '50%', md: 48 }, transform: { xs: 'translateX(-50%)', md: 'none' } }}>
             <ProfilePhotoUpload 
-              currentPhoto={profileData.photos.find((p: any) => p.isMain)?.url} 
+              currentPhoto={profileData.profilePic || profileData.photos.find((p: any) => p.isMain)?.url} 
               onUpload={handlePhotoUpload} 
             />
           </Box>
@@ -280,22 +343,49 @@ export default function UserProfile() {
                     />
                   </Box>
                 </Box>
-                <Button 
-                  variant="contained" 
-                  onClick={() => navigate('/edit-profile')}
-                  startIcon={<Edit3 size={18} />}
-                  sx={{ 
-                    bgcolor: COLORS.primary, 
-                    borderRadius: '12px', 
-                    px: 4, 
-                    py: 1.5,
-                    fontWeight: 800,
-                    boxShadow: '0 4px 12px rgba(139,26,46,0.2)',
-                    '&:hover': { bgcolor: '#6B1424' }
-                  }}
-                >
-                  Edit Profile
-                </Button>
+                {editing ? (
+                  <>
+                    <Button 
+                      variant="outlined" 
+                      onClick={handleCancelEdit}
+                      sx={{ borderRadius: '12px', fontWeight: 700 }}
+                    >
+                      Cancel
+                    </Button>
+                    <Button 
+                      variant="contained" 
+                      onClick={handleSaveProfile}
+                      sx={{ 
+                        bgcolor: COLORS.primary, 
+                        borderRadius: '12px', 
+                        px: 4, 
+                        py: 1.5,
+                        fontWeight: 800,
+                        boxShadow: '0 4px 12px rgba(139,26,46,0.2)',
+                        '&:hover': { bgcolor: '#6B1424' }
+                      }}
+                    >
+                      Save Changes
+                    </Button>
+                  </>
+                ) : (
+                  <Button 
+                    variant="contained" 
+                    onClick={() => setEditing(true)}
+                    startIcon={<Edit3 size={18} />}
+                    sx={{ 
+                      bgcolor: COLORS.primary, 
+                      borderRadius: '12px', 
+                      px: 4, 
+                      py: 1.5,
+                      fontWeight: 800,
+                      boxShadow: '0 4px 12px rgba(139,26,46,0.2)',
+                      '&:hover': { bgcolor: '#6B1424' }
+                    }}
+                  >
+                    Edit Profile
+                  </Button>
+                )}
               </Stack>
             </Box>
           </Box>
@@ -345,39 +435,94 @@ export default function UserProfile() {
                 <Stack spacing={4}>
                   <Paper sx={{ p: 4, borderRadius: '24px', boxShadow: '0 2px 16px rgba(0,0,0,0.03)' }}>
                     <Typography variant="h6" sx={{ mb: 3, fontWeight: 800, color: COLORS.primary }}>About Me</Typography>
-                    <Typography variant="body1" sx={{ color: COLORS.textSecondary, lineHeight: 1.8 }}>
-                      {profileData.bio}
-                    </Typography>
+                    {editing ? (
+                      <TextField
+                        fullWidth
+                        multiline
+                        rows={4}
+                        value={editData.bio || ''}
+                        onChange={(e) => setEditData({ ...editData, bio: e.target.value })}
+                        placeholder="Tell us about yourself..."
+                        sx={{ mb: 3 }}
+                      />
+                    ) : (
+                      <Typography variant="body1" sx={{ color: COLORS.textSecondary, lineHeight: 1.8, mb: 3 }}>
+                        {profileData.bio}
+                      </Typography>
+                    )}
                     
                     <Divider sx={{ my: 4 }} />
                     
                     <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 800, color: COLORS.textPrimary, display: 'flex', alignItems: 'center', gap: 1 }}>
                       <Languages size={18} /> Languages Spoken
                     </Typography>
-                    <Stack direction="row" spacing={1}>
-                      {profileData.personalInfo.languages.map((lang: string) => (
-                        <Chip key={lang} label={lang} sx={{ bgcolor: COLORS.cream, fontWeight: 700, color: COLORS.primary }} />
-                      ))}
-                    </Stack>
+                    {editing ? (
+                      <TextField
+                        fullWidth
+                        value={editData.personalInfo?.languages?.join(', ') || ''}
+                        onChange={(e) => setEditData({
+                          ...editData,
+                          personalInfo: {
+                            ...editData.personalInfo,
+                            languages: e.target.value.split(',').map((l: string) => l.trim())
+                          }
+                        })}
+                        placeholder="e.g., Sinhala, English, Tamil"
+                        sx={{ mb: 2 }}
+                      />
+                    ) : (
+                      <Stack direction="row" spacing={1}>
+                        {profileData.personalInfo.languages.map((lang: string) => (
+                          <Chip key={lang} label={lang} sx={{ bgcolor: COLORS.cream, fontWeight: 700, color: COLORS.primary }} />
+                        ))}
+                      </Stack>
+                    )}
                   </Paper>
 
                   <Paper sx={{ p: 4, borderRadius: '24px', boxShadow: '0 2px 16px rgba(0,0,0,0.03)' }}>
                     <Typography variant="h6" sx={{ mb: 3, fontWeight: 800, color: COLORS.primary }}>Personal Information</Typography>
                     <Grid container spacing={3}>
                       {[
-                        { label: 'Age', value: profileData.age, icon: <Calendar size={18} /> },
-                        { label: 'Height', value: profileData.personalInfo.height, icon: <Activity size={18} /> },
-                        { label: 'Education', value: profileData.personalInfo.education, icon: <GraduationCap size={18} /> },
-                        { label: 'Occupation', value: profileData.personalInfo.occupation, icon: <Briefcase size={18} /> },
-                        { label: 'Religion', value: profileData.personalInfo.religion, icon: <Heart size={18} /> },
-                        { label: 'Ethnicity', value: profileData.personalInfo.ethnicity, icon: <Users size={18} /> },
+                        { label: 'Age', value: profileData.age, key: 'age', icon: <Calendar size={18} /> },
+                        { label: 'Height', value: profileData.personalInfo.height, key: 'personalInfo.height', icon: <Activity size={18} /> },
+                        { label: 'Education', value: profileData.personalInfo.education, key: 'personalInfo.education', icon: <GraduationCap size={18} /> },
+                        { label: 'Occupation', value: profileData.personalInfo.occupation, key: 'personalInfo.occupation', icon: <Briefcase size={18} /> },
+                        { label: 'Religion', value: profileData.personalInfo.religion, key: 'personalInfo.religion', icon: <Heart size={18} /> },
+                        { label: 'Ethnicity', value: profileData.personalInfo.ethnicity, key: 'personalInfo.ethnicity', icon: <Users size={18} /> },
                       ].map((item, i) => (
                         <Grid size={{ xs: 12, sm: 6 }} key={i}>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 2, bgcolor: alpha(COLORS.cream, 0.5), borderRadius: '16px' }}>
                             <Box sx={{ color: COLORS.primary }}>{item.icon}</Box>
-                            <Box>
+                            <Box sx={{ flex: 1 }}>
                               <Typography variant="caption" sx={{ color: COLORS.textSecondary, fontWeight: 700, textTransform: 'uppercase' }}>{item.label}</Typography>
-                              <Typography variant="body2" sx={{ fontWeight: 800, color: COLORS.textPrimary }}>{item.value}</Typography>
+                              {editing ? (
+                                <TextField
+                                  fullWidth
+                                  size="small"
+                                  value={item.key === 'age' ? editData.age || '' : 
+                                         item.key === 'personalInfo.height' ? editData.personalInfo?.height || '' :
+                                         item.key === 'personalInfo.education' ? editData.personalInfo?.education || '' :
+                                         item.key === 'personalInfo.occupation' ? editData.personalInfo?.occupation || '' :
+                                         item.key === 'personalInfo.religion' ? editData.personalInfo?.religion || '' :
+                                         editData.personalInfo?.ethnicity || ''}
+                                  onChange={(e) => {
+                                    if (item.key === 'age') {
+                                      setEditData({ ...editData, age: e.target.value });
+                                    } else {
+                                      setEditData({
+                                        ...editData,
+                                        personalInfo: {
+                                          ...editData.personalInfo,
+                                          [item.key.split('.')[1]]: e.target.value
+                                        }
+                                      });
+                                    }
+                                  }}
+                                  sx={{ mt: 0.5 }}
+                                />
+                              ) : (
+                                <Typography variant="body2" sx={{ fontWeight: 800, color: COLORS.textPrimary }}>{item.value}</Typography>
+                              )}
                             </Box>
                           </Box>
                         </Grid>
@@ -530,38 +675,72 @@ export default function UserProfile() {
               <Grid size={{ xs: 12, md: 6 }}>
                 <Paper sx={{ p: 4, borderRadius: '24px', boxShadow: '0 2px 16px rgba(0,0,0,0.03)' }}>
                   <Typography variant="h6" sx={{ mb: 3, fontWeight: 800, color: COLORS.primary }}>Hobbies & Interests</Typography>
-                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5 }}>
-                    {profileData.lifestyle.hobbies.map((hobby: any) => (
-                      <Chip 
-                        key={hobby.label} 
-                        label={`${hobby.icon} ${hobby.label}`} 
-                        sx={{ 
-                          px: 1, 
-                          py: 2.5, 
-                          borderRadius: '12px', 
-                          bgcolor: COLORS.cream, 
-                          fontWeight: 700, 
-                          color: COLORS.primary,
-                          border: `1px solid ${alpha(COLORS.primary, 0.1)}`
-                        }} 
-                      />
-                    ))}
-                  </Box>
+                  {editing ? (
+                    <TextField
+                      fullWidth
+                      multiline
+                      rows={2}
+                      value={editData.lifestyle?.hobbies?.map((h: any) => h.label || h).join(', ') || ''}
+                      onChange={(e) => setEditData({
+                        ...editData,
+                        lifestyle: {
+                          ...editData.lifestyle,
+                          hobbies: e.target.value.split(',').map((h: string) => ({ label: h.trim(), icon: '🎯' }))
+                        }
+                      })}
+                      placeholder="e.g., Music, Cooking, Travel, Reading"
+                      sx={{ mb: 3 }}
+                    />
+                  ) : (
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5, mb: 3 }}>
+                      {profileData.lifestyle.hobbies.map((hobby: any) => (
+                        <Chip 
+                          key={hobby.label} 
+                          label={`${hobby.icon} ${hobby.label}`} 
+                          sx={{ 
+                            px: 1, 
+                            py: 2.5, 
+                            borderRadius: '12px', 
+                            bgcolor: COLORS.cream, 
+                            fontWeight: 700, 
+                            color: COLORS.primary,
+                            border: `1px solid ${alpha(COLORS.primary, 0.1)}`
+                          }} 
+                        />
+                      ))}
+                    </Box>
+                  )}
 
                   <Divider sx={{ my: 4 }} />
 
                   <Typography variant="h6" sx={{ mb: 3, fontWeight: 800, color: COLORS.primary }}>Daily Habits</Typography>
                   <Grid container spacing={2}>
                     {[
-                      { label: 'Exercise', value: profileData.lifestyle.exercise, icon: <Activity size={18} /> },
-                      { label: 'Diet', value: profileData.lifestyle.diet, icon: <Coffee size={18} /> },
-                      { label: 'Smoking', value: profileData.lifestyle.smoking, icon: <X size={18} /> },
-                      { label: 'Drinking', value: profileData.lifestyle.drinking, icon: <X size={18} /> },
+                      { label: 'Exercise', value: profileData.lifestyle.exercise, key: 'exercise', icon: <Activity size={18} /> },
+                      { label: 'Diet', value: profileData.lifestyle.diet, key: 'diet', icon: <Coffee size={18} /> },
+                      { label: 'Smoking', value: profileData.lifestyle.smoking, key: 'smoking', icon: <X size={18} /> },
+                      { label: 'Drinking', value: profileData.lifestyle.drinking, key: 'drinking', icon: <X size={18} /> },
                     ].map((item, i) => (
                       <Grid size={{ xs: 6 }} key={i}>
                         <Box sx={{ p: 2, bgcolor: alpha(COLORS.accent, 0.05), borderRadius: '16px' }}>
                           <Typography variant="caption" sx={{ color: COLORS.textSecondary, fontWeight: 700, display: 'block', mb: 0.5 }}>{item.label}</Typography>
-                          <Typography variant="body2" sx={{ fontWeight: 800, color: COLORS.accent }}>{item.value}</Typography>
+                          {editing ? (
+                            <TextField
+                              fullWidth
+                              size="small"
+                              value={editData.lifestyle?.[item.key] || ''}
+                              onChange={(e) => setEditData({
+                                ...editData,
+                                lifestyle: {
+                                  ...editData.lifestyle,
+                                  [item.key]: e.target.value
+                                }
+                              })}
+                              sx={{ mt: 0.5 }}
+                            />
+                          ) : (
+                            <Typography variant="body2" sx={{ fontWeight: 800, color: COLORS.accent }}>{item.value}</Typography>
+                          )}
                         </Box>
                       </Grid>
                     ))}
@@ -576,11 +755,39 @@ export default function UserProfile() {
                     <Stack spacing={3}>
                       <Box>
                         <Typography variant="caption" sx={{ color: COLORS.textSecondary, fontWeight: 700, display: 'block', mb: 0.5 }}>Career Ambitions</Typography>
-                        <Typography variant="body1" sx={{ fontWeight: 800 }}>{profileData.lifestyle.careerAmbitions}</Typography>
+                        {editing ? (
+                          <TextField
+                            fullWidth
+                            value={editData.lifestyle?.careerAmbitions || ''}
+                            onChange={(e) => setEditData({
+                              ...editData,
+                              lifestyle: {
+                                ...editData.lifestyle,
+                                careerAmbitions: e.target.value
+                              }
+                            })}
+                          />
+                        ) : (
+                          <Typography variant="body1" sx={{ fontWeight: 800 }}>{profileData.lifestyle.careerAmbitions}</Typography>
+                        )}
                       </Box>
                       <Box>
                         <Typography variant="caption" sx={{ color: COLORS.textSecondary, fontWeight: 700, display: 'block', mb: 0.5 }}>Family Plans</Typography>
-                        <Typography variant="body1" sx={{ fontWeight: 800 }}>{profileData.lifestyle.familyPlans}</Typography>
+                        {editing ? (
+                          <TextField
+                            fullWidth
+                            value={editData.lifestyle?.familyPlans || ''}
+                            onChange={(e) => setEditData({
+                              ...editData,
+                              lifestyle: {
+                                ...editData.lifestyle,
+                                familyPlans: e.target.value
+                              }
+                            })}
+                          />
+                        ) : (
+                          <Typography variant="body1" sx={{ fontWeight: 800 }}>{profileData.lifestyle.familyPlans}</Typography>
+                        )}
                       </Box>
                     </Stack>
                   </Paper>
@@ -687,7 +894,15 @@ export default function UserProfile() {
                         <Typography variant="subtitle1" sx={{ fontWeight: 800 }}>Show my last seen</Typography>
                         <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>Allow others to see when you were last active</Typography>
                       </Box>
-                      <Switch checked={profileData.privacy.showLastSeen} color="primary" />
+                      <Switch 
+                        checked={editing ? editData.privacy?.showLastSeen || false : profileData.privacy.showLastSeen} 
+                        onChange={(e) => editing && setEditData({
+                          ...editData,
+                          privacy: { ...editData.privacy, showLastSeen: e.target.checked }
+                        })}
+                        disabled={!editing}
+                        color="primary" 
+                      />
                     </Box>
                     <Divider />
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -695,7 +910,15 @@ export default function UserProfile() {
                         <Typography variant="subtitle1" sx={{ fontWeight: 800 }}>Show my horoscope to matches</Typography>
                         <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>Matches can view your detailed birth chart</Typography>
                       </Box>
-                      <Switch checked={profileData.privacy.showHoroscope} color="primary" />
+                      <Switch 
+                        checked={editing ? editData.privacy?.showHoroscope || false : profileData.privacy.showHoroscope} 
+                        onChange={(e) => editing && setEditData({
+                          ...editData,
+                          privacy: { ...editData.privacy, showHoroscope: e.target.checked }
+                        })}
+                        disabled={!editing}
+                        color="primary" 
+                      />
                     </Box>
                     <Divider />
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -703,7 +926,15 @@ export default function UserProfile() {
                         <Typography variant="subtitle1" sx={{ fontWeight: 800 }}>Show my phone number to matches</Typography>
                         <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>Verified matches can see your contact number</Typography>
                       </Box>
-                      <Switch checked={profileData.privacy.showPhone} color="primary" />
+                      <Switch 
+                        checked={editing ? editData.privacy?.showPhone || false : profileData.privacy.showPhone} 
+                        onChange={(e) => editing && setEditData({
+                          ...editData,
+                          privacy: { ...editData.privacy, showPhone: e.target.checked }
+                        })}
+                        disabled={!editing}
+                        color="primary" 
+                      />
                     </Box>
                     
                     <Box sx={{ mt: 2 }}>

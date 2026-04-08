@@ -1,6 +1,6 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
-import path from 'path';
+import path from 'node:path';
 import { defineConfig, loadEnv } from 'vite';
 
 export default defineConfig(({ mode }) => {
@@ -23,7 +23,12 @@ export default defineConfig(({ mode }) => {
         '/api': {
           target: apiTarget,
           changeOrigin: true,
+          ws: true,
         },
+      },
+      watch: {
+        usePolling: false,
+        ignored: ['**/node_modules/**', '**/.git/**', '**/dist/**'],
       },
     },
   };

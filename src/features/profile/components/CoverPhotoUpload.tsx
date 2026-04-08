@@ -2,7 +2,6 @@ import React, { useState, useRef } from 'react';
 import { 
   Box, 
   Typography, 
-  Avatar, 
   IconButton, 
   Button, 
   Dialog, 
@@ -12,12 +11,11 @@ import {
   CircularProgress,
   alpha
 } from '@mui/material';
-import { Camera, Upload, X, Check } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { Camera, Upload, Check } from 'lucide-react';
 import { Stack } from '@mui/material';
 import ImageCropper from '../../../shared/components/ImageCropper';
 
-interface ProfilePhotoUploadProps {
+interface CoverPhotoUploadProps {
   currentPhoto?: string;
   onUpload: (file: File) => Promise<void>;
   isUploading?: boolean;
@@ -33,7 +31,7 @@ const COLORS = {
   textSecondary: '#555555',
 };
 
-export default function ProfilePhotoUpload({ currentPhoto, onUpload, isUploading = false }: ProfilePhotoUploadProps) {
+export default function CoverPhotoUpload({ currentPhoto, onUpload, isUploading = false }: CoverPhotoUploadProps) {
   const [open, setOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [croppedImage, setCroppedImage] = useState<string | null>(null);
@@ -52,7 +50,7 @@ export default function ProfilePhotoUpload({ currentPhoto, onUpload, isUploading
       // Convert base64 to blob
       const response = await fetch(croppedImage);
       const blob = await response.blob();
-      const file = new File([blob], 'profile-photo.jpg', { type: 'image/jpeg' });
+      const file = new File([blob], 'cover-photo.jpg', { type: 'image/jpeg' });
       
       await onUpload(file);
       setOpen(false);
@@ -68,51 +66,38 @@ export default function ProfilePhotoUpload({ currentPhoto, onUpload, isUploading
   };
 
   return (
-    <Box sx={{ position: 'relative', display: 'inline-block' }}>
-      <Box sx={{ position: 'relative', group: 'true' }}>
-        <Avatar
-          src={currentPhoto}
-          sx={{ 
-            width: { xs: 120, md: 160 }, 
-            height: { xs: 120, md: 160 }, 
-            border: '4px solid white',
-            boxShadow: '0 8px 32px rgba(139,26,46,0.15)',
-            bgcolor: COLORS.cream
-          }}
-        />
-        <IconButton
-          onClick={() => setOpen(true)}
-          sx={{
-            position: 'absolute',
-            bottom: 8,
-            right: 8,
-            bgcolor: COLORS.secondary,
-            color: COLORS.primary,
-            boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-            '&:hover': { bgcolor: alpha(COLORS.secondary, 0.9), transform: 'scale(1.1)' },
-            transition: 'all 0.2s ease'
-          }}
-        >
-          <Camera size={20} />
-        </IconButton>
-      </Box>
+    <>
+      <IconButton 
+        onClick={() => setOpen(true)}
+        sx={{ 
+          position: 'absolute', 
+          top: 16, 
+          right: 16, 
+          bgcolor: 'rgba(255,255,255,0.2)', 
+          color: 'white', 
+          '&:hover': { bgcolor: 'rgba(255,255,255,0.3)' },
+          zIndex: 2
+        }}
+      >
+        {isUploading ? <CircularProgress size={20} color="inherit" /> : <Camera size={20} />}
+      </IconButton>
 
       <Dialog 
         open={open} 
         onClose={handleClose}
         PaperProps={{
-          sx: { borderRadius: 4, width: '100%', maxWidth: 500 }
+          sx: { borderRadius: 4, width: '100%', maxWidth: 600 }
         }}
       >
         <DialogTitle sx={{ fontFamily: 'Playfair Display', fontWeight: 800, color: COLORS.primary }}>
-          Update Profile Photo
+          Update Cover Photo
         </DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, py: 2 }}>
             {!selectedFile ? (
               <Box 
                 sx={{ 
-                  width: 300, 
+                  width: 500, 
                   height: 200, 
                   borderRadius: 2, 
                   border: `2px dashed ${COLORS.secondary}`,
@@ -127,8 +112,8 @@ export default function ProfilePhotoUpload({ currentPhoto, onUpload, isUploading
               >
                 <Stack alignItems="center" spacing={1} sx={{ color: COLORS.textSecondary }}>
                   <Upload size={40} />
-                  <Typography variant="h6" sx={{ fontWeight: 700 }}>Select Photo</Typography>
-                  <Typography variant="caption">JPG, PNG or GIF. Max 5MB.</Typography>
+                  <Typography variant="h6" sx={{ fontWeight: 700 }}>Select Cover Photo</Typography>
+                  <Typography variant="caption">JPG, PNG or GIF. Max 5MB. Recommended: 1200x400px</Typography>
                 </Stack>
                 <input
                   type="file"
@@ -145,8 +130,8 @@ export default function ProfilePhotoUpload({ currentPhoto, onUpload, isUploading
               <ImageCropper
                 image={URL.createObjectURL(selectedFile)}
                 onCropComplete={handleCropComplete}
-                aspect={1}
-                cropShape="round"
+                aspect={3}
+                cropShape="rect"
               />
             )}
           </Box>
@@ -166,11 +151,10 @@ export default function ProfilePhotoUpload({ currentPhoto, onUpload, isUploading
               '&:hover': { bgcolor: '#6B1424' }
             }}
           >
-            {isUploading ? 'Uploading...' : 'Save Photo'}
+            {isUploading ? 'Uploading...' : 'Save Cover Photo'}
           </Button>
         </DialogActions>
       </Dialog>
-    </Box>
+    </>
   );
 }
-

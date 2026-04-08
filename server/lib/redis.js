@@ -14,6 +14,12 @@ const noopRedisClient = {
   async set() {
     return null;
   },
+  async setEx() {
+    return null;
+  },
+  async del() {
+    return null;
+  },
 };
 
 export const redisClient = redisEnabled

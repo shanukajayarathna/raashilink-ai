@@ -54,7 +54,7 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
   if (!token) return <>{children || <Outlet />}</>;
 
   return (
-    <div className="min-h-screen bg-cream relative">
+    <div className="min-h-screen bg-cream relative flex flex-col">
       {/* Fixed Background Layer to prevent flicker on route change */}
       <div className="fixed inset-0 mandala-bg opacity-[0.4] pointer-events-none z-0" />
       
@@ -205,8 +205,18 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
       </AnimatePresence>
 
       {/* Main Content */}
-      <main className="pt-24 pb-12 px-4 md:px-8 max-w-7xl mx-auto">
-        {children || <Outlet />}
+      <main className="flex-1 pt-24 pb-12 px-4 md:px-8 w-full">
+        <div className="max-w-7xl mx-auto">
+          <motion.div
+            key={location.pathname}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.3, ease: "easeInOut" }}
+          >
+            {children || <Outlet />}
+          </motion.div>
+        </div>
       </main>
 
       {/* Floating RaashiBot */}

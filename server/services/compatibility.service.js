@@ -121,10 +121,26 @@ async function runHoroscopeEngine(payload) {
     const pythonBinary = process.env.PYTHON_BIN || 'python';
     const child = spawn(pythonBinary, [PYTHON_ENGINE_PATH], {
       stdio: ['pipe', 'pipe', 'pipe'],
+      timeout: 30000, // 30 second timeout
     });
 
     let stdout = '';
     let stderr = '';
+    let isResolved = false;
+
+    // Kill process after 30 seconds to prevent hangs
+    const timeout = setTimeout(() => {
+      if (!isResolved) {
+        isResolved = true;
+        if (!child.killed) {
+          child.kill('SIGTERM');
+          setTimeout(() => {
+            if (!child.killed) child.kill('SIGKILL');
+          }, 2000);
+        }
+        reject(new ApiError(500, 'Horoscope engine timeout - process exceeded 30 seconds'));
+      }
+    }, 30000);
 
     child.stdout.on('data', (chunk) => {
       stdout += chunk.toString();
@@ -135,24 +151,44 @@ async function runHoroscopeEngine(payload) {
     });
 
     child.on('error', (error) => {
-      reject(new ApiError(500, 'Failed to launch horoscope engine', { cause: error.message }));
+      if (!isResolved) {
+        isResolved = true;
+        clearTimeout(timeout);
+        reject(new ApiError(500, 'Failed to launch horoscope engine', { cause: error.message }));
+      }
     });
 
     child.on('close', (code) => {
-      if (code !== 0) {
-        reject(new ApiError(500, 'Horoscope engine execution failed', { stderr, exitCode: code }));
-        return;
-      }
+      if (!isResolved) {
+        isResolved = true;
+        clearTimeout(timeout);
+        
+        if (code !== 0) {
+          logger.warn('Horoscope engine exited with non-zero code', { code, stderr });
+          reject(new ApiError(500, 'Horoscope engine execution failed', { stderr, exitCode: code }));
+          return;
+        }
 
-      try {
-        resolve(JSON.parse(stdout));
-      } catch (error) {
-        reject(new ApiError(500, 'Invalid horoscope engine response', { stdout, stderr }));
+        try {
+          const result = JSON.parse(stdout);
+          resolve(result);
+        } catch (error) {
+          logger.error('Invalid horoscope engine response', { stdout, stderr });
+          reject(new ApiError(500, 'Invalid horoscope engine response', { stdout, stderr }));
+        }
       }
     });
 
-    child.stdin.write(JSON.stringify(payload));
-    child.stdin.end();
+    try {
+      child.stdin.write(JSON.stringify(payload));
+      child.stdin.end();
+    } catch (error) {
+      if (!isResolved) {
+        isResolved = true;
+        clearTimeout(timeout);
+        reject(new ApiError(500, 'Failed to send data to horoscope engine', { cause: error.message }));
+      }
+    }
   });
 }
 
@@ -213,13 +249,23 @@ export async function calculateCompatibility({ userAId, userBId }) {
       userBId: String(userBId),
     });
 
-    const astroResponseRaw = await runHoroscopeEngine({
-      userA: userAHoroscope,
-      userB: userBHoroscope,
-    });
+    try {
+      const astroResponseRaw = await runHoroscopeEngine({
+        userA: userAHoroscope,
+        userB: userBHoroscope,
+      });
 
-    astroScore = normalizeScore(astroResponseRaw.totalScore, 36);
-    astroResponse = astroResponseRaw;
+      astroScore = normalizeScore(astroResponseRaw.totalScore, 36);
+      astroResponse = astroResponseRaw;
+    } catch (error) {
+      logger.error('Horoscope engine failed, using fallback', {
+        userAId: String(userAId),
+        userBId: String(userBId),
+        message: error.message,
+      });
+      astroNotes.push('Astrological engine unavailable, using baseline score.');
+      astroScore = 50; // Baseline score
+    }
   } else {
     if (!userAHoroscope && !userBHoroscope) {
       astroNotes.push('Neither user had horoscope data, using baseline astrological compatibility.');

@@ -37,10 +37,26 @@ const userService = {
   /**
    * Upload current user's profile photo.
    * @param {FormData} photoData - User's profile photo file.
-   * @returns {Promise<object>} - Uploaded photo URL.
+   * @returns {Promise<object>} - Uploaded profile photo URL.
    */
   uploadPhoto: async (photoData: FormData) => {
     const response = await axiosInstance.post('/users/profile/photo', photoData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  },
+
+  /**
+   * Upload cover photo for the current user.
+   * @param {File} coverPhoto - The cover photo file to upload.
+   * @returns {Promise<object>} - Uploaded cover photo URL.
+   */
+  uploadCoverPhoto: async (coverPhoto: File) => {
+    const formData = new FormData();
+    formData.append('coverPhoto', coverPhoto);
+    const response = await axiosInstance.post('/users/profile/cover-photo', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },

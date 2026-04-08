@@ -18,6 +18,7 @@ import {
   VisibilityOff, 
   Google, 
   ArrowForward,
+  ArrowBack,
   LockOutlined,
   MailOutline
 } from '@mui/icons-material';
@@ -381,6 +382,25 @@ const LoginPage = () => {
                           Register Now
                         </Typography>
                       </Typography>
+                    </Box>
+
+                    <Box sx={{ textAlign: 'center', mt: 3 }}>
+                      <Button
+                        component={Link}
+                        to="/"
+                        variant="outlined"
+                        startIcon={<ArrowBack />}
+                        sx={{
+                          borderRadius: '14px',
+                          borderColor: '#ddd',
+                          color: COLORS.textPrimary,
+                          fontWeight: 700,
+                          textTransform: 'none',
+                          '&:hover': { bgcolor: 'rgba(139,26,46,0.04)', borderColor: COLORS.primary }
+                        }}
+                      >
+                        Back to Landing
+                      </Button>
                     </Box>
                   </Stack>
                 </form>

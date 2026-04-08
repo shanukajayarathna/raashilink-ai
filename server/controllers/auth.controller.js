@@ -102,7 +102,7 @@ function sanitizeUser(user) {
     role: user.role,
     profileType: user.profileType,
     location: user.location,
-    profilePic: user.profilePic || user.photos?.find((photo) => photo.isMain)?.url || null,
+    profilePic: user.personalInfo?.profilePic || user.photos?.find((photo) => photo.isMain)?.url || null,
     photos: user.photos || [],
     verification: {
       emailVerified: Boolean(user.verification?.emailVerified),

@@ -995,11 +995,33 @@ const RegisterPage = () => {
           </AnimatePresence>
         </Paper>
 
-        <Box sx={{ textAlign: 'center', mt: 4 }}>
-          <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
-            Already have an account?{' '}
-            <Typography component={Link} to="/login" sx={{ color: COLORS.primary, fontWeight: 700, textDecoration: 'none' }}>Login here</Typography>
-          </Typography>
+        <Box sx={{ textAlign: 'center', mt: 4 }}>          
+          <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="center" alignItems="center" spacing={2}>
+            <Button
+              component={Link}
+              to="/"
+              startIcon={<ArrowBack />}
+              sx={{
+                color: COLORS.textPrimary,
+                borderColor: '#ddd',
+                borderRadius: '14px',
+                textTransform: 'none',
+                px: 3,
+                py: 1.2,
+                '&:hover': { bgcolor: 'rgba(139,26,46,0.04)', borderColor: COLORS.primary }
+              }}
+              variant="outlined"
+            >
+              Back to Landing
+            </Button>
+
+            <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
+              Already have an account?{' '}
+              <Typography component={Link} to="/login" sx={{ color: COLORS.primary, fontWeight: 700, textDecoration: 'none' }}>
+                Login here
+              </Typography>
+            </Typography>
+          </Stack>
         </Box>
       </Container>
     </Box>
