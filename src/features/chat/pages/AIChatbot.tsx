@@ -47,8 +47,6 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { useSelector } from 'react-redux';
 import { RootState } from '@/app/store/store';
-import axios from 'axios';
-
 // Components
 import ChatSidebar from '../components/ChatSidebar';
 import ChatInterface from '../components/ChatInterface';
@@ -187,7 +185,7 @@ export default function AIChatbot() {
         </Paper>
 
         <Box sx={{ flex: 1, overflow: 'hidden' }}>
-          <ChatInterface key={chatKey} />
+          <ChatInterface key={chatKey} language={language} />
         </Box>
       </Box>
     </Box>

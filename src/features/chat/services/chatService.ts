@@ -16,6 +16,16 @@ const chatService = {
   },
 
   /**
+   * Send a message to the RaashiBot assistant.
+   * @param {object} messageData - Message content and optional language.
+   * @returns {Promise<object>} - Assistant reply.
+   */
+  sendAssistantMessage: async (messageData: any) => {
+    const response = await axiosInstance.post('/chat/assistant', messageData);
+    return response.data;
+  },
+
+  /**
    * Get chat history with a specific recipient or chat room.
    * @param {string} chatId - ID of the chat to retrieve history for.
    * @param {object} params - Query parameters for pagination and filtering.

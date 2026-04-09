@@ -101,7 +101,7 @@ export default function ChatMessage({ message, isCompact }: ChatMessageProps) {
               fontSize: isCompact ? '0.8rem' : 'inherit',
             }}
           >
-            <div className="markdown-body">
+            <div className="markdown-body" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: isBot ? COLORS.textPrimary : 'white' }}>
               <ReactMarkdown>{message.content}</ReactMarkdown>
             </div>
 

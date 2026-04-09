@@ -34,6 +34,7 @@ import {
   X,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import chatService from '../services/chatService';
 import ChatMessage from './ChatMessage';
 import TypingIndicator from './TypingIndicator';
 
@@ -59,14 +60,14 @@ interface ChatInterfaceProps {
   isCompact?: boolean;
   onClose?: () => void;
   initialMessages?: any[];
+  language?: 'en' | 'si' | 'ta';
 }
 
-export default function ChatInterface({ isCompact, onClose, initialMessages = [] }: ChatInterfaceProps) {
+export default function ChatInterface({ isCompact, onClose, initialMessages = [], language = 'en' }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<any[]>(initialMessages);
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [isWelcomeState, setIsWelcomeState] = useState(initialMessages.length === 0);
-  const [language, setLanguage] = useState<'en' | 'si' | 'ta'>('en');
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const messagesEndRef = useRef<null | HTMLDivElement>(null);
   const theme = useTheme();
@@ -86,70 +87,49 @@ export default function ChatInterface({ isCompact, onClose, initialMessages = []
     ta: "திருமணப் பொருத்தங்கள், திருமணங்கள் பற்றி எதையும் கேளுங்கள்..."
   };
 
-  const handleSendMessage = async (text: string = inputText) => {
-    if (!text.trim()) return;
+  const handleSendMessage = async (text?: string) => {
+    const messageText = (text ?? inputText).trim();
+    if (!messageText) return;
 
     const userMessage = {
       id: Date.now().toString(),
       role: 'user',
-      content: text,
+      content: messageText,
       timestamp: new Date().toISOString(),
     };
 
-    setMessages((prev) => [...prev, userMessage]);
+    const botMessageId = (Date.now() + 1).toString();
+    setMessages((prev) => [
+      ...prev,
+      userMessage,
+      {
+        id: botMessageId,
+        role: 'bot',
+        content: '',
+        timestamp: new Date().toISOString(),
+      },
+    ]);
+
     setInputText('');
     setIsWelcomeState(false);
     setIsTyping(true);
 
     try {
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      const botMessageId = (Date.now() + 1).toString();
-      const botMessage = {
-        id: botMessageId,
-        role: 'bot',
-        content: '',
-        timestamp: new Date().toISOString(),
-      };
+      const response = await chatService.sendAssistantMessage({ message: messageText, language });
+      const assistantText = response?.data?.reply || 'Sorry, RaashiBot could not generate a reply right now.';
 
-      setMessages((prev) => [...prev, botMessage]);
       setIsTyping(false);
-
-      const fullResponse = getSimulatedResponse(text, language);
-      let currentText = '';
-      const words = fullResponse.content.split(' ');
-      
-      for (let i = 0; i < words.length; i++) {
-        currentText += (i === 0 ? '' : ' ') + words[i];
-        setMessages((prev) => 
-          prev.map(msg => msg.id === botMessageId ? { ...msg, ...fullResponse, content: currentText } : msg)
-        );
-        await new Promise(resolve => setTimeout(resolve, isCompact ? 30 : 50));
-      }
+      setMessages((prev) => prev.map((msg) => (msg.id === botMessageId ? { ...msg, content: assistantText } : msg)));
     } catch (err) {
       setIsTyping(false);
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === botMessageId
+            ? { ...msg, content: 'Sorry, I could not reach the assistant. Please try again later.' }
+            : msg
+        )
+      );
     }
-  };
-
-  const getSimulatedResponse = (text: string, lang: string) => {
-    const lowerText = text.toLowerCase();
-    if (lowerText.includes('match') || lowerText.includes('සහකරු')) {
-      return {
-        content: "I've found some excellent matches based on your profile and horoscope compatibility. Here are the top recommendations for you:",
-        type: 'match',
-        data: { name: 'Priyanka Perera', age: 26, location: 'Kandy, Sri Lanka', matchScore: 94, image: 'https://picsum.photos/seed/priyanka/200/200' }
-      };
-    }
-    if (lowerText.includes('budget') || lowerText.includes('අයවැය')) {
-      return {
-        content: "Based on your current spending, you have allocated LKR 1,500,000. You've spent LKR 985,000 so far. Here's a quick breakdown of your remaining balance:",
-        type: 'budget',
-        data: { spent: 985000, remaining: 515000 }
-      };
-    }
-    return {
-      content: lang === 'si' ? "මම ඔබට උදවු කිරීමට සූදානම්." : "I'm here to help you with your journey."
-    };
   };
 
   const handleVoiceInput = () => {
@@ -188,7 +168,16 @@ export default function ChatInterface({ isCompact, onClose, initialMessages = []
           {messages.map((msg) => (
             <ChatMessage key={msg.id} message={msg} isCompact={isCompact} />
           ))}
-          {isTyping && <TypingIndicator />}
+          {isTyping && (
+            <motion.div
+              key="typing-indicator"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 8 }}
+            >
+              <TypingIndicator />
+            </motion.div>
+          )}
         </AnimatePresence>
         <div ref={messagesEndRef} />
       </Box>
@@ -210,7 +199,12 @@ export default function ChatInterface({ isCompact, onClose, initialMessages = []
               placeholder={placeholders[language]}
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSendMessage())}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSendMessage();
+                }
+              }}
               InputProps={{
                 sx: { borderRadius: 4, bgcolor: COLORS.cream, '& fieldset': { border: 'none' }, px: 2, py: 1, fontSize: isCompact ? '0.85rem' : '0.95rem' },
                 endAdornment: !isCompact && (

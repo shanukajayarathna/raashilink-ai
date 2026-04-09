@@ -3,6 +3,7 @@ import Conversation from '../models/Conversation.js';
 import MatchInterest from '../models/MatchInterest.js';
 import Message from '../models/Message.js';
 import User from '../models/User.js';
+import assistantService from '../services/assistant.service.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import ApiError from '../utils/ApiError.js';
 
@@ -74,6 +75,32 @@ export const sendMessage = asyncHandler(async (req, res) => {
         content: message.content,
         createdAt: message.createdAt,
       },
+    },
+  });
+});
+
+export const sendAssistantMessage = asyncHandler(async (req, res) => {
+  const { message, language = 'en' } = req.body ?? {};
+
+  if (!message || !String(message).trim()) {
+    throw new ApiError(400, 'Message content is required');
+  }
+
+  const user = await User.findById(req.user._id).lean();
+  if (!user) {
+    throw new ApiError(404, 'Authenticated user not found');
+  }
+
+  const reply = await assistantService.generateAssistantReply({
+    user,
+    message: String(message).trim(),
+    language,
+  });
+
+  res.status(200).json({
+    success: true,
+    data: {
+      reply,
     },
   });
 });
