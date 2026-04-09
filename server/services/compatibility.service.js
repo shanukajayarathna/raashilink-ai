@@ -3,13 +3,15 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import mongoose from 'mongoose';
 import User from '../models/User.js';
+import Horoscope from '../models/Horoscope.js';
+import Match from '../models/Match.js';
 import redisClient from '../lib/redis.js';
 import ApiError from '../utils/ApiError.js';
 import logger from '../utils/logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const PYTHON_ENGINE_PATH = path.resolve(__dirname, '../python/horoscope_engine.py');
+const SCORER_PATH = path.resolve(__dirname, '../python/compatibility/scorer.py');
 const CACHE_TTL_SECONDS = 60 * 60 * 24;
 
 function buildCacheKey(userAId, userBId) {
@@ -328,6 +330,143 @@ export async function calculateCompatibility({ userAId, userBId }) {
   return result;
 }
 
+async function runScorerEngine(payload) {
+  return new Promise((resolve, reject) => {
+    const pythonBinary = process.platform === 'win32' ? 'python' : 'python3';
+    const child = spawn(pythonBinary, [SCORER_PATH, JSON.stringify(payload)], {
+      cwd: process.cwd(),
+      stdio: ['pipe', 'pipe', 'pipe'],
+      timeout: 10000, // 10 second timeout
+    });
+
+    let stdout = '';
+    let stderr = '';
+
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk.toString();
+    });
+
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk.toString();
+    });
+
+    child.on('close', (code) => {
+      if (code !== 0) {
+        logger.error('Scorer engine failed', { code, stderr });
+        reject(new ApiError(500, `Scorer engine failed: ${stderr}`));
+        return;
+      }
+
+      try {
+        const result = JSON.parse(stdout.trim());
+        if (!result.success) {
+          reject(new ApiError(500, `Scorer calculation error: ${result.error}`));
+        } else {
+          resolve(result);
+        }
+      } catch (parseError) {
+        logger.error('Failed to parse scorer result', { error: parseError.message, stdout });
+        reject(new ApiError(500, 'Failed to parse scorer result'));
+      }
+    });
+
+    child.on('error', (error) => {
+      logger.error('Scorer process error', { error: error.message });
+      reject(new ApiError(500, 'Scorer process failed'));
+    });
+  });
+}
+
+export async function calculateFullCompatibility(userAId, userBId) {
+  validateObjectId(userAId, 'userAId');
+  validateObjectId(userBId, 'userBId');
+
+  if (String(userAId) === String(userBId)) {
+    throw new ApiError(400, 'Compatibility requires two different users');
+  }
+
+  const cacheKey = `compat:${userAId}:${userBId}`;
+
+  try {
+    const cached = await redisClient.get(cacheKey);
+    if (cached) {
+      logger.info('Compatibility cache hit', { cacheKey });
+      return JSON.parse(cached);
+    }
+  } catch (error) {
+    logger.warn('Redis read failed, continuing without cache', { message: error.message, cacheKey });
+  }
+
+  // Fetch Horoscope docs
+  const [horoscopeA, horoscopeB] = await Promise.all([
+    Horoscope.findOne({ userId: userAId }).lean(),
+    Horoscope.findOne({ userId: userBId }).lean(),
+  ]);
+
+  if (!horoscopeA || !horoscopeB) {
+    throw new ApiError(422, 'Horoscope data not available for one or both users');
+  }
+
+  // Fetch User docs
+  const [userA, userB] = await Promise.all([
+    User.findById(userAId).lean(),
+    User.findById(userBId).lean(),
+  ]);
+
+  if (!userA || !userB) {
+    throw new ApiError(404, 'One or both users were not found');
+  }
+
+  // Build data
+  const dataA = {
+    nakshatra: horoscopeA.nakshatra,
+    rashi: horoscopeA.rashi,
+    personality: userA.personality || {},
+    lifestyle: userA.lifestyle || {},
+    family: { familyValues: userA.lifestyle?.familyValues || 0.5 },
+  };
+
+  const dataB = {
+    nakshatra: horoscopeB.nakshatra,
+    rashi: horoscopeB.rashi,
+    personality: userB.personality || {},
+    lifestyle: userB.lifestyle || {},
+    family: { familyValues: userB.lifestyle?.familyValues || 0.5 },
+  };
+
+  // Run scorer
+  const result = await runScorerEngine({ userA: dataA, userB: dataB });
+
+  // Save to Match
+  const [first, second] = [String(userAId), String(userBId)].sort();
+  await Match.findOneAndUpdate(
+    { userAId: first, userBId: second },
+    {
+      $set: {
+        compatibilityScore: result.overallScore,
+        dimensionScores: {
+          astro: result.astroScore,
+          personality: result.personalityScore,
+          lifestyle: result.lifestyleScore,
+          family: result.familyScore,
+        },
+        explanation: result.explanation,
+      },
+    },
+    { upsert: true, new: true }
+  );
+
+  // Cache
+  try {
+    await redisClient.setEx(cacheKey, CACHE_TTL_SECONDS, JSON.stringify(result));
+  } catch (error) {
+    logger.warn('Redis write failed, continuing without cache', { message: error.message, cacheKey });
+  }
+
+  return result;
+}
+
 export default {
   calculateCompatibility,
+  calculateFullCompatibility,
 };
