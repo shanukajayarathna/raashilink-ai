@@ -32,6 +32,7 @@ const COLORS = {
   textPrimary: '#1C1C1C',
   textSecondary: '#555555',
 };
+const MAX_IMAGE_SIZE_BYTES = (6 * 1024 * 1024) - 1;
 
 interface FileWithPreview extends File {
   preview: string;
@@ -77,7 +78,7 @@ export default function PortfolioUpload() {
     accept: {
       'image/*': ['.jpeg', '.jpg', '.png', '.webp']
     },
-    maxSize: 5242880 // 5MB
+    maxSize: MAX_IMAGE_SIZE_BYTES
   });
 
   const removeFile = (fileName: string) => {
@@ -148,7 +149,7 @@ export default function PortfolioUpload() {
           {isDragActive ? 'Drop the files here' : 'Drag & drop photos here'}
         </Typography>
         <Typography variant="body2" color="textSecondary" sx={{ mb: 3 }}>
-          Support for JPG, PNG, WebP (Max 5MB per file)
+          Support for JPG, PNG, WebP (under 6 MB per file)
         </Typography>
         <Button
           variant="outlined"

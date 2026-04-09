@@ -3,6 +3,25 @@ import { watch } from 'node:fs';
 import path from 'node:path';
 
 const isWindows = process.platform === 'win32';
+const WATCH_WARMUP_MS = 3000;
+const SERVER_WATCH_EXTENSIONS = new Set(['.js', '.json']);
+
+function shouldRestartServer(filename = '') {
+  const normalized = String(filename).replaceAll('\\', '/');
+
+  if (!normalized) {
+    return false;
+  }
+
+  if (
+    normalized.startsWith('python/ephe/') ||
+    normalized.startsWith('python/recommendation/')
+  ) {
+    return false;
+  }
+
+  return SERVER_WATCH_EXTENSIONS.has(path.extname(normalized));
+}
 
 function createCommand(scriptName) {
   if (isWindows) {
@@ -16,6 +35,30 @@ function createCommand(scriptName) {
     command: 'npm',
     args: ['run', scriptName],
   };
+}
+
+function stopChildProcess(child, onDone = () => {}) {
+  if (!child || child.killed) {
+    onDone();
+    return;
+  }
+
+  if (isWindows) {
+    const killer = spawn('taskkill', ['/pid', String(child.pid), '/t', '/f'], {
+      stdio: 'ignore',
+      shell: false,
+    });
+
+    killer.on('exit', () => onDone());
+    killer.on('error', () => onDone());
+    return;
+  }
+
+  child.kill('SIGTERM');
+  setTimeout(() => {
+    if (!child.killed) child.kill('SIGKILL');
+    onDone();
+  }, 1500);
 }
 
 function run(name, scriptName, color, autoRestart = true) {
@@ -57,21 +100,12 @@ function run(name, scriptName, color, autoRestart = true) {
 
     process.stdout.write(`${color}[${name}] Restarting...\x1b[0m\n`);
 
-    if (child && !child.killed) {
-      child.kill('SIGTERM');
-      setTimeout(() => {
-        if (!child.killed) child.kill('SIGKILL');
-        setTimeout(() => {
-          isRestarting = false;
-          spawn_child();
-        }, 500);
-      }, 2000);
-    } else {
+    stopChildProcess(child, () => {
       setTimeout(() => {
         isRestarting = false;
         spawn_child();
-      }, 500);
-    }
+      }, 300);
+    });
   }
 
   spawn_child();
@@ -81,48 +115,33 @@ function run(name, scriptName, color, autoRestart = true) {
 
 const webRunner = run('web', 'dev:web', '\x1b[36m');
 const apiRunner = run('api', 'dev:api', '\x1b[33m');
+let serverWatchReady = false;
+let restartTimer;
 
-// Watch for backend changes and restart API
-const serverWatcher = watch('server', { recursive: true }, (eventType, filename) => {
-  if (filename && (filename.endsWith('.js') || filename.endsWith('.json'))) {
-    // Debounce: wait 500ms before restarting
-    clearTimeout(serverWatcher._timeout);
-    serverWatcher._timeout = setTimeout(() => {
-      apiRunner.restart();
-    }, 500);
-  }
-});
+setTimeout(() => {
+  serverWatchReady = true;
+}, WATCH_WARMUP_MS);
 
-// Watch for frontend changes - Vite handles hot reload automatically
-// Just ensure the process stays alive
-const srcWatcher = watch('src', { recursive: true }, (eventType, filename) => {
-  if (filename && (filename.endsWith('.tsx') || filename.endsWith('.ts'))) {
-    // Vite's HMR will handle this, so we don't need to restart
-    // Just log to show we're watching
+const serverWatcher = watch('server', { recursive: true }, (_eventType, filename) => {
+  if (!serverWatchReady || !shouldRestartServer(filename)) {
+    return;
   }
+
+  clearTimeout(restartTimer);
+  restartTimer = setTimeout(() => {
+    apiRunner.restart();
+  }, 250);
 });
 
 function shutdown() {
-  clearTimeout(serverWatcher._timeout);
+  clearTimeout(restartTimer);
   serverWatcher.close();
-  srcWatcher.close();
 
   const web = webRunner.child();
   const api = apiRunner.child();
 
-  if (web && !web.killed) {
-    web.kill('SIGTERM');
-    setTimeout(() => {
-      if (!web.killed) web.kill('SIGKILL');
-    }, 2000);
-  }
-
-  if (api && !api.killed) {
-    api.kill('SIGTERM');
-    setTimeout(() => {
-      if (!api.killed) api.kill('SIGKILL');
-    }, 2000);
-  }
+  stopChildProcess(web);
+  stopChildProcess(api);
 }
 
 process.on('SIGINT', () => {

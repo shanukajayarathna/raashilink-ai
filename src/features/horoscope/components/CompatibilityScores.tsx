@@ -64,9 +64,10 @@ interface CompatibilityScoresProps {
   dimensions: Dimension[];
   userA: { name: string; photo: string; sign: string };
   userB: { name: string; photo: string; sign: string };
+  explanation?: string;
 }
 
-const CompatibilityScores: React.FC<CompatibilityScoresProps> = ({ overallScore, dimensions, userA, userB }) => {
+const CompatibilityScores: React.FC<CompatibilityScoresProps> = ({ overallScore, dimensions, userA, userB, explanation }) => {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const getScoreColor = (score: number, max: number) => {
@@ -143,9 +144,7 @@ const CompatibilityScores: React.FC<CompatibilityScoresProps> = ({ overallScore,
               A Cosmic Connection
             </Typography>
             <Typography variant="body1" sx={{ color: COLORS.textSecondary, mb: 3, lineHeight: 1.8 }}>
-              Based on the ancient **Vedic Ashtakoota system** and our advanced **AI Personality Analysis**, 
-              your compatibility is exceptional. The alignment of your moon signs and planetary positions 
-              suggests a harmonious and spiritually fulfilling partnership.
+              {explanation || 'Based on the Vedic Ashtakoota system and the RaashiAI comparison engine, this score reflects astrological, personality, lifestyle, and family alignment.'}
             </Typography>
             <Stack direction="row" spacing={1} alignItems="center">
               <Sparkles sx={{ color: COLORS.secondary, fontSize: 18 }} />

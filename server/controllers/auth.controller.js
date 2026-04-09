@@ -6,24 +6,7 @@ import ApiError from '../utils/ApiError.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import authenticate from '../middleware/auth.js';
 import logger from '../utils/logger.js';
-
-const CITY_COORDS = {
-  Colombo: { latitude: 6.9271, longitude: 79.8612 },
-  Kandy: { latitude: 7.2906, longitude: 80.6337 },
-  Galle: { latitude: 6.0535, longitude: 80.221 },
-  Jaffna: { latitude: 9.6615, longitude: 80.0255 },
-  Negombo: { latitude: 7.2084, longitude: 79.8358 },
-  Anuradhapura: { latitude: 8.3114, longitude: 80.4037 },
-  Ratnapura: { latitude: 6.6828, longitude: 80.3992 },
-  Badulla: { latitude: 6.9895, longitude: 81.055 },
-  Matara: { latitude: 5.9549, longitude: 80.555 },
-  Batticaloa: { latitude: 7.7102, longitude: 81.6924 },
-  Trincomalee: { latitude: 8.5874, longitude: 81.2152 },
-  Kurunegala: { latitude: 7.4863, longitude: 80.3647 },
-  Gampaha: { latitude: 7.084, longitude: 80.0098 },
-  Kalutara: { latitude: 6.5854, longitude: 79.9607 },
-  Puttalam: { latitude: 8.0362, longitude: 79.8283 },
-};
+import { COMMON_SRI_LANKAN_LOCATIONS, resolveBirthPlace, suggestBirthPlaces } from '../utils/birthLocation.js';
 
 const REGISTRATION_ROLES = ['partner', 'couple', 'vendor'];
 const OTP_EXPIRY_MINUTES = 10;
@@ -111,22 +94,17 @@ function sanitizeUser(user) {
   };
 }
 
-function buildHoroscope(formData) {
+async function buildHoroscope(formData) {
   if (formData.role !== 'partner' || !formData.dob || !formData.pob) {
     return undefined;
   }
 
-  const coords = CITY_COORDS[formData.pob] || CITY_COORDS.Colombo;
+  const placeOfBirth = await resolveBirthPlace(formData.pob);
 
   return {
     dateOfBirth: new Date(formData.dob),
     timeOfBirth: formData.unknownTime ? '12:00' : formData.tob || '12:00',
-    placeOfBirth: {
-      ...coords,
-      timezone: 'Asia/Colombo',
-      city: formData.pob,
-      country: 'Sri Lanka',
-    },
+    placeOfBirth,
     knownBirthTime: !formData.unknownTime,
   };
 }
@@ -147,7 +125,10 @@ function splitHoroscopeData(horoscope) {
       moonSign: horoscope.moonSign,
       rashi: horoscope.rashi,
       nakshatra: horoscope.nakshatra,
-      zodiacSign: horoscope.moonSign || horoscope.rashi,
+      zodiacSign: horoscope.zodiacSign || horoscope.moonSign || horoscope.rashi,
+      ascendant: horoscope.ascendant,
+      planetaryPositions: horoscope.planetaryPositions || [],
+      generatedAt: horoscope.generatedAt,
     },
   };
 }
@@ -215,7 +196,7 @@ function validateRegistrationInput(input) {
     const partnerMissing = [];
     if (!input.dob || !input.pob) {
       if (!input.dob) partnerMissing.push('Enter your date of birth');
-      if (!input.pob) partnerMissing.push('Select your place of birth');
+      if (!input.pob) partnerMissing.push('Enter your town, village, or city of birth');
     }
     if (!input.unknownTime && !input.tob) {
       partnerMissing.push('Enter your birth time or mark it as unknown');
@@ -377,6 +358,20 @@ export const checkAvailability = asyncHandler(async (req, res) => {
   });
 });
 
+export const getBirthPlaceSuggestions = asyncHandler(async (req, res) => {
+  const query = String(req.query?.query || '').trim();
+  const limit = Math.max(1, Math.min(Number(req.query?.limit) || 5, 5));
+
+  const suggestions = query
+    ? await suggestBirthPlaces(query, limit)
+    : COMMON_SRI_LANKAN_LOCATIONS.slice(0, limit);
+
+  res.status(200).json({
+    success: true,
+    data: suggestions,
+  });
+});
+
 export const requestRegistrationOtp = asyncHandler(async (req, res) => {
   const { email, phone } = req.body ?? {};
   const otpTarget = phone?.trim() ? phone : email;
@@ -457,7 +452,7 @@ export const register = asyncHandler(async (req, res) => {
 
   const passwordHash = await bcrypt.hash(password, 10);
   const normalizedRole = role === 'vendor' ? 'vendor' : 'user';
-  const horoscope = buildHoroscope(req.body);
+  const horoscope = await buildHoroscope(req.body);
   const { birthData, horoscopeData } = splitHoroscopeData(horoscope);
   const verification = {
     emailVerified: false,

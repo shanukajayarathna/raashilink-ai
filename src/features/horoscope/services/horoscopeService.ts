@@ -4,6 +4,8 @@ import axiosInstance from '@/shared/config/axiosConfig';
  * Horoscope Service for RaashiLink.AI
  * Handles user birth chart retrieval and compatibility calculations.
  */
+const unwrapResponse = (response: any) => response?.data?.data ?? response?.data;
+
 const horoscopeService = {
   /**
    * Get current user's birth chart information.
@@ -11,7 +13,7 @@ const horoscopeService = {
    */
   getMyChart: async () => {
     const response = await axiosInstance.get('/horoscope/my-chart');
-    return response.data;
+    return unwrapResponse(response);
   },
 
   /**
@@ -20,7 +22,7 @@ const horoscopeService = {
    */
   generateMyChart: async () => {
     const response = await axiosInstance.post('/horoscope/generate');
-    return response.data;
+    return unwrapResponse(response);
   },
 
   /**
@@ -31,7 +33,7 @@ const horoscopeService = {
    */
   calculateCompatibility: async (userAId: string, userBId: string) => {
     const response = await axiosInstance.post('/horoscope/compatibility', { userAId, userBId });
-    return response.data;
+    return unwrapResponse(response);
   },
 
   /**
@@ -41,7 +43,7 @@ const horoscopeService = {
    */
   getCompatibilityReport: async (matchId: string) => {
     const response = await axiosInstance.get(`/horoscope/compatibility/${matchId}`);
-    return response.data;
+    return unwrapResponse(response);
   },
 };
 

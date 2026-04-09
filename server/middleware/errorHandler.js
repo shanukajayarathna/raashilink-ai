@@ -9,6 +9,9 @@ export default function errorHandler(err, req, res, next) {
   if (err?.type === 'entity.too.large' || err?.status === 413) {
     statusCode = 413;
     message = 'Uploaded data is too large. Try a smaller profile image.';
+  } else if (err?.name === 'MulterError' && err?.code === 'LIMIT_FILE_SIZE') {
+    statusCode = 413;
+    message = 'Image upload must be under 6 MB.';
   } else if (err?.name === 'ValidationError') {
     statusCode = 400;
     const validationMessages = Object.values(err.errors || {}).map((entry) => entry.message);

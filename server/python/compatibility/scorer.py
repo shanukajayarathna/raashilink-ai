@@ -66,17 +66,35 @@ def calculate_compatibility(data_a, data_b):
         "explanation": explanation
     }
 
-def main():
-    if len(sys.argv) != 2:
-        print(json.dumps({"success": False, "error": "Invalid arguments"}))
-        sys.exit(1)
+def load_input_data():
+    raw_input = " ".join(sys.argv[1:]).strip() if len(sys.argv) > 1 else sys.stdin.read().strip()
 
+    if not raw_input:
+        raise ValueError("Missing input. Expected a JSON object")
+
+    raw_input = (raw_input
+        .replace("“", '"')
+        .replace("”", '"')
+        .replace("‘", "'")
+        .replace("’", "'"))
+
+    if (raw_input.startswith("'") and raw_input.endswith("'")) or (
+        raw_input.startswith('"') and raw_input.endswith('"')
+    ):
+        raw_input = raw_input[1:-1]
+
+    return json.loads(raw_input)
+
+
+def main():
     try:
-        data = json.loads(sys.argv[1])
+        data = load_input_data()
         user_a = data.get('userA', {})
         user_b = data.get('userB', {})
         result = calculate_compatibility(user_a, user_b)
         print(json.dumps(result))
+    except json.JSONDecodeError as e:
+        print(json.dumps({"success": False, "error": f"Invalid JSON input: {e.msg}"}))
     except Exception as e:
         print(json.dumps({"success": False, "error": str(e)}))
 

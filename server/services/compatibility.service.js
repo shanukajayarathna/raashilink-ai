@@ -8,6 +8,7 @@ import Match from '../models/Match.js';
 import redisClient from '../lib/redis.js';
 import ApiError from '../utils/ApiError.js';
 import logger from '../utils/logger.js';
+import { resolvePythonCommand } from '../utils/pythonRuntime.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -118,19 +119,18 @@ function buildExplanation({ astroScore, personalityScore, lifestyleScore, family
   ].join(' ');
 }
 
-async function runHoroscopeEngine(payload) {
+async function runCompatibilityEngine(payload) {
   return new Promise((resolve, reject) => {
-    const pythonBinary = process.env.PYTHON_BIN || 'python';
-    const child = spawn(pythonBinary, [PYTHON_ENGINE_PATH], {
+    const child = spawn(resolvePythonCommand(), [SCORER_PATH], {
+      cwd: path.dirname(SCORER_PATH),
       stdio: ['pipe', 'pipe', 'pipe'],
-      timeout: 30000, // 30 second timeout
+      timeout: 30000,
     });
 
     let stdout = '';
     let stderr = '';
     let isResolved = false;
 
-    // Kill process after 30 seconds to prevent hangs
     const timeout = setTimeout(() => {
       if (!isResolved) {
         isResolved = true;
@@ -140,7 +140,7 @@ async function runHoroscopeEngine(payload) {
             if (!child.killed) child.kill('SIGKILL');
           }, 2000);
         }
-        reject(new ApiError(500, 'Horoscope engine timeout - process exceeded 30 seconds'));
+        reject(new ApiError(500, 'Compatibility engine timeout - process exceeded 30 seconds'));
       }
     }, 30000);
 
@@ -156,7 +156,7 @@ async function runHoroscopeEngine(payload) {
       if (!isResolved) {
         isResolved = true;
         clearTimeout(timeout);
-        reject(new ApiError(500, 'Failed to launch horoscope engine', { cause: error.message }));
+        reject(new ApiError(500, 'Failed to launch compatibility engine', { cause: error.message }));
       }
     });
 
@@ -164,19 +164,24 @@ async function runHoroscopeEngine(payload) {
       if (!isResolved) {
         isResolved = true;
         clearTimeout(timeout);
-        
+
         if (code !== 0) {
-          logger.warn('Horoscope engine exited with non-zero code', { code, stderr });
-          reject(new ApiError(500, 'Horoscope engine execution failed', { stderr, exitCode: code }));
+          logger.warn('Compatibility engine exited with non-zero code', { code, stderr });
+          reject(new ApiError(500, 'Compatibility engine execution failed', { stderr, exitCode: code }));
           return;
         }
 
         try {
-          const result = JSON.parse(stdout);
+          const output = stdout.trim().split(/\r?\n/).filter(Boolean).at(-1) || '{}';
+          const result = JSON.parse(output);
+          if (result.success === false) {
+            reject(new ApiError(500, result.error || 'Compatibility engine returned an error'));
+            return;
+          }
           resolve(result);
         } catch (error) {
-          logger.error('Invalid horoscope engine response', { stdout, stderr });
-          reject(new ApiError(500, 'Invalid horoscope engine response', { stdout, stderr }));
+          logger.error('Invalid compatibility engine response', { stdout, stderr });
+          reject(new ApiError(500, 'Invalid compatibility engine response', { stdout, stderr }));
         }
       }
     });
@@ -188,7 +193,7 @@ async function runHoroscopeEngine(payload) {
       if (!isResolved) {
         isResolved = true;
         clearTimeout(timeout);
-        reject(new ApiError(500, 'Failed to send data to horoscope engine', { cause: error.message }));
+        reject(new ApiError(500, 'Failed to send data to compatibility engine', { cause: error.message }));
       }
     }
   });
@@ -252,13 +257,16 @@ export async function calculateCompatibility({ userAId, userBId }) {
     });
 
     try {
-      const astroResponseRaw = await runHoroscopeEngine({
+      const astroResponseRaw = await runCompatibilityEngine({
         userA: userAHoroscope,
         userB: userBHoroscope,
       });
 
-      astroScore = normalizeScore(astroResponseRaw.totalScore, 36);
-      astroResponse = astroResponseRaw;
+      astroScore = normalizeScore(astroResponseRaw.gunaTotal ?? astroResponseRaw.totalScore ?? 18, 36);
+      astroResponse = {
+        ...astroResponseRaw,
+        subScores: astroResponseRaw.gunaDetails ?? astroResponseRaw.subScores ?? {},
+      };
     } catch (error) {
       logger.error('Horoscope engine failed, using fallback', {
         userAId: String(userAId),

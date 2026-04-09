@@ -12,7 +12,22 @@ import {
 } from '../../controllers/users.controller.js';
 
 const router = Router();
-const upload = multer({ storage: multer.memoryStorage() });
+const MAX_IMAGE_SIZE_BYTES = (6 * 1024 * 1024) - 1;
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: MAX_IMAGE_SIZE_BYTES,
+  },
+  fileFilter: (_req, file, cb) => {
+    if (file?.mimetype?.startsWith('image/')) {
+      cb(null, true);
+      return;
+    }
+
+    cb(new Error('Only image files are allowed.'));
+  },
+});
 
 router.use(authenticate);
 router.get('/profile', getProfile);

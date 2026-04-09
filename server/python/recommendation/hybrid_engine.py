@@ -43,13 +43,29 @@ def hybrid_recommend(user_profile, top_n=10, exclude_ids=None, interaction_count
     
     return recommendations[:top_n]
 
+def load_input_data():
+    raw_input = " ".join(sys.argv[1:]).strip() if len(sys.argv) > 1 else sys.stdin.read().strip()
+
+    if not raw_input:
+        raise ValueError("Missing input. Expected a JSON object")
+
+    raw_input = (raw_input
+        .replace("“", '"')
+        .replace("”", '"')
+        .replace("‘", "'")
+        .replace("’", "'"))
+
+    if (raw_input.startswith("'") and raw_input.endswith("'")) or (
+        raw_input.startswith('"') and raw_input.endswith('"')
+    ):
+        raw_input = raw_input[1:-1]
+
+    return json.loads(raw_input)
+
+
 def main():
-    if len(sys.argv) != 2:
-        print(json.dumps({"success": False, "error": "Invalid arguments"}))
-        sys.exit(1)
-    
     try:
-        data = json.loads(sys.argv[1])
+        data = load_input_data()
         user_profile = data.get('userProfile', {})
         top_n = data.get('topN', 10)
         exclude_ids = data.get('excludeIds', [])
@@ -61,8 +77,8 @@ def main():
             "success": True,
             "recommendations": recommendations
         }))
-    except json.JSONDecodeError:
-        print(json.dumps({"success": False, "error": "Invalid JSON input"}))
+    except json.JSONDecodeError as e:
+        print(json.dumps({"success": False, "error": f"Invalid JSON input: {e.msg}"}))
     except Exception as e:
         print(json.dumps({"success": False, "error": str(e)}))
 

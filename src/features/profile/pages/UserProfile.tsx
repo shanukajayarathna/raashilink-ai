@@ -112,6 +112,7 @@ export default function UserProfile() {
   const [profileData, setProfileData] = useState<any>(null);
   const [editing, setEditing] = useState(false);
   const [editData, setEditData] = useState<any>({});
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [uploadingCover, setUploadingCover] = useState(false);
 
   useEffect(() => {
@@ -192,26 +193,38 @@ export default function UserProfile() {
 
   const handlePhotoUpload = async (file: File) => {
     try {
-      setLoading(true);
+      setUploadingPhoto(true);
       const formData = new FormData();
       formData.append('photo', file);
-      
+
       const response = await userService.uploadPhoto(formData);
-      
+
       if (response && response.profilePic) {
         dispatch(updateUser({ profilePic: response.profilePic }));
-        setProfileData(prev => prev ? {
+        setProfileData((prev: any) => {
+          if (!prev) {
+            return null;
+          }
+
+          const remainingPhotos = prev.photos?.filter((p: any) => !p.isMain) || [];
+          return {
+            ...prev,
+            profilePic: response.profilePic,
+            photos: [{ id: 1, url: response.profilePic, isMain: true }, ...remainingPhotos],
+          };
+        });
+        setEditData((prev: any) => ({
           ...prev,
-          photos: [{ id: 1, url: response.profilePic, isMain: true }, ...(prev.photos?.filter((p: any) => !p.isMain) || [])]
-        } : null);
+          profilePic: response.profilePic,
+        }));
       }
-      
+
       dispatch(showToast({ type: 'success', message: 'Profile picture updated successfully!' }));
     } catch (error: any) {
       console.error('Error uploading photo:', error);
       dispatch(showToast({ type: 'error', message: error.response?.data?.message || 'Failed to upload photo. Please try again.' }));
     } finally {
-      setLoading(false);
+      setUploadingPhoto(false);
     }
   };
 
@@ -311,7 +324,8 @@ export default function UserProfile() {
           <Box sx={{ position: 'absolute', top: { xs: -60, md: -80 }, left: { xs: '50%', md: 48 }, transform: { xs: 'translateX(-50%)', md: 'none' } }}>
             <ProfilePhotoUpload 
               currentPhoto={profileData.profilePic || profileData.photos.find((p: any) => p.isMain)?.url} 
-              onUpload={handlePhotoUpload} 
+              onUpload={handlePhotoUpload}
+              isUploading={uploadingPhoto}
             />
           </Box>
 

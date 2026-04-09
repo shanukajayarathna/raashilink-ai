@@ -59,6 +59,7 @@ import { useDispatch } from 'react-redux';
 import { setLoading, showToast } from '@/app/store/uiSlice';
 import authService from '@/features/auth/services/authService';
 import MandalaBackground from '@/components/MandalaBackground';
+import RegistrationImageCropper from '@/features/auth/components/RegistrationImageCropper';
 
 // --- Design Constants ---
 const COLORS = {
@@ -71,10 +72,29 @@ const COLORS = {
   textSecondary: '#555555',
 };
 
-const SRI_LANKAN_CITIES = [
-  'Colombo', 'Kandy', 'Galle', 'Jaffna', 'Negombo', 'Anuradhapura', 'Ratnapura', 'Badulla', 'Matara', 'Batticaloa', 'Trincomalee', 'Kurunegala', 'Gampaha', 'Kalutara', 'Puttalam'
+const SRI_LANKAN_DISTRICTS = [
+  'Ampara', 'Anuradhapura', 'Badulla', 'Batticaloa', 'Colombo', 'Galle', 'Gampaha', 'Hambantota', 'Jaffna', 'Kalutara',
+  'Kandy', 'Kegalle', 'Kilinochchi', 'Kurunegala', 'Mannar', 'Matale', 'Matara', 'Monaragala', 'Mullaitivu',
+  'Nuwara Eliya', 'Polonnaruwa', 'Puttalam', 'Ratnapura', 'Trincomalee', 'Vavuniya'
 ];
 const SRI_LANKA_MOBILE_REGEX = /^7\d{8}$/;
+const MAX_IMAGE_SIZE_BYTES = (6 * 1024 * 1024) - 1;
+const BIRTH_CHART_MESSAGES = [
+  'Finding your birth place…',
+  'Calculating your chart…',
+  'Almost ready…',
+];
+const SRI_LANKAN_RELIGIONS = ['Buddhist', 'Hindu', 'Muslim', 'Christian', 'Catholic', 'Other'];
+const SRI_LANKAN_ETHNICITIES = [
+  'Sinhalese',
+  'Sri Lankan Tamil',
+  'Indian Tamil',
+  'Sri Lankan Moor',
+  'Burgher',
+  'Malay',
+  'Vedda',
+  'Other',
+];
 
 function normalizeSriLankanPhoneInput(value: string) {
   const digits = value.replace(/\D/g, '');
@@ -149,12 +169,17 @@ const RegisterPage = () => {
     });
 
   const [showPassword, setShowPassword] = useState(false);
+  const [selectedProfileImageFile, setSelectedProfileImageFile] = useState<File | null>(null);
+  const [profileImageCropOpen, setProfileImageCropOpen] = useState(false);
+  const [chartMessageIndex, setChartMessageIndex] = useState(0);
   const [passwordStrength, setPasswordStrength] = useState(0);
   const [availability, setAvailability] = useState({
     emailAvailable: null as boolean | null,
     phoneAvailable: null as boolean | null,
     checking: false,
   });
+  const [birthPlaceSuggestions, setBirthPlaceSuggestions] = useState<string[]>(SRI_LANKAN_DISTRICTS.slice(0, 5));
+  const [loadingBirthPlaceSuggestions, setLoadingBirthPlaceSuggestions] = useState(false);
 
   // Debounced availability check
   useEffect(() => {
@@ -185,6 +210,35 @@ const RegisterPage = () => {
     return () => clearTimeout(timer);
   }, [formData.email, formData.phone]);
 
+  useEffect(() => {
+    const query = String(formData.pob || '').trim();
+
+    if (!query) {
+      setBirthPlaceSuggestions(SRI_LANKAN_DISTRICTS.slice(0, 5));
+      setLoadingBirthPlaceSuggestions(false);
+      return;
+    }
+
+    const timer = window.setTimeout(async () => {
+      setLoadingBirthPlaceSuggestions(true);
+      try {
+        const suggestions = await authService.searchBirthPlaces(query, 5);
+        setBirthPlaceSuggestions(
+          suggestions.length > 0
+            ? suggestions
+            : SRI_LANKAN_DISTRICTS.filter((place) => place.toLowerCase().includes(query.toLowerCase())).slice(0, 5)
+        );
+      } catch (lookupError) {
+        console.error('Birth place suggestion lookup failed:', lookupError);
+        setBirthPlaceSuggestions(SRI_LANKAN_DISTRICTS.filter((place) => place.toLowerCase().includes(query.toLowerCase())).slice(0, 5));
+      } finally {
+        setLoadingBirthPlaceSuggestions(false);
+      }
+    }, 300);
+
+    return () => window.clearTimeout(timer);
+  }, [formData.pob]);
+
   const getSteps = () => {
     const baseSteps = ['Account Type', 'Basic Info'];
     if (formData.role === 'partner') {
@@ -198,6 +252,8 @@ const RegisterPage = () => {
   };
 
   const steps = getSteps();
+  const birthPreviewStarted = Boolean(formData.dob || formData.tob || formData.pob || formData.unknownTime);
+  const birthPreviewActive = Boolean(formData.dob && formData.pob && (formData.tob || formData.unknownTime));
   const normalizedPhoneInput = normalizeSriLankanPhoneInput(formData.phone);
   const phoneHasInput = normalizedPhoneInput.length > 0;
   const phoneIsValid = isValidSriLankanPhoneInput(formData.phone);
@@ -212,29 +268,48 @@ const RegisterPage = () => {
   const handleProfilePicChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      // Check file size (2MB limit)
-      const maxSize = 2 * 1024 * 1024; // 2MB
-      if (file.size > maxSize) {
-        setError('Profile picture must be less than 2MB.');
+      if (file.size >= MAX_IMAGE_SIZE_BYTES) {
+        setError('Profile picture must be under 6 MB.');
         return;
       }
 
-      // Check file type
       if (!file.type.startsWith('image/')) {
         setError('Please select a valid image file.');
         return;
       }
 
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setFormData({ ...formData, profilePic: reader.result as string });
-        setError(null); // Clear any previous error
-      };
-      reader.readAsDataURL(file);
+      setSelectedProfileImageFile(file);
+      setProfileImageCropOpen(true);
+      setError(null);
     }
   };
 
+  const handleProfilePicCropComplete = (croppedImage: string) => {
+    setFormData((prev) => ({ ...prev, profilePic: croppedImage }));
+    setSelectedProfileImageFile(null);
+    setProfileImageCropOpen(false);
+    setError(null);
+  };
+
+  const handleProfilePicCropClose = () => {
+    setSelectedProfileImageFile(null);
+    setProfileImageCropOpen(false);
+  };
+
   const [passwordMatch, setPasswordMatch] = useState(false);
+
+  useEffect(() => {
+    if (!birthPreviewActive) {
+      setChartMessageIndex(0);
+      return;
+    }
+
+    const interval = window.setInterval(() => {
+      setChartMessageIndex((prev) => (prev + 1) % BIRTH_CHART_MESSAGES.length);
+    }, 1500);
+
+    return () => window.clearInterval(interval);
+  }, [birthPreviewActive]);
 
   // Password strength calculation
   useEffect(() => {
@@ -543,30 +618,42 @@ const RegisterPage = () => {
       </Typography>
       
       <Box sx={{ display: 'flex', justifyContent: 'center', mb: 6 }}>
-        <Badge
-          overlap="circular"
-          anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-          badgeContent={
-            <IconButton
-              component="label"
-              sx={{ 
-                bgcolor: COLORS.primary, 
-                color: 'white',
-                '&:hover': { bgcolor: COLORS.secondary }
-              }}
-            >
-              <PhotoCamera />
-              <input hidden accept="image/*" type="file" onChange={handleProfilePicChange} />
-            </IconButton>
-          }
-        >
-          <Avatar 
-            src={formData.profilePic || undefined} 
-            sx={{ width: 120, height: 120, border: `4px solid ${COLORS.cream}`, boxShadow: '0 8px 24px rgba(0,0,0,0.1)' }}
+        <>
+          <Badge
+            overlap="circular"
+            anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+            badgeContent={
+              <IconButton
+                component="label"
+                sx={{ 
+                  bgcolor: COLORS.primary, 
+                  color: 'white',
+                  '&:hover': { bgcolor: COLORS.secondary }
+                }}
+              >
+                <PhotoCamera />
+                <input hidden accept="image/*" type="file" onChange={handleProfilePicChange} />
+              </IconButton>
+            }
           >
-            {!formData.profilePic && <AccountCircle sx={{ fontSize: 80 }} />}
-          </Avatar>
-        </Badge>
+            <Avatar 
+              src={formData.profilePic || undefined} 
+              sx={{ width: 120, height: 120, border: `4px solid ${COLORS.cream}`, boxShadow: '0 8px 24px rgba(0,0,0,0.1)' }}
+            >
+              {!formData.profilePic && <AccountCircle sx={{ fontSize: 80 }} />}
+            </Avatar>
+          </Badge>
+
+          <RegistrationImageCropper
+            open={profileImageCropOpen}
+            onClose={handleProfilePicCropClose}
+            imageFile={selectedProfileImageFile}
+            onCropComplete={handleProfilePicCropComplete}
+            cropShape="round"
+            aspectRatio={1}
+            title="Crop Profile Picture"
+          />
+        </>
       </Box>
 
       <Grid container spacing={3}>
@@ -669,28 +756,114 @@ const RegisterPage = () => {
             <Box>
               <TextField fullWidth type="time" label="Time of Birth" disabled={formData.unknownTime} InputLabelProps={{ shrink: true }} value={formData.tob} onChange={(e) => setFormData({ ...formData, tob: e.target.value })} InputProps={{ startAdornment: <InputAdornment position="start"><AccessTime /></InputAdornment> }} sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} error={!!fieldErrors.tob} helperText={fieldErrors.tob} />
               <FormControlLabel control={<Checkbox checked={formData.unknownTime} onChange={(e) => setFormData({ ...formData, unknownTime: e.target.checked })} />} label="I don't know my exact birth time" />
+              {formData.unknownTime && (
+                <Alert severity="warning" sx={{ mt: 1.5, borderRadius: '12px' }}>
+                  We can still generate your horoscope using an approximate time, but the accuracy of the ascendant and house placements may be lower.
+                </Alert>
+              )}
             </Box>
-            <Autocomplete freeSolo options={SRI_LANKAN_CITIES} renderInput={(params) => <TextField {...params} label="Place of Birth" InputProps={{ ...params.InputProps, startAdornment: <InputAdornment position="start"><LocationOn /></InputAdornment> }} sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} error={!!fieldErrors.pob} helperText={fieldErrors.pob} />} value={formData.pob} onChange={(_, v) => setFormData({ ...formData, pob: v || '' })} onInputChange={(_, v) => setFormData({ ...formData, pob: v || '' })} />
+            <Autocomplete
+              freeSolo
+              filterOptions={(options) => options}
+              options={birthPlaceSuggestions}
+              loading={loadingBirthPlaceSuggestions}
+              value={formData.pob}
+              onChange={(_, v) => setFormData((prev) => ({ ...prev, pob: v || '' }))}
+              onInputChange={(_, v) => setFormData((prev) => ({ ...prev, pob: v || '' }))}
+              noOptionsText="No matching Sri Lankan places found"
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  label="Town / Village / City of Birth"
+                  placeholder="Type any Sri Lankan birthplace"
+                  InputProps={{
+                    ...params.InputProps,
+                    startAdornment: <InputAdornment position="start"><LocationOn /></InputAdornment>,
+                    endAdornment: (
+                      <>
+                        {loadingBirthPlaceSuggestions ? <CircularProgress color="inherit" size={18} sx={{ mr: 1 }} /> : null}
+                        {params.InputProps.endAdornment}
+                      </>
+                    ),
+                  }}
+                  sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }}
+                  error={!!fieldErrors.pob}
+                  helperText={fieldErrors.pob || 'Start typing and we will suggest the top Sri Lankan towns and cities using OpenStreetMap.'}
+                />
+              )}
+            />
           </Stack>
         </Grid>
         <Grid size={{ xs: 12, md: 6 }}>
-          <Paper sx={{ p: 3, borderRadius: '24px', bgcolor: COLORS.cream, height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', border: `1px dashed ${COLORS.secondary}` }}>
-            <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 700 }}>Birth Chart Preview</Typography>
-            <Box sx={{ width: 180, height: 180, position: 'relative' }}>
-              <motion.svg viewBox="0 0 100 100" style={{ width: '100%', height: '100%' }}>
-                <rect x="5" y="5" width="90" height="90" fill="none" stroke={COLORS.secondary} strokeWidth="1" />
-                <line x1="5" y1="5" x2="95" y2="95" stroke={COLORS.secondary} strokeWidth="1" />
-                <line x1="95" y1="5" x2="5" y2="95" stroke={COLORS.secondary} strokeWidth="1" />
-                <line x1="50" y1="5" x2="95" y2="50" stroke={COLORS.secondary} strokeWidth="1" />
-                <line x1="95" y1="50" x2="50" y2="95" stroke={COLORS.secondary} strokeWidth="1" />
-                <line x1="50" y1="95" x2="5" y2="50" stroke={COLORS.secondary} strokeWidth="1" />
-                <line x1="5" y1="50" x2="50" y2="5" stroke={COLORS.secondary} strokeWidth="1" />
-              </motion.svg>
-              {formData.dob && (
-                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ position: 'absolute', top: '45%', left: '45%', fontSize: '10px', fontWeight: 'bold', color: COLORS.primary }}>ASC</motion.div>
+          <Paper
+            sx={{
+              p: 3,
+              borderRadius: '24px',
+              bgcolor: COLORS.cream,
+              height: '100%',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              border: `1px dashed ${COLORS.secondary}`,
+            }}
+          >
+            <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 700 }}>
+              Birth Chart Preview
+            </Typography>
+
+            <Box sx={{ width: 190, height: 190, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {birthPreviewActive && (
+                <CircularProgress
+                  size={170}
+                  thickness={2.5}
+                  sx={{
+                    position: 'absolute',
+                    color: COLORS.primary,
+                    opacity: 0.35,
+                  }}
+                />
               )}
+
+              <motion.div
+                animate={birthPreviewActive ? { scale: [1, 1.04, 1] } : { scale: 1 }}
+                transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
+                style={{
+                  width: 130,
+                  height: 130,
+                  borderRadius: 18,
+                  border: `1px solid ${COLORS.secondary}`,
+                  background: 'rgba(255,255,255,0.85)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  boxShadow: '0 10px 24px rgba(139,26,46,0.08)'
+                }}
+              >
+                <motion.svg
+                  viewBox="0 0 100 100"
+                  style={{ width: '88%', height: '88%' }}
+                  animate={birthPreviewActive ? { opacity: [0.55, 1, 0.55] } : { opacity: 0.55 }}
+                  transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
+                >
+                  <rect x="8" y="8" width="84" height="84" fill="none" stroke={COLORS.secondary} strokeWidth="1.3" />
+                  <line x1="8" y1="8" x2="92" y2="92" stroke={COLORS.secondary} strokeWidth="1.3" />
+                  <line x1="92" y1="8" x2="8" y2="92" stroke={COLORS.secondary} strokeWidth="1.3" />
+                  <line x1="50" y1="8" x2="92" y2="50" stroke={COLORS.secondary} strokeWidth="1.3" />
+                  <line x1="92" y1="50" x2="50" y2="92" stroke={COLORS.secondary} strokeWidth="1.3" />
+                  <line x1="50" y1="92" x2="8" y2="50" stroke={COLORS.secondary} strokeWidth="1.3" />
+                  <line x1="8" y1="50" x2="50" y2="8" stroke={COLORS.secondary} strokeWidth="1.3" />
+                </motion.svg>
+              </motion.div>
             </Box>
-            <Typography variant="caption" sx={{ mt: 2, color: COLORS.textSecondary, textAlign: 'center' }}>AI is calculating your planetary positions...</Typography>
+
+            <Typography variant="caption" sx={{ mt: 2, color: COLORS.textSecondary, textAlign: 'center', display: 'block' }}>
+              {!birthPreviewStarted
+                ? 'Add your birth date, time, and birthplace to start the preview.'
+                : birthPreviewActive
+                  ? BIRTH_CHART_MESSAGES[chartMessageIndex]
+                  : 'Complete the remaining birth details to start the calculation.'}
+            </Typography>
           </Paper>
         </Grid>
       </Grid>
@@ -828,8 +1001,32 @@ const RegisterPage = () => {
         <Grid size={{ xs: 12, md: 6 }}>
           <Stack spacing={3}>
             <Autocomplete options={['Everyone', 'Matches Only', 'Private']} renderInput={(params) => <TextField {...params} label="Who can see your profile?" sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} />} value={formData.visibility} onChange={(_, v) => setFormData({ ...formData, visibility: v || 'Everyone' })} />
-            <TextField fullWidth label="Religion" value={formData.religion} onChange={(e) => setFormData({ ...formData, religion: e.target.value })} sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} />
-            <TextField fullWidth label="Ethnicity" value={formData.ethnicity} onChange={(e) => setFormData({ ...formData, ethnicity: e.target.value })} sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} />
+            <TextField
+              fullWidth
+              select
+              label="Religion"
+              value={formData.religion}
+              onChange={(e) => setFormData({ ...formData, religion: e.target.value })}
+              helperText="Saved to your user profile for better cultural matching."
+              sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }}
+            >
+              {SRI_LANKAN_RELIGIONS.map((option) => (
+                <MenuItem key={option} value={option}>{option}</MenuItem>
+              ))}
+            </TextField>
+            <TextField
+              fullWidth
+              select
+              label="Ethnicity"
+              value={formData.ethnicity}
+              onChange={(e) => setFormData({ ...formData, ethnicity: e.target.value })}
+              helperText="Saved to your user profile and can be changed later."
+              sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }}
+            >
+              {SRI_LANKAN_ETHNICITIES.map((option) => (
+                <MenuItem key={option} value={option}>{option}</MenuItem>
+              ))}
+            </TextField>
             <Box>
               <Typography variant="caption">Location Radius: {formData.locationRadius}km</Typography>
               <Slider value={formData.locationRadius} onChange={(_, v) => setFormData({ ...formData, locationRadius: v as number })} min={5} max={200} sx={{ color: COLORS.accent }} />

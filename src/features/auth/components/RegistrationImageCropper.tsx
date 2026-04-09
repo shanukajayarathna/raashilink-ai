@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -8,6 +8,7 @@ import {
   Box,
   Typography,
   IconButton,
+  Slider,
   Stack,
   Alert
 } from '@mui/material';
@@ -20,7 +21,7 @@ import {
   X
 } from 'lucide-react';
 import Cropper from 'react-easy-crop';
-import { Area, Point } from 'react-easy-crop/types';
+import type { Area, Point } from 'react-easy-crop';
 
 interface RegistrationImageCropperProps {
   open: boolean;
@@ -30,6 +31,16 @@ interface RegistrationImageCropperProps {
   aspectRatio?: number;
   cropShape?: 'rect' | 'round';
   title?: string;
+}
+
+const MIN_ZOOM = 1;
+const MAX_ZOOM = 4;
+const ZOOM_SLIDER_STEP = 0.01;
+const ZOOM_BUTTON_STEP = 0.05;
+const ZOOM_SPEED = 0.15;
+
+function clampZoom(value: number) {
+  return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Number(value.toFixed(2))));
 }
 
 const RegistrationImageCropper: React.FC<RegistrationImageCropperProps> = ({
@@ -46,13 +57,24 @@ const RegistrationImageCropper: React.FC<RegistrationImageCropperProps> = ({
   const [rotation, setRotation] = useState(0);
   const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const imageUrl = useMemo(() => (imageFile ? URL.createObjectURL(imageFile) : null), [imageFile]);
+
+  useEffect(() => () => {
+    if (imageUrl) {
+      URL.revokeObjectURL(imageUrl);
+    }
+  }, [imageUrl]);
 
   const onCropChange = useCallback((crop: Point) => {
     setCrop(crop);
   }, []);
 
-  const onZoomChange = useCallback((zoom: number) => {
-    setZoom(zoom);
+  const onZoomChange = useCallback((nextZoom: number) => {
+    setZoom(clampZoom(nextZoom));
+  }, []);
+
+  const adjustZoom = useCallback((delta: number) => {
+    setZoom((currentZoom) => clampZoom(currentZoom + delta));
   }, []);
 
   const onCropAreaChange = useCallback((croppedArea: Area, croppedAreaPixels: Area) => {
@@ -162,9 +184,12 @@ const RegistrationImageCropper: React.FC<RegistrationImageCropperProps> = ({
           <Box sx={{ position: 'relative', width: '100%', height: 400, mb: 2 }}>
             {imageFile && (
               <Cropper
-                image={URL.createObjectURL(imageFile)}
+                image={imageUrl || undefined}
                 crop={crop}
                 zoom={zoom}
+                minZoom={MIN_ZOOM}
+                maxZoom={MAX_ZOOM}
+                zoomSpeed={ZOOM_SPEED}
                 aspect={aspectRatio}
                 rotation={rotation}
                 cropShape={cropShape}
@@ -186,31 +211,33 @@ const RegistrationImageCropper: React.FC<RegistrationImageCropperProps> = ({
               <Stack direction="row" spacing={1} alignItems="center">
                 <IconButton
                   size="small"
-                  onClick={() => setZoom(Math.max(1, zoom - 0.1))}
-                  disabled={zoom <= 1}
+                  onClick={() => adjustZoom(-ZOOM_BUTTON_STEP)}
+                  disabled={zoom <= MIN_ZOOM}
                   sx={{ color: '#8B1A2E' }}
                 >
                   <ZoomOut size={16} />
                 </IconButton>
-                <Box sx={{ flex: 1, px: 1 }}>
-                  <input
-                    type="range"
-                    min={1}
-                    max={3}
-                    step={0.1}
-                    value={zoom}
-                    onChange={(e) => setZoom(Number(e.target.value))}
-                    style={{ width: '100%' }}
-                  />
-                </Box>
+                <Slider
+                  value={zoom}
+                  min={MIN_ZOOM}
+                  max={MAX_ZOOM}
+                  step={ZOOM_SLIDER_STEP}
+                  onChange={(_, value) => setZoom(clampZoom(value as number))}
+                  valueLabelDisplay="auto"
+                  valueLabelFormat={(value) => `${value.toFixed(2)}x`}
+                  sx={{ flex: 1, px: 1 }}
+                />
                 <IconButton
                   size="small"
-                  onClick={() => setZoom(Math.min(3, zoom + 0.1))}
-                  disabled={zoom >= 3}
+                  onClick={() => adjustZoom(ZOOM_BUTTON_STEP)}
+                  disabled={zoom >= MAX_ZOOM}
                   sx={{ color: '#8B1A2E' }}
                 >
                   <ZoomIn size={16} />
                 </IconButton>
+                <Typography variant="caption" sx={{ minWidth: 48, textAlign: 'right' }}>
+                  {zoom.toFixed(2)}x
+                </Typography>
               </Stack>
             </Box>
 

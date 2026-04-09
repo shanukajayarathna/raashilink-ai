@@ -16,6 +16,13 @@ const authService = {
     return response.data?.data || {};
   },
 
+  searchBirthPlaces: async (query: string, limit = 5) => {
+    const response = await axiosInstance.get('/auth/birth-place-suggestions', {
+      params: { query, limit },
+    });
+    return response.data?.data || [];
+  },
+
   requestRegistrationOtp: async (payload: any) => {
     const response = await axiosInstance.post('/auth/request-registration-otp', payload);
     return response.data;

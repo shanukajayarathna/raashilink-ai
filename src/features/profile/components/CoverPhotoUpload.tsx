@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { 
   Box, 
   Typography, 
@@ -9,6 +9,7 @@ import {
   DialogContent, 
   DialogActions,
   CircularProgress,
+  Alert,
   alpha
 } from '@mui/material';
 import { Camera, Upload, Check } from 'lucide-react';
@@ -30,39 +31,71 @@ const COLORS = {
   textPrimary: '#1C1C1C',
   textSecondary: '#555555',
 };
+const MAX_IMAGE_SIZE_BYTES = (6 * 1024 * 1024) - 1;
 
 export default function CoverPhotoUpload({ currentPhoto, onUpload, isUploading = false }: CoverPhotoUploadProps) {
   const [open, setOpen] = useState(false);
+  const [cropperOpen, setCropperOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [croppedImage, setCroppedImage] = useState<string | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const previewUrl = useMemo(() => (selectedFile ? URL.createObjectURL(selectedFile) : null), [selectedFile]);
+
+  useEffect(() => () => {
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+    }
+  }, [previewUrl]);
 
   const handleFileSelect = (file: File) => {
+    if (file.size >= MAX_IMAGE_SIZE_BYTES) {
+      setUploadError('Please choose an image under 6 MB.');
+      return;
+    }
+
+    setUploadError(null);
+    setCroppedImage(null);
     setSelectedFile(file);
+    setCropperOpen(true);
   };
 
   const handleCropComplete = (croppedImageData: string) => {
     setCroppedImage(croppedImageData);
+    setCropperOpen(false);
+  };
+
+  const handleCropperClose = () => {
+    setCropperOpen(false);
   };
 
   const handleUpload = async () => {
+    if (!croppedImage && selectedFile) {
+      setCropperOpen(true);
+      return;
+    }
+
     if (croppedImage) {
-      // Convert base64 to blob
       const response = await fetch(croppedImage);
       const blob = await response.blob();
+      if (blob.size >= MAX_IMAGE_SIZE_BYTES) {
+        setUploadError('The cropped image is still too large. Please crop more tightly or choose a smaller image.');
+        return;
+      }
+
       const file = new File([blob], 'cover-photo.jpg', { type: 'image/jpeg' });
-      
+
       await onUpload(file);
-      setOpen(false);
-      setSelectedFile(null);
-      setCroppedImage(null);
+      handleClose();
     }
   };
 
   const handleClose = () => {
     setOpen(false);
+    setCropperOpen(false);
     setSelectedFile(null);
     setCroppedImage(null);
+    setUploadError(null);
   };
 
   return (
@@ -94,6 +127,7 @@ export default function CoverPhotoUpload({ currentPhoto, onUpload, isUploading =
         </DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, py: 2 }}>
+            {uploadError && <Alert severity="error" sx={{ width: '100%' }}>{uploadError}</Alert>}
             {!selectedFile ? (
               <Box 
                 sx={{ 
@@ -113,7 +147,7 @@ export default function CoverPhotoUpload({ currentPhoto, onUpload, isUploading =
                 <Stack alignItems="center" spacing={1} sx={{ color: COLORS.textSecondary }}>
                   <Upload size={40} />
                   <Typography variant="h6" sx={{ fontWeight: 700 }}>Select Cover Photo</Typography>
-                  <Typography variant="caption">JPG, PNG or GIF. Max 5MB. Recommended: 1200x400px</Typography>
+                  <Typography variant="caption">JPG, PNG or GIF. Under 6 MB. Recommended: 1200x400px</Typography>
                 </Stack>
                 <input
                   type="file"
@@ -127,20 +161,61 @@ export default function CoverPhotoUpload({ currentPhoto, onUpload, isUploading =
                 />
               </Box>
             ) : (
-              <ImageCropper
-                image={URL.createObjectURL(selectedFile)}
-                onCropComplete={handleCropComplete}
-                aspect={3}
-                cropShape="rect"
-              />
+              <Stack spacing={2} alignItems="center" sx={{ width: '100%' }}>
+                <Box
+                  component="img"
+                  src={croppedImage || previewUrl || currentPhoto || undefined}
+                  alt="Cover preview"
+                  sx={{
+                    width: '100%',
+                    maxWidth: 500,
+                    height: 180,
+                    objectFit: 'cover',
+                    borderRadius: 2,
+                    border: `2px solid ${COLORS.secondary}`
+                  }}
+                />
+                <Typography variant="body2" sx={{ color: COLORS.textSecondary, textAlign: 'center' }}>
+                  Preview your cropped cover image before saving it to your profile.
+                </Typography>
+                <Stack direction="row" spacing={1}>
+                  <Button variant="outlined" onClick={() => setCropperOpen(true)}>
+                    Adjust Crop
+                  </Button>
+                  <Button variant="text" onClick={() => fileInputRef.current?.click()}>
+                    Choose Another
+                  </Button>
+                </Stack>
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) handleFileSelect(file);
+                  }}
+                  accept="image/*"
+                  style={{ display: 'none' }}
+                />
+              </Stack>
             )}
+
+            <ImageCropper
+              open={cropperOpen && Boolean(selectedFile)}
+              onClose={handleCropperClose}
+              imageSrc={previewUrl}
+              onCropComplete={handleCropComplete}
+              aspectRatio={3}
+              cropShape="rect"
+              title="Crop Cover Photo"
+              uploading={isUploading}
+            />
           </Box>
         </DialogContent>
         <DialogActions sx={{ p: 3 }}>
           <Button onClick={handleClose} sx={{ color: COLORS.textSecondary, fontWeight: 700 }}>Cancel</Button>
           <Button 
             onClick={handleUpload} 
-            disabled={!croppedImage || isUploading}
+            disabled={!selectedFile || !croppedImage || isUploading}
             variant="contained"
             startIcon={isUploading ? <CircularProgress size={20} /> : <Check size={20} />}
             sx={{ 

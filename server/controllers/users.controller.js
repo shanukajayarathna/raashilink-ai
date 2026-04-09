@@ -4,6 +4,7 @@ import ApiError from '../utils/ApiError.js';
 import bcrypt from 'bcrypt';
 import AuthOtp from '../models/AuthOtp.js';
 import logger from '../utils/logger.js';
+import { resolveBirthPlace } from '../utils/birthLocation.js';
 
 const OTP_EXPIRY_MINUTES = 10;
 const SRI_LANKA_MOBILE_REGEX = /^7\d{8}$/;
@@ -122,11 +123,21 @@ function formatDate(value) {
   }).format(new Date(value));
 }
 
+function fileToDataUri(file) {
+  if (!file?.buffer || !file?.mimetype?.startsWith('image/')) {
+    throw new ApiError(400, 'Please upload a valid image file.');
+  }
+
+  return `data:${file.mimetype};base64,${file.buffer.toString('base64')}`;
+}
+
 function mapProfile(user) {
   const mainPhoto = user.photos?.find((photo) => photo.isMain)?.url || user.personalInfo?.profilePic;
   const personality = user.personality || {};
 
   return {
+    _id: user._id,
+    id: user._id,
     profileType: user.profileType,
     name: user.name,
     age: user.age || null,
@@ -137,6 +148,19 @@ function mapProfile(user) {
     completion: getProfileCompletion(user),
     status: 'Online Now',
     bio: user.bio || '',
+    birthDate: user.birthData?.dateOfBirth ? new Date(user.birthData.dateOfBirth).toISOString().split('T')[0] : '',
+    birthTime: user.birthData?.timeOfBirth || '',
+    birthPlace: user.birthData?.placeOfBirth?.city || '',
+    knownBirthTime: user.birthData?.knownBirthTime !== false,
+    education: user.lifestyle?.educationLevel || '',
+    occupation: user.lifestyle?.professionType || '',
+    religion: user.lifestyle?.religion || '',
+    ethnicity: user.ethnicity || '',
+    height: user.height || '',
+    hobbies: user.lifestyle?.hobbies || [],
+    diet: user.lifestyle?.diet || 'Non-veg',
+    smoking: user.lifestyle?.smoking || 'Never',
+    drinking: user.lifestyle?.drinking || 'Never',
     personalInfo: {
       firstName: user.personalInfo?.firstName || 'Not provided',
       lastName: user.personalInfo?.lastName || 'Not provided',
@@ -174,13 +198,13 @@ function mapProfile(user) {
       },
     ],
     astrology: {
-      birthDate: formatDate(user.horoscope?.dateOfBirth) || 'Not provided',
-      birthTime: user.horoscope?.timeOfBirth || 'Not provided',
-      birthPlace: user.horoscope?.placeOfBirth?.city || user.location || 'Not provided',
-      rashi: user.horoscope?.rashi || user.horoscope?.moonSign || 'Not provided',
-      nakshatra: user.horoscope?.nakshatra || 'Not provided',
-      ascendant: user.horoscope?.moonSign || 'Not provided',
-      sunSign: user.horoscope?.moonSign || 'Not provided',
+      birthDate: formatDate(user.birthData?.dateOfBirth) || 'Not provided',
+      birthTime: user.birthData?.timeOfBirth || 'Not provided',
+      birthPlace: user.birthData?.placeOfBirth?.city || user.location || 'Not provided',
+      rashi: user.horoscopeData?.rashi || user.horoscopeData?.moonSign || 'Not provided',
+      nakshatra: user.horoscopeData?.nakshatra || 'Not provided',
+      ascendant: user.horoscopeData?.ascendant || 'Not provided',
+      sunSign: user.horoscopeData?.zodiacSign || 'Not provided',
       luckyColors: ['#8B1A2E', '#C9A84C'],
       auspiciousDays: ['Tuesday', 'Thursday'],
       favorablePartners: ['Aries', 'Leo', 'Cancer'],
@@ -241,22 +265,110 @@ export const getProfile = asyncHandler(async (req, res) => {
 });
 
 export const updateProfile = asyncHandler(async (req, res) => {
-  const allowedFields = [
-    'tagline', 'bio', 'location', 'ethnicity', 'height', 'coverPhoto',
-    'personalInfo.firstName', 'personalInfo.lastName', 'personalInfo.phone', 'personalInfo.age', 'personalInfo.gender',
-    'lifestyle.educationLevel', 'lifestyle.professionType', 'lifestyle.religion', 'lifestyle.diet', 'lifestyle.smoking', 'lifestyle.drinking', 'lifestyle.hobbies', 'lifestyle.languages'
-  ];
+  const currentUser = await User.findById(req.user._id).lean({ virtuals: true });
+
+  if (!currentUser) {
+    throw new ApiError(404, 'User profile not found');
+  }
 
   const updates = {};
-  for (const [key, value] of Object.entries(req.body ?? {})) {
-    if (allowedFields.includes(key)) {
-      updates[key] = value;
+  const body = req.body ?? {};
+
+  if (body.name) {
+    const [firstName, ...rest] = String(body.name).trim().split(/\s+/);
+    updates['personalInfo.firstName'] = firstName || currentUser.personalInfo?.firstName || '';
+    updates['personalInfo.lastName'] = rest.join(' ') || currentUser.personalInfo?.lastName || '';
+  }
+
+  const fieldMap = {
+    tagline: 'personalInfo.tagline',
+    bio: 'personalInfo.bio',
+    location: 'personalInfo.location',
+    ethnicity: 'personalInfo.ethnicity',
+    height: 'personalInfo.height',
+    education: 'lifestyle.educationLevel',
+    occupation: 'lifestyle.professionType',
+    religion: 'lifestyle.religion',
+    diet: 'lifestyle.diet',
+    smoking: 'lifestyle.smoking',
+    drinking: 'lifestyle.drinking',
+  };
+
+  for (const [incomingKey, targetPath] of Object.entries(fieldMap)) {
+    if (body[incomingKey] !== undefined) {
+      updates[targetPath] = body[incomingKey];
     }
   }
 
-  const user = await User.findByIdAndUpdate(req.user._id, { $set: updates }, { new: true }).lean({
-    virtuals: true,
-  });
+  if (Array.isArray(body.hobbies)) {
+    updates['lifestyle.hobbies'] = body.hobbies.filter(Boolean);
+  }
+
+  if (body.privacy && typeof body.privacy === 'object') {
+    const privacyMap = {
+      showLastSeen: 'privacySettings.showLastSeen',
+      showHoroscope: 'privacySettings.showHoroscope',
+      showPhone: 'privacySettings.showPhone',
+      whoCanMessage: 'privacySettings.whoCanMessage',
+      whoCanSeePhotos: 'privacySettings.whoCanSeePhotos',
+    };
+
+    for (const [incomingKey, targetPath] of Object.entries(privacyMap)) {
+      if (body.privacy[incomingKey] !== undefined) {
+        updates[targetPath] = body.privacy[incomingKey];
+      }
+    }
+  }
+
+  const birthFieldsProvided = ['birthDate', 'birthTime', 'birthPlace', 'knownBirthTime'].some(
+    (key) => body[key] !== undefined
+  );
+
+  if (birthFieldsProvided) {
+    const birthDate = String(
+      body.birthDate !== undefined
+        ? body.birthDate
+        : currentUser.birthData?.dateOfBirth
+          ? new Date(currentUser.birthData.dateOfBirth).toISOString().split('T')[0]
+          : ''
+    ).trim();
+    const birthPlace = String(
+      body.birthPlace !== undefined ? body.birthPlace : currentUser.birthData?.placeOfBirth?.city || ''
+    ).trim();
+    const knowsBirthTime =
+      body.knownBirthTime !== undefined
+        ? body.knownBirthTime === true || body.knownBirthTime === 'true'
+        : body.birthTime !== undefined
+          ? Boolean(String(body.birthTime || '').trim())
+          : currentUser.birthData?.knownBirthTime !== false;
+    const providedBirthTime =
+      body.birthTime !== undefined
+        ? String(body.birthTime || '').trim()
+        : currentUser.birthData?.knownBirthTime === false
+          ? ''
+          : currentUser.birthData?.timeOfBirth || '';
+
+    if (!birthDate || !birthPlace) {
+      throw new ApiError(400, 'Birth date and birth place are required to update horoscope details.');
+    }
+
+    if (knowsBirthTime && !providedBirthTime) {
+      throw new ApiError(400, 'Please provide your birth time or mark it as unknown.');
+    }
+
+    const placeOfBirth = await resolveBirthPlace(birthPlace);
+    updates['birthData.dateOfBirth'] = new Date(birthDate);
+    updates['birthData.timeOfBirth'] = knowsBirthTime ? providedBirthTime : '12:00';
+    updates['birthData.placeOfBirth'] = placeOfBirth;
+    updates['birthData.knownBirthTime'] = knowsBirthTime;
+    updates.horoscopeData = {};
+  }
+
+  const user = await User.findByIdAndUpdate(
+    req.user._id,
+    { $set: updates },
+    { new: true, runValidators: true }
+  ).lean({ virtuals: true });
 
   if (!user) {
     throw new ApiError(404, 'User profile not found');
@@ -357,13 +469,12 @@ export const uploadCoverPhoto = asyncHandler(async (req, res) => {
     throw new ApiError(400, 'No cover photo file provided');
   }
 
-  // For demo purposes, we'll use a placeholder URL based on user ID for consistency
-  const coverPhotoUrl = `https://picsum.photos/seed/user-cover-${req.user._id}/1200/400`;
+  const coverPhotoUrl = fileToDataUri(req.file);
 
   const user = await User.findByIdAndUpdate(
     req.user._id,
     { $set: { 'personalInfo.coverPhoto': coverPhotoUrl } },
-    { new: true }
+    { new: true, runValidators: true }
   ).lean({ virtuals: true });
 
   if (!user) {
@@ -372,7 +483,7 @@ export const uploadCoverPhoto = asyncHandler(async (req, res) => {
 
   res.status(200).json({
     success: true,
-    coverPhoto: coverPhotoUrl,
+    coverPhoto: user.coverPhoto || coverPhotoUrl,
     message: 'Cover photo uploaded successfully',
   });
 });
@@ -382,22 +493,30 @@ export const uploadProfilePhoto = asyncHandler(async (req, res) => {
     throw new ApiError(400, 'No profile photo file provided');
   }
 
-  // For demo purposes, we'll use a placeholder URL based on user ID for consistency
-  const profilePhotoUrl = `https://picsum.photos/seed/user-${req.user._id}/400/400`;
-
-  const user = await User.findByIdAndUpdate(
-    req.user._id,
-    { $set: { 'personalInfo.profilePic': profilePhotoUrl } },
-    { new: true }
-  ).lean({ virtuals: true });
-
-  if (!user) {
+  const existingUser = await User.findById(req.user._id).lean({ virtuals: true });
+  if (!existingUser) {
     throw new ApiError(404, 'User profile not found');
   }
 
+  const profilePhotoUrl = fileToDataUri(req.file);
+  const remainingPhotos = (existingUser.personalInfo?.photos || [])
+    .filter((photo) => photo?.url && !photo.isMain)
+    .slice(0, 5);
+
+  const user = await User.findByIdAndUpdate(
+    req.user._id,
+    {
+      $set: {
+        'personalInfo.profilePic': profilePhotoUrl,
+        'personalInfo.photos': [{ url: profilePhotoUrl, isMain: true }, ...remainingPhotos],
+      },
+    },
+    { new: true, runValidators: true }
+  ).lean({ virtuals: true });
+
   res.status(200).json({
     success: true,
-    profilePic: profilePhotoUrl,
+    profilePic: user?.profilePic || profilePhotoUrl,
     message: 'Profile photo uploaded successfully',
   });
 });

@@ -14,6 +14,13 @@ const userService = {
     return response.data;
   },
 
+  searchBirthPlaces: async (query: string, limit = 5) => {
+    const response = await axiosInstance.get('/auth/birth-place-suggestions', {
+      params: { query, limit },
+    });
+    return response.data?.data || [];
+  },
+
   requestVerificationOtp: async (channel: 'email' | 'phone') => {
     const response = await axiosInstance.post('/users/verification/request', { channel });
     return response.data;

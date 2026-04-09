@@ -8,6 +8,7 @@ import {
   TextField, 
   Button, 
   MenuItem, 
+  Autocomplete,
   Stack, 
   IconButton, 
   Divider,
@@ -57,6 +58,17 @@ const COLORS = {
 };
 
 const MotionPaper = motion(Paper);
+const SRI_LANKAN_RELIGIONS = ['Buddhist', 'Hindu', 'Muslim', 'Christian', 'Catholic', 'Other'];
+const SRI_LANKAN_ETHNICITIES = [
+  'Sinhalese',
+  'Sri Lankan Tamil',
+  'Indian Tamil',
+  'Sri Lankan Moor',
+  'Burgher',
+  'Malay',
+  'Vedda',
+  'Other',
+];
 
 export default function EditProfile() {
   const navigate = useNavigate();
@@ -69,6 +81,8 @@ export default function EditProfile() {
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [showExitDialog, setShowExitDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [birthPlaceSuggestions, setBirthPlaceSuggestions] = useState<string[]>([]);
+  const [loadingBirthPlaceSuggestions, setLoadingBirthPlaceSuggestions] = useState(false);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -119,6 +133,31 @@ export default function EditProfile() {
 
     fetchProfile();
   }, [user]);
+
+  useEffect(() => {
+    const query = String(formData.birthPlace || '').trim();
+
+    if (!query) {
+      setBirthPlaceSuggestions([]);
+      setLoadingBirthPlaceSuggestions(false);
+      return;
+    }
+
+    const timer = window.setTimeout(async () => {
+      setLoadingBirthPlaceSuggestions(true);
+      try {
+        const suggestions = await userService.searchBirthPlaces(query, 5);
+        setBirthPlaceSuggestions(suggestions);
+      } catch (lookupError) {
+        console.error('Birth place suggestion lookup failed:', lookupError);
+        setBirthPlaceSuggestions([]);
+      } finally {
+        setLoadingBirthPlaceSuggestions(false);
+      }
+    }, 300);
+
+    return () => window.clearTimeout(timer);
+  }, [formData.birthPlace]);
 
   const handleChange = (field: string, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -281,11 +320,33 @@ export default function EditProfile() {
                   />
                 </Grid>
                 <Grid size={{ xs: 12, sm: 4 }}>
-                  <TextField
-                    fullWidth
-                    label="Birth Place"
+                  <Autocomplete
+                    freeSolo
+                    filterOptions={(options) => options}
+                    options={birthPlaceSuggestions}
+                    loading={loadingBirthPlaceSuggestions}
                     value={formData.birthPlace}
-                    onChange={(e) => handleChange('birthPlace', e.target.value)}
+                    onChange={(_, value) => handleChange('birthPlace', value || '')}
+                    onInputChange={(_, value) => handleChange('birthPlace', value || '')}
+                    noOptionsText="No matching Sri Lankan places found"
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        fullWidth
+                        label="Town / Village / City of Birth"
+                        placeholder="e.g. Akuressa, Wellawaya, Point Pedro"
+                        helperText="Start typing to get the top matching Sri Lankan towns and villages from OpenStreetMap."
+                        InputProps={{
+                          ...params.InputProps,
+                          endAdornment: (
+                            <>
+                              {loadingBirthPlaceSuggestions ? <CircularProgress color="inherit" size={18} sx={{ mr: 1 }} /> : null}
+                              {params.InputProps.endAdornment}
+                            </>
+                          ),
+                        }}
+                      />
+                    )}
                   />
                 </Grid>
               </Grid>
@@ -407,6 +468,43 @@ export default function EditProfile() {
         {/* Sidebar Sections */}
         <Grid size={{ xs: 12, md: 4 }}>
           <Stack spacing={4}>
+            <MotionPaper
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              sx={{ p: 4, borderRadius: '24px', boxShadow: '0 2px 16px rgba(139,26,46,0.05)' }}
+            >
+              <Typography variant="h6" sx={{ mb: 3, fontWeight: 800, color: COLORS.primary, display: 'flex', alignItems: 'center', gap: 1 }}>
+                <User size={20} /> Identity & Verification
+              </Typography>
+              <Stack spacing={2}>
+                <TextField
+                  fullWidth
+                  select
+                  label="Religion"
+                  value={formData.religion}
+                  onChange={(e) => handleChange('religion', e.target.value)}
+                  helperText="Saved under your user profile for matching and profile display."
+                >
+                  {SRI_LANKAN_RELIGIONS.map((option) => (
+                    <MenuItem key={option} value={option}>{option}</MenuItem>
+                  ))}
+                </TextField>
+
+                <TextField
+                  fullWidth
+                  select
+                  label="Ethnicity"
+                  value={formData.ethnicity}
+                  onChange={(e) => handleChange('ethnicity', e.target.value)}
+                  helperText="Choose the option that best matches your Sri Lankan background, or select Other."
+                >
+                  {SRI_LANKAN_ETHNICITIES.map((option) => (
+                    <MenuItem key={option} value={option}>{option}</MenuItem>
+                  ))}
+                </TextField>
+              </Stack>
+            </MotionPaper>
+
             {/* Privacy Section */}
             <MotionPaper
               initial={{ opacity: 0, x: 20 }}

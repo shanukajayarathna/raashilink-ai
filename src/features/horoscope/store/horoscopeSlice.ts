@@ -28,10 +28,17 @@ export const fetchMyChart = createAsyncThunk(
   'horoscope/fetchMyChart',
   async (_, { rejectWithValue }) => {
     try {
-      const response = await horoscopeService.generateMyChart();
-      return response.data;
+      return await horoscopeService.getMyChart();
     } catch (error: any) {
-      return rejectWithValue(error.response?.data?.message || 'Failed to generate birth chart');
+      if ([404, 422].includes(error.response?.status)) {
+        try {
+          return await horoscopeService.generateMyChart();
+        } catch (generateError: any) {
+          return rejectWithValue(generateError.response?.data?.message || 'Failed to generate birth chart');
+        }
+      }
+
+      return rejectWithValue(error.response?.data?.message || 'Failed to load birth chart');
     }
   }
 );

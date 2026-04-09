@@ -5,35 +5,262 @@ import logger from '../utils/logger.js';
 import User from '../models/User.js';
 import Horoscope from '../models/Horoscope.js';
 import Match from '../models/Match.js';
-import { spawn } from 'child_process';
+import path from 'node:path';
+import { spawn } from 'node:child_process';
 import { redisClient } from '../lib/redis.js';
+import { resolvePythonCommand } from '../utils/pythonRuntime.js';
+
+const PLANET_SYMBOLS = {
+  Sun: 'Su',
+  Moon: 'Mo',
+  Mars: 'Ma',
+  Mercury: 'Me',
+  Jupiter: 'Ju',
+  Venus: 'Ve',
+  Saturn: 'Sa',
+  Rahu: 'Ra',
+  Ketu: 'Ke',
+};
+
+const PLANET_COLORS = {
+  Sun: '#FFD700',
+  Moon: '#C0C0C0',
+  Mars: '#FF4500',
+  Mercury: '#32CD32',
+  Jupiter: '#DAA520',
+  Venus: '#FF69B4',
+  Saturn: '#6A5ACD',
+  Rahu: '#1A6B72',
+  Ketu: '#8B1A2E',
+};
+
+function formatDegree(value = 0) {
+  const numeric = Number(value || 0);
+  const whole = Math.floor(numeric);
+  const minutes = Math.round((numeric - whole) * 60);
+  return `${whole}° ${String(minutes).padStart(2, '0')}'`;
+}
+
+function formatHouseLabel(value = 1) {
+  const house = Number(value) || 1;
+  if (house % 100 >= 11 && house % 100 <= 13) return `${house}th`;
+  const suffix = { 1: 'st', 2: 'nd', 3: 'rd' }[house % 10] || 'th';
+  return `${house}${suffix}`;
+}
+
+function getRequiredBirthFields(user) {
+  const missingFields = [];
+
+  if (!user?.birthData?.dateOfBirth) missingFields.push('birth date');
+  if (!user?.birthData?.placeOfBirth?.city) missingFields.push('birth place');
+
+  return missingFields;
+}
+
+function getBirthAccuracyMeta(user) {
+  const missingBirthFields = [];
+
+  if (!user?.birthData?.dateOfBirth) missingBirthFields.push('birth date');
+  if (!user?.birthData?.placeOfBirth?.city) missingBirthFields.push('birth place');
+  if (user?.birthData?.knownBirthTime === false || !user?.birthData?.timeOfBirth) {
+    missingBirthFields.push('exact birth time');
+  }
+
+  const usesApproximateBirthTime = missingBirthFields.includes('exact birth time');
+  const hasIncompleteBirthDetails = missingBirthFields.length > 0;
+
+  let accuracyNote = null;
+  if (missingBirthFields.length === 1 && missingBirthFields[0] === 'exact birth time') {
+    accuracyNote = 'Birth time was not provided, so this chart uses an approximate 12:00 time. Ascendant and house placements may be less accurate.';
+  } else if (missingBirthFields.length > 0) {
+    accuracyNote = `Some birth details are missing (${missingBirthFields.join(', ')}). Any generated horoscope may be less accurate until they are completed.`;
+  }
+
+  return {
+    usesApproximateBirthTime,
+    hasIncompleteBirthDetails,
+    missingBirthFields,
+    accuracyNote,
+  };
+}
 
 function buildChartData(user) {
-  const horoscope = user.horoscope || {};
-  const moonSign = horoscope.moonSign || horoscope.rashi || 'Pending';
+  const horoscopeData = user.horoscopeData || {};
+  const accuracyMeta = getBirthAccuracyMeta(user);
+  const moonSign = horoscopeData.moonSign || horoscopeData.rashi || 'Pending';
+  const positionsSource = Array.isArray(horoscopeData.planetaryPositions) && horoscopeData.planetaryPositions.length > 0
+    ? horoscopeData.planetaryPositions
+    : [
+        { planet: 'Sun', sign: horoscopeData.zodiacSign || moonSign, house: 1, degree: 0 },
+        { planet: 'Moon', sign: moonSign, house: 2, degree: 0 },
+      ];
+  const sunPosition = positionsSource.find((position) => position.planet === 'Sun');
 
   return {
     summary: {
       moonSign,
-      nakshatra: horoscope.nakshatra || 'Pending',
-      ascendant: moonSign,
-      sunSign: moonSign,
+      nakshatra: horoscopeData.nakshatra || 'Pending',
+      ascendant: horoscopeData.ascendant || 'Pending',
+      sunSign: horoscopeData.zodiacSign || sunPosition?.sign || 'Pending',
     },
-    planets: [
-      { name: 'Sun', symbol: 'Su', sign: moonSign, degree: '12° 24\'', house: 7, color: '#FFD700' },
-      { name: 'Moon', symbol: 'Mo', sign: moonSign, degree: '18° 10\'', house: 8, color: '#C0C0C0' },
-      { name: 'Mars', symbol: 'Ma', sign: horoscope.rashi || moonSign, degree: '05° 45\'', house: 5, color: '#FF4500' },
-      { name: 'Mercury', symbol: 'Me', sign: horoscope.rashi || moonSign, degree: '22° 15\'', house: 6, color: '#32CD32' },
-      { name: 'Jupiter', symbol: 'Ju', sign: moonSign, degree: '15° 30\'', house: 12, color: '#DAA520' },
-    ],
-    positions: [
-      { planet: 'Sun', sign: moonSign, house: '7th', degree: '12° 24\'' },
-      { planet: 'Moon', sign: moonSign, house: '8th', degree: '18° 10\'' },
-      { planet: 'Mars', sign: horoscope.rashi || moonSign, house: '5th', degree: '05° 45\'' },
-      { planet: 'Mercury', sign: horoscope.rashi || moonSign, house: '6th', degree: '22° 15\'' },
-      { planet: 'Jupiter', sign: moonSign, house: '12th', degree: '15° 30\'' },
-    ],
+    planets: positionsSource.map((position) => ({
+      name: position.planet,
+      symbol: PLANET_SYMBOLS[position.planet] || position.planet.slice(0, 2),
+      sign: position.sign || 'Pending',
+      degree: formatDegree(position.degree),
+      house: Number(position.house) || 1,
+      color: PLANET_COLORS[position.planet] || '#8B1A2E',
+    })),
+    positions: positionsSource.map((position) => ({
+      planet: position.planet,
+      sign: position.sign || 'Pending',
+      house: formatHouseLabel(position.house),
+      degree: formatDegree(position.degree),
+    })),
+    meta: {
+      ...accuracyMeta,
+      generatedFrom: {
+        birthDate: user?.birthData?.dateOfBirth ? new Date(user.birthData.dateOfBirth).toISOString().split('T')[0] : null,
+        birthTime: user?.birthData?.timeOfBirth || null,
+        birthPlace: user?.birthData?.placeOfBirth?.city || null,
+        knownBirthTime: user?.birthData?.knownBirthTime !== false,
+      },
+      generatedAt: horoscopeData.generatedAt || null,
+    },
   };
+}
+
+function hasGeneratedChart(user) {
+  return Boolean(
+    user?.horoscopeData?.rashi &&
+      user?.horoscopeData?.nakshatra &&
+      user?.horoscopeData?.ascendant &&
+      Array.isArray(user?.horoscopeData?.planetaryPositions) &&
+      user.horoscopeData.planetaryPositions.length > 0
+  );
+}
+
+function buildBirthPayload(user) {
+  if (!user?.birthData?.dateOfBirth || !user?.birthData?.placeOfBirth) {
+    return null;
+  }
+
+  return {
+    birthDate: user.birthData.dateOfBirth.toISOString().split('T')[0],
+    birthTime: user.birthData.timeOfBirth || '12:00',
+    lat: user.birthData.placeOfBirth.latitude || 6.9271,
+    lon: user.birthData.placeOfBirth.longitude || 79.8612,
+  };
+}
+
+async function generateAndPersistHoroscope(user, { force = false } = {}) {
+  if (!user) {
+    throw new ApiError(404, 'User not found');
+  }
+
+  if (!force && hasGeneratedChart(user)) {
+    return user;
+  }
+
+  const payload = buildBirthPayload(user);
+  if (!payload) {
+    const missingRequiredFields = getRequiredBirthFields(user);
+    throw new ApiError(
+      422,
+      `Birth data is incomplete. Missing ${missingRequiredFields.join(' and ')}. Please update your birth details to generate a more accurate horoscope.`
+    );
+  }
+
+  const pythonProcess = spawn(resolvePythonCommand(), [
+    path.resolve(process.cwd(), 'server/python/horoscope_engine.py'),
+    JSON.stringify(payload),
+  ], {
+    cwd: process.cwd(),
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
+
+  let stdout = '';
+  let stderr = '';
+
+  pythonProcess.stdout.on('data', (data) => {
+    stdout += data.toString();
+  });
+
+  pythonProcess.stderr.on('data', (data) => {
+    stderr += data.toString();
+  });
+
+  const result = await new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      pythonProcess.kill();
+      reject(new ApiError(504, 'Horoscope generation timed out'));
+    }, 10000);
+
+    pythonProcess.on('close', (code) => {
+      clearTimeout(timeout);
+
+      if (code !== 0) {
+        logger.error('Horoscope generation failed', { code, stderr });
+        reject(new ApiError(500, `Horoscope generation failed: ${stderr || 'Python exited unexpectedly'}`));
+        return;
+      }
+
+      try {
+        const output = stdout.trim().split(/\r?\n/).filter(Boolean).at(-1) || '{}';
+        const parsed = JSON.parse(output);
+
+        if (!parsed.success) {
+          reject(new ApiError(500, `Horoscope calculation error: ${parsed.error}`));
+          return;
+        }
+
+        resolve(parsed);
+      } catch (parseError) {
+        logger.error('Failed to parse horoscope result', { error: parseError.message, stdout });
+        reject(new ApiError(500, 'Failed to parse horoscope result'));
+      }
+    });
+
+    pythonProcess.on('error', (error) => {
+      clearTimeout(timeout);
+      logger.error('Python process error', { error: error.message });
+      reject(new ApiError(500, 'Horoscope generation process failed'));
+    });
+  });
+
+  const horoscopeData = {
+    zodiacSign: result.zodiacSign,
+    moonSign: result.rashi,
+    rashi: result.rashi,
+    nakshatra: result.nakshatra,
+    ascendant: result.ascendant,
+    planetaryPositions: result.planetaryPositions,
+    gunaScore: 0,
+    generatedAt: new Date(),
+  };
+
+  await Promise.all([
+    Horoscope.findOneAndUpdate(
+      { userId: user._id },
+      { userId: user._id, ...horoscopeData },
+      { upsert: true, new: true }
+    ),
+    User.findByIdAndUpdate(user._id, {
+      $set: {
+        horoscopeData,
+      },
+    }),
+  ]);
+
+  try {
+    await redisClient.setEx(`horoscope:${user._id}`, 86400, JSON.stringify(result));
+  } catch (cacheError) {
+    logger.warn('Unable to cache horoscope result', { userId: String(user._id), message: cacheError.message });
+  }
+
+  logger.info('Horoscope generated successfully', { userId: user._id });
+
+  return User.findById(user._id).lean({ virtuals: true });
 }
 
 function buildCompatibilityPayload(currentUser, partner, result) {
@@ -49,12 +276,22 @@ function buildCompatibilityPayload(currentUser, partner, result) {
     userA: {
       name: currentUser.name,
       photo: currentUser.profilePic || currentUser.photos?.[0]?.url || null,
-      sign: currentUser.horoscope?.moonSign || currentUser.horoscope?.rashi || 'Pending',
+      sign:
+        currentUser.horoscopeData?.moonSign ||
+        currentUser.horoscopeData?.rashi ||
+        currentUser.horoscope?.moonSign ||
+        currentUser.horoscope?.rashi ||
+        'Pending',
     },
     userB: {
       name: partner.name,
       photo: partner.profilePic || partner.photos?.[0]?.url || null,
-      sign: partner.horoscope?.moonSign || partner.horoscope?.rashi || 'Pending',
+      sign:
+        partner.horoscopeData?.moonSign ||
+        partner.horoscopeData?.rashi ||
+        partner.horoscope?.moonSign ||
+        partner.horoscope?.rashi ||
+        'Pending',
     },
     dimensions: [
       {
@@ -168,15 +405,12 @@ export const getMyChart = asyncHandler(async (req, res) => {
     throw new ApiError(404, 'User not found');
   }
 
-  if (!user.horoscope) {
-    throw new ApiError(422, 'Horoscope data is not available for this account');
-  }
-
-  await syncHoroscopeDocument(user);
+  const hydratedUser = await generateAndPersistHoroscope(user);
+  await syncHoroscopeDocument(hydratedUser);
 
   res.status(200).json({
     success: true,
-    data: buildChartData(user),
+    data: buildChartData(hydratedUser),
   });
 });
 
@@ -230,6 +464,7 @@ export const calculateCompatibility = asyncHandler(async (req, res) => {
 
   if (existingMatch) {
     // Return cached DB result
+    const explanationText = (existingMatch.explanation || '').toUpperCase();
     const result = {
       overallScore: existingMatch.compatibilityScore,
       astroScore: existingMatch.dimensionScores.astro,
@@ -237,9 +472,13 @@ export const calculateCompatibility = asyncHandler(async (req, res) => {
       lifestyleScore: existingMatch.dimensionScores.lifestyle,
       familyScore: existingMatch.dimensionScores.family,
       explanation: existingMatch.explanation,
-      bandLabel: existingMatch.explanation.includes('Excellent') ? 'Excellent' :
-                 existingMatch.explanation.includes('Good') ? 'Good' :
-                 existingMatch.explanation.includes('Moderate') ? 'Moderate' : 'Low',
+      bandLabel: explanationText.includes('EXCELLENT')
+        ? 'EXCELLENT'
+        : explanationText.includes('GOOD')
+          ? 'GOOD'
+          : explanationText.includes('MODERATE')
+            ? 'MODERATE'
+            : 'LOW',
       astroBreakdown: {}, // Not stored, can be empty
     };
     return res.status(200).json({
@@ -267,129 +506,18 @@ export const calculateCompatibility = asyncHandler(async (req, res) => {
 });
 
 export const generateChart = asyncHandler(async (req, res) => {
-  const user = await User.findById(req.user._id).lean();
+  const user = await User.findById(req.user._id).lean({ virtuals: true });
 
   if (!user) {
     throw new ApiError(404, 'User not found');
   }
 
-  if (!user.birthData || !user.birthData.dateOfBirth || !user.birthData.timeOfBirth || !user.birthData.placeOfBirth) {
-    throw new ApiError(422, 'Birth data is incomplete. Please complete your profile.');
-  }
+  const hydratedUser = await generateAndPersistHoroscope(user, { force: true });
+  await syncHoroscopeDocument(hydratedUser);
 
-  const birthDate = user.birthData.dateOfBirth.toISOString().split('T')[0];
-  const birthTime = user.birthData.timeOfBirth;
-  const lat = user.birthData.placeOfBirth.latitude || 6.9271; // Colombo default
-  const lon = user.birthData.placeOfBirth.longitude || 79.8612; // Colombo default
-
-  // TODO: If User.js doesn't have lat/lon, use geocoding service to get from placeOfBirth.city/country
-
-  const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
-  const pythonArgs = [JSON.stringify({
-    birthDate,
-    birthTime,
-    lat,
-    lon
-  })];
-
-  const pythonProcess = spawn(pythonCmd, [
-    './server/python/horoscope_engine.py',
-    ...pythonArgs
-  ], {
-    cwd: process.cwd(),
-    stdio: ['pipe', 'pipe', 'pipe']
-  });
-
-  let stdout = '';
-  let stderr = '';
-
-  pythonProcess.stdout.on('data', (data) => {
-    stdout += data.toString();
-  });
-
-  pythonProcess.stderr.on('data', (data) => {
-    stderr += data.toString();
-  });
-
-  return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      pythonProcess.kill();
-      reject(new ApiError(504, 'Horoscope generation timed out'));
-    }, 10000); // 10 seconds
-
-    pythonProcess.on('close', async (code) => {
-      clearTimeout(timeout);
-
-      if (code !== 0) {
-        logger.error('Horoscope generation failed', { code, stderr });
-        return reject(new ApiError(500, `Horoscope generation failed: ${stderr}`));
-      }
-
-      try {
-        const result = JSON.parse(stdout.trim());
-
-        if (!result.success) {
-          return reject(new ApiError(500, `Horoscope calculation error: ${result.error}`));
-        }
-
-        // Save to Horoscope model
-        const horoscopeData = {
-          userId: user._id,
-          zodiacSign: result.zodiacSign,
-          moonSign: result.rashi, // Map rashi to moonSign for compatibility
-          rashi: result.rashi,
-          nakshatra: result.nakshatra,
-          ascendant: result.ascendant,
-          planetaryPositions: result.planetaryPositions,
-          gunaScore: 0, // Will be calculated separately
-          generatedAt: new Date(),
-        };
-
-        await Horoscope.findOneAndUpdate(
-          { userId: user._id },
-          horoscopeData,
-          { upsert: true, new: true }
-        );
-
-        // Update User model horoscopeData
-        await User.findByIdAndUpdate(user._id, {
-          $set: {
-            'horoscopeData': horoscopeData,
-            'horoscope': {
-              dateOfBirth: user.birthData.dateOfBirth,
-              timeOfBirth: user.birthData.timeOfBirth,
-              placeOfBirth: user.birthData.placeOfBirth,
-              nakshatra: result.nakshatra,
-              rashi: result.rashi,
-              moonSign: result.rashi,
-            }
-          }
-        });
-
-        // Cache in Redis
-        const cacheKey = `horoscope:${user._id}`;
-        await redisClient.setEx(cacheKey, 86400, JSON.stringify(result));
-
-        logger.info('Horoscope generated successfully', { userId: user._id });
-
-        res.status(200).json({
-          success: true,
-          data: result,
-        });
-
-        resolve();
-
-      } catch (parseError) {
-        logger.error('Failed to parse horoscope result', { error: parseError.message, stdout });
-        reject(new ApiError(500, 'Failed to parse horoscope result'));
-      }
-    });
-
-    pythonProcess.on('error', (error) => {
-      clearTimeout(timeout);
-      logger.error('Python process error', { error: error.message });
-      reject(new ApiError(500, 'Horoscope generation process failed'));
-    });
+  res.status(200).json({
+    success: true,
+    data: buildChartData(hydratedUser),
   });
 });
 

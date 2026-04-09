@@ -147,13 +147,29 @@ def calculate_horoscope(birth_date, birth_time, lat, lon):
             "error": str(e)
         }
 
-def main():
-    if len(sys.argv) != 2:
-        print(json.dumps({"success": False, "error": "Invalid arguments. Expected JSON string with birthDate, birthTime, lat, lon"}))
-        sys.exit(1)
+def load_input_data():
+    raw_input = " ".join(sys.argv[1:]).strip() if len(sys.argv) > 1 else sys.stdin.read().strip()
 
+    if not raw_input:
+        raise ValueError("Missing input. Expected a JSON object with birthDate, birthTime, lat, lon")
+
+    raw_input = (raw_input
+        .replace("“", '"')
+        .replace("”", '"')
+        .replace("‘", "'")
+        .replace("’", "'"))
+
+    if (raw_input.startswith("'") and raw_input.endswith("'")) or (
+        raw_input.startswith('"') and raw_input.endswith('"')
+    ):
+        raw_input = raw_input[1:-1]
+
+    return json.loads(raw_input)
+
+
+def main():
     try:
-        data = json.loads(sys.argv[1])
+        data = load_input_data()
         birth_date = data["birthDate"]
         birth_time = data["birthTime"]
         lat = float(data["lat"])
@@ -162,8 +178,11 @@ def main():
         result = calculate_horoscope(birth_date, birth_time, lat, lon)
         print(json.dumps(result))
 
-    except json.JSONDecodeError:
-        print(json.dumps({"success": False, "error": "Invalid JSON input"}))
+    except json.JSONDecodeError as e:
+        print(json.dumps({
+            "success": False,
+            "error": f"Invalid JSON input: {e.msg}. Use quoted JSON or pipe it through stdin."
+        }))
     except KeyError as e:
         print(json.dumps({"success": False, "error": f"Missing required field: {e}"}))
     except Exception as e:

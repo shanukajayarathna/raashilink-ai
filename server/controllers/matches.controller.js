@@ -10,6 +10,7 @@ import ApiError from '../utils/ApiError.js';
 import compatibilityService from '../services/compatibility.service.js';
 import redisClient from '../lib/redis.js';
 import logger from '../utils/logger.js';
+import { resolvePythonCommand } from '../utils/pythonRuntime.js';
 
 function mainPhoto(user) {
   return (
@@ -67,7 +68,7 @@ function buildCard(user, compatibility, mutualMatch) {
     bio: user.bio || 'Looking for a meaningful long-term connection.',
     compatibility,
     mutualMatch,
-    moonSign: user.horoscope?.moonSign || user.horoscope?.rashi || 'Pending',
+    moonSign: user.horoscopeData?.moonSign || user.horoscopeData?.rashi || user.horoscope?.moonSign || user.horoscope?.rashi || 'Pending',
   };
 }
 
@@ -96,9 +97,9 @@ function buildDetail(user, compatibility, mutualMatch) {
       { subject: 'Modern', A: Math.round((1 - (user.personality?.neuroticism ?? 0.5)) * 100), fullMark: 100 },
     ],
     horoscope: {
-      rashi: user.horoscope?.rashi || user.horoscope?.moonSign || 'Pending',
-      nakshatra: user.horoscope?.nakshatra || 'Pending',
-      ascendant: user.horoscope?.moonSign || 'Pending',
+      rashi: user.horoscopeData?.rashi || user.horoscopeData?.moonSign || user.horoscope?.rashi || user.horoscope?.moonSign || 'Pending',
+      nakshatra: user.horoscopeData?.nakshatra || user.horoscope?.nakshatra || 'Pending',
+      ascendant: user.horoscopeData?.ascendant || user.horoscopeData?.moonSign || user.horoscope?.moonSign || 'Pending',
     },
     lifestyle: {
       hobbies: ['Travel', 'Reading', 'Family time'],
@@ -136,8 +137,8 @@ export const getRecommendations = asyncHandler(async (req, res) => {
     role: 'user',
     birthData: { $exists: true, $ne: null },
   })
-    .select('_id name personalInfo horoscope photos profilePic lifestyle personality')
-    .lean()
+    .select('_id personalInfo photos lifestyle personality birthData horoscopeData')
+    .lean({ virtuals: true })
     .skip(skip)
     .limit(pageSize);
 
@@ -352,7 +353,7 @@ export const getTodayMatches = asyncHandler(async (req, res) => {
     const excludeIds = existingInterests.map(i => String(i.toUser));
 
     // Call hybrid engine
-    const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
+    const pythonCmd = resolvePythonCommand();
     const hybridEnginePath = path.resolve(process.cwd(), 'server/python/recommendation/hybrid_engine.py');
 
     const engineOutput = await new Promise((resolve, reject) => {

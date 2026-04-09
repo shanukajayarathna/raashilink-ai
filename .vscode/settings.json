@@ -1,0 +1,37 @@
+{
+  "files.watcherExclude": {
+    "**/.git/**": true,
+    "**/node_modules/**": true,
+    "**/.venv/**": true,
+    "**/dist/**": true,
+    "**/server/python/ephe/**": true,
+    "**/server/python/recommendation/models/**": true,
+    "**/server/python/recommendation/synthetic_profiles.json": true,
+    "**/server/python/recommendation/synthetic_profiles.csv": true
+  },
+  "search.exclude": {
+    "**/.venv/**": true,
+    "**/dist/**": true,
+    "**/server/python/ephe/**": true,
+    "**/server/python/recommendation/models/**": true
+  },
+  "python.analysis.exclude": [
+    "**/.venv",
+    "**/dist",
+    "**/server/python/ephe",
+    "**/server/python/recommendation/models"
+  ],
+  "js/ts.tsserver.watchOptions": {
+    "watchFile": "useFsEventsOnParentDirectory",
+    "watchDirectory": "useFsEvents",
+    "fallbackPolling": "dynamicPriorityPolling",
+    "excludeDirectories": [
+      "**/.git",
+      "**/node_modules",
+      "**/.venv",
+      "**/dist",
+      "**/server/python/ephe",
+      "**/server/python/recommendation"
+    ]
+  }
+}

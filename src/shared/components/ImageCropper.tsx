@@ -24,7 +24,7 @@ import {
   Upload
 } from 'lucide-react';
 import Cropper from 'react-easy-crop';
-import { Area, Point } from 'react-easy-crop/types';
+import type { Area, Point } from 'react-easy-crop';
 
 interface ImageCropperProps {
   open: boolean;
@@ -35,6 +35,16 @@ interface ImageCropperProps {
   cropShape?: 'rect' | 'round';
   title?: string;
   uploading?: boolean;
+}
+
+const MIN_ZOOM = 1;
+const MAX_ZOOM = 4;
+const ZOOM_SLIDER_STEP = 0.01;
+const ZOOM_BUTTON_STEP = 0.05;
+const ZOOM_SPEED = 0.15;
+
+function clampZoom(value: number) {
+  return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Number(value.toFixed(2))));
 }
 
 const ImageCropper: React.FC<ImageCropperProps> = ({
@@ -57,8 +67,12 @@ const ImageCropper: React.FC<ImageCropperProps> = ({
     setCrop(crop);
   }, []);
 
-  const onZoomChange = useCallback((zoom: number) => {
-    setZoom(zoom);
+  const onZoomChange = useCallback((nextZoom: number) => {
+    setZoom(clampZoom(nextZoom));
+  }, []);
+
+  const adjustZoom = useCallback((delta: number) => {
+    setZoom((currentZoom) => clampZoom(currentZoom + delta));
   }, []);
 
   const onRotationChange = useCallback((rotation: number) => {
@@ -164,6 +178,9 @@ const ImageCropper: React.FC<ImageCropperProps> = ({
             image={imageSrc}
             crop={crop}
             zoom={zoom}
+            minZoom={MIN_ZOOM}
+            maxZoom={MAX_ZOOM}
+            zoomSpeed={ZOOM_SPEED}
             aspect={aspectRatio}
             rotation={rotation}
             cropShape={cropShape}
@@ -191,19 +208,33 @@ const ImageCropper: React.FC<ImageCropperProps> = ({
                 <ZoomIn size={16} />
                 Zoom
               </Typography>
-              <Stack direction="row" spacing={2} alignItems="center">
-                <ZoomOut size={16} />
+              <Stack direction="row" spacing={1} alignItems="center">
+                <IconButton
+                  size="small"
+                  onClick={() => adjustZoom(-ZOOM_BUTTON_STEP)}
+                  disabled={zoom <= MIN_ZOOM}
+                >
+                  <ZoomOut size={16} />
+                </IconButton>
                 <Slider
                   value={zoom}
-                  min={1}
-                  max={3}
-                  step={0.1}
-                  onChange={(_, value) => setZoom(value as number)}
+                  min={MIN_ZOOM}
+                  max={MAX_ZOOM}
+                  step={ZOOM_SLIDER_STEP}
+                  onChange={(_, value) => setZoom(clampZoom(value as number))}
+                  valueLabelDisplay="auto"
+                  valueLabelFormat={(value) => `${value.toFixed(2)}x`}
                   sx={{ flex: 1 }}
                 />
-                <ZoomIn size={16} />
-                <Typography variant="caption" sx={{ minWidth: 35 }}>
-                  {zoom.toFixed(1)}x
+                <IconButton
+                  size="small"
+                  onClick={() => adjustZoom(ZOOM_BUTTON_STEP)}
+                  disabled={zoom >= MAX_ZOOM}
+                >
+                  <ZoomIn size={16} />
+                </IconButton>
+                <Typography variant="caption" sx={{ minWidth: 48, textAlign: 'right' }}>
+                  {zoom.toFixed(2)}x
                 </Typography>
               </Stack>
             </Box>

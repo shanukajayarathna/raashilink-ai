@@ -1,6 +1,5 @@
 {
   "compilerOptions": {
-    "baseUrl": ".",
     "target": "ES2022",
     "experimentalDecorators": true,
     "useDefineForClassFields": false,
@@ -24,5 +23,19 @@
     "allowImportingTsExtensions": true,
     "noEmit": true,
     "types": ["vite/client"]
-  }
+  },
+  "include": [
+    "src",
+    "server",
+    "scripts",
+    "vite.config.ts",
+    "search_images.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    ".venv",
+    "server/python/ephe",
+    "server/python/recommendation/models"
+  ]
 }
