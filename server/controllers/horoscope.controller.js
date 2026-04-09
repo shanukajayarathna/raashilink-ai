@@ -7,8 +7,6 @@ import Horoscope from '../models/Horoscope.js';
 import Match from '../models/Match.js';
 import { spawn } from 'child_process';
 import { redisClient } from '../lib/redis.js';
-import { spawn } from 'child_process';
-import { redisClient } from '../lib/redis.js';
 
 function buildChartData(user) {
   const horoscope = user.horoscope || {};
