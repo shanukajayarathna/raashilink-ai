@@ -5,15 +5,80 @@ import axiosInstance from '@/shared/config/axiosConfig';
  * Handles user messaging, chat history, and real-time communication.
  */
 const chatService = {
-  /**
-   * Send a message to a specific recipient or chat room.
-   * @param {object} messageData - Message content and recipient ID.
-   * @returns {Promise<object>} - Sent message status.
-   */
-  sendMessage: async (messageData: any) => {
-    const response = await axiosInstance.post('/chat/messages', messageData);
-    return response.data;
-  },
+/**
+ * Send a message to the RaashiBot assistant with Server-Sent Events (SSE) streaming.
+ * @param {string} message - The user's message.
+ * @param {string} language - Language code ('en', 'si', 'ta').
+ * @param {Array} history - Conversation history as array of {role, content}.
+ * @param {function} onChunk - Callback function called for each streamed text chunk.
+ * @returns {Promise<string>} - The full assembled response.
+ */
+sendStreamingMessage: async (
+  message: string,
+  language: string = 'en',
+  history: Array<{ role: string; content: string }> = [],
+  onChunk: (text: string) => void
+): Promise<string> => {
+  const token = localStorage.getItem('token');
+  const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+  const endpoint = `${apiUrl}/api/v1/chat/stream`;
+
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      message: message.trim(),
+      language,
+      history,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+  }
+
+  const reader = response.body!.getReader();
+  const decoder = new TextDecoder();
+  let fullResponse = '';
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      const chunk = decoder.decode(value, { stream: true });
+      const lines = chunk.split('\n');
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const data = line.slice(6);
+          if (data === '[DONE]') {
+            break;
+          }
+          fullResponse += data;
+          onChunk(data);
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  return fullResponse;
+},
+
+/**
+ * Send a message to a specific recipient or chat room.
+ * @param {object} messageData - Message content and recipient ID.
+ * @returns {Promise<object>} - Sent message status.
+ */
+sendMessage: async (messageData: any) => {
+  const response = await axiosInstance.post('/chat/messages', messageData);
+  return response.data;
+},
 
   /**
    * Send a message to the RaashiBot assistant.

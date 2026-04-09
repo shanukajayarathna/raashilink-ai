@@ -115,11 +115,25 @@ export default function ChatInterface({ isCompact, onClose, initialMessages = []
     setIsTyping(true);
 
     try {
-      const response = await chatService.sendAssistantMessage({ message: messageText, language });
-      const assistantText = response?.data?.reply || 'Sorry, RaashiBot could not generate a reply right now.';
+      // Build conversation history for context
+      const history = messages
+        .filter((msg) => msg.role === 'user' || msg.role === 'bot')
+        .slice(-10) // Last 5 turns
+        .map((msg) => ({
+          role: msg.role === 'bot' ? 'assistant' : 'user',
+          content: msg.content,
+        }));
+
+      // Call streaming message service
+      await chatService.sendStreamingMessage(messageText, language, history, (chunk) => {
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === botMessageId ? { ...msg, content: msg.content + chunk } : msg
+          )
+        );
+      });
 
       setIsTyping(false);
-      setMessages((prev) => prev.map((msg) => (msg.id === botMessageId ? { ...msg, content: assistantText } : msg)));
     } catch (err) {
       setIsTyping(false);
       setMessages((prev) =>

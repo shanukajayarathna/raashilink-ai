@@ -2,6 +2,7 @@ import { configureStore } from '@reduxjs/toolkit';
 import authReducer from '@/features/auth/store/authSlice';
 import matchReducer from '@/features/matchmaking/store/matchSlice';
 import weddingReducer from '@/features/wedding/store/weddingSlice';
+import horoscopeReducer from '@/features/horoscope/store/horoscopeSlice';
 import uiReducer from './uiSlice';
 
 /**
@@ -13,6 +14,7 @@ export const store = configureStore({
     auth: authReducer,
     match: matchReducer,
     wedding: weddingReducer,
+    horoscope: horoscopeReducer,
     ui: uiReducer,
   },
   middleware: (getDefaultMiddleware) =>

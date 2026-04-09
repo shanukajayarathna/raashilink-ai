@@ -1,4 +1,6 @@
 import mongoose from 'mongoose';
+import path from 'path';
+import { spawn } from 'child_process';
 import User from '../models/User.js';
 import MatchInterest from '../models/MatchInterest.js';
 import Conversation from '../models/Conversation.js';
@@ -288,9 +290,143 @@ export const undoInterest = asyncHandler(async (req, res) => {
   });
 });
 
+export const getTodayMatches = asyncHandler(async (req, res) => {
+  const userId = String(req.user._id);
+  const cacheKey = `matches:today:${userId}`;
+
+  // Check cache first
+  try {
+    const cached = await redisClient.get(cacheKey);
+    if (cached) {
+      logger.info('Today matches cache hit', { userId, cacheKey });
+      const parsed = JSON.parse(cached);
+      return res.status(200).json({
+        success: true,
+        data: {
+          items: parsed.recommendations || [],
+          fromCache: true,
+          generatedAt: parsed.generatedAt
+        }
+      });
+    }
+  } catch (error) {
+    logger.warn('Cache read failed, calling engine directly', { message: error.message });
+  }
+
+  // Cache miss - call hybrid engine on demand
+  try {
+    const currentUser = await User.findById(req.user._id).lean();
+    if (!currentUser) {
+      throw new ApiError(404, 'User not found');
+    }
+
+    // Get interaction count
+    const interactionCount = await MatchInterest.countDocuments({
+      fromUser: req.user._id
+    });
+
+    // Build user profile
+    const userProfile = {
+      id: userId,
+      personalInfo: {
+        firstName: currentUser.personalInfo?.firstName || '',
+        lastName: currentUser.personalInfo?.lastName || '',
+        age: currentUser.personalInfo?.age || 28,
+        gender: currentUser.personalInfo?.gender || 'male',
+        location: currentUser.personalInfo?.location || 'Colombo'
+      },
+      personality: currentUser.personality || {},
+      lifestyle: currentUser.lifestyle || {},
+      interactions: {
+        interestsSent: interactionCount,
+        interestsReceived: await MatchInterest.countDocuments({
+          toUser: req.user._id
+        })
+      }
+    };
+
+    // Get exclude IDs
+    const existingInterests = await MatchInterest.find({
+      fromUser: req.user._id
+    }).select('toUser').lean();
+    const excludeIds = existingInterests.map(i => String(i.toUser));
+
+    // Call hybrid engine
+    const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
+    const hybridEnginePath = path.resolve(process.cwd(), 'server/python/recommendation/hybrid_engine.py');
+
+    const engineOutput = await new Promise((resolve, reject) => {
+      const enginePayload = {
+        userProfile,
+        topN: 10,
+        excludeIds,
+        interactionCount
+      };
+
+      const child = spawn(pythonCmd, [hybridEnginePath, JSON.stringify(enginePayload)], {
+        stdio: ['pipe', 'pipe', 'pipe'],
+        timeout: 10000
+      });
+
+      let stdout = '';
+      let stderr = '';
+
+      child.stdout.on('data', (chunk) => {
+        stdout += chunk.toString();
+      });
+
+      child.stderr.on('data', (chunk) => {
+        stderr += chunk.toString();
+      });
+
+      child.on('close', (code) => {
+        if (code !== 0) {
+          reject(new Error(`Engine failed: ${stderr || 'Unknown error'}`));
+        } else {
+          try {
+            const result = JSON.parse(stdout.trim());
+            resolve(result);
+          } catch (e) {
+            reject(new Error(`Failed to parse engine output: ${e.message}`));
+          }
+        }
+      });
+
+      child.on('error', (error) => {
+        reject(new Error(`Process error: ${error.message}`));
+      });
+    });
+
+    if (engineOutput.success && engineOutput.recommendations && engineOutput.recommendations.length > 0) {
+      // Cache the results for 24 hours
+      await redisClient.setEx(
+        cacheKey,
+        86400,
+        JSON.stringify({
+          recommendations: engineOutput.recommendations,
+          generatedAt: new Date().toISOString()
+        })
+      );
+    }
+
+    res.status(200).json({
+      success: true,
+      data: {
+        items: engineOutput.recommendations || [],
+        fromCache: false,
+        generatedAt: new Date().toISOString()
+      }
+    });
+  } catch (error) {
+    logger.error('Failed to generate today matches', { message: error.message });
+    throw error;
+  }
+});
+
 export default {
   getRecommendations,
   getMatchDetail,
   expressInterest,
   undoInterest,
+  getTodayMatches,
 };

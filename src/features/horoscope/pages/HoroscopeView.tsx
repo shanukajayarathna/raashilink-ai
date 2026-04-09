@@ -16,11 +16,12 @@ import {
 } from '@mui/material';
 import { Search, TrendingUp, Home, People as Users, InfoOutlined, Refresh, Share } from '@mui/icons-material';
 import { motion, AnimatePresence } from 'motion/react';
-import { useSelector } from 'react-redux';
+import { useSelector, useDispatch } from 'react-redux';
 import { RootState } from '@/app/store/store';
+import { AppDispatch } from '@/app/store/store';
+import { fetchMyChart, calculateCompatibility } from '../store/horoscopeSlice';
 import BirthChartWheel from '../components/BirthChartWheel';
 import CompatibilityScores from '../components/CompatibilityScores';
-import horoscopeService from '../services/horoscopeService';
 import matchService from '@/features/matchmaking/services/matchService';
 
 const COLORS = {
@@ -32,57 +33,44 @@ const COLORS = {
 };
 
 const HoroscopeView = () => {
+  const dispatch = useDispatch<AppDispatch>();
   const { user } = useSelector((state: RootState) => state.auth);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isCalculating, setIsCalculating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [chartData, setChartData] = useState<any>(null);
+  const { myChart, compatibility, isLoading, isCalculating, error } = useSelector((state: RootState) => state.horoscope);
   const [selectedMatch, setSelectedMatch] = useState<any>(null);
-  const [compatibilityResult, setCompatibilityResult] = useState<any>(null);
   const [matches, setMatches] = useState<any[]>([]);
-
-  const fetchData = async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const [chartRes, matchesRes] = await Promise.all([
-        horoscopeService.getMyChart(),
-        matchService.getRecommendations(),
-      ]);
-
-      setChartData(chartRes.data);
-      setMatches((matchesRes.data.items || []).map((match: any) => ({
-        id: match.id,
-        name: match.name,
-        photo: match.img,
-        sign: match.moonSign,
-      })));
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to load horoscope data. Please try again.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  const [loadingMatches, setLoadingMatches] = useState(true);
 
   useEffect(() => {
-    fetchData();
+    // Fetch user's birth chart on mount if not already loaded
+    if (!myChart) {
+      dispatch(fetchMyChart());
+    }
+  }, [dispatch, myChart]);
+
+  useEffect(() => {
+    // Fetch recommendations/matches for compatibility selection
+    const fetchMatches = async () => {
+      setLoadingMatches(true);
+      try {
+        const matchesRes = await matchService.getRecommendations();
+        setMatches((matchesRes.data.items || []).map((match: any) => ({
+          id: match.id,
+          name: match.name,
+          photo: match.img,
+          sign: match.moonSign,
+        })));
+      } catch (err) {
+        console.error('Failed to load matches', err);
+      } finally {
+        setLoadingMatches(false);
+      }
+    };
+    fetchMatches();
   }, []);
 
   const handleCalculate = async () => {
-    if (!selectedMatch) return;
-
-    setIsCalculating(true);
-    setCompatibilityResult(null);
-    setError(null);
-
-    try {
-      const response = await horoscopeService.calculateCompatibility(selectedMatch.id);
-      setCompatibilityResult(response.data);
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Calculation failed. Please try again.');
-    } finally {
-      setIsCalculating(false);
-    }
+    if (!selectedMatch || !user) return;
+    dispatch(calculateCompatibility({ userAId: String(user._id), userBId: selectedMatch.id }));
   };
 
   if (isLoading) {
@@ -113,7 +101,7 @@ const HoroscopeView = () => {
           </Typography>
         </Box>
         <Stack direction="row" spacing={2}>
-          <Button variant="outlined" startIcon={<Refresh />} onClick={fetchData} sx={{ borderRadius: '12px', borderColor: COLORS.secondary, color: COLORS.secondary }}>
+          <Button variant="outlined" startIcon={<Refresh />} onClick={() => dispatch(fetchMyChart())} sx={{ borderRadius: '12px', borderColor: COLORS.secondary, color: COLORS.secondary }}>
             Refresh
           </Button>
           <Button variant="contained" startIcon={<Share />} sx={{ borderRadius: '12px', bgcolor: COLORS.primary }}>
@@ -124,7 +112,7 @@ const HoroscopeView = () => {
 
       {error && <Alert severity="error" sx={{ mb: 4, borderRadius: '12px' }}>{error}</Alert>}
 
-      {chartData && (
+      {myChart && (
         <Grid container spacing={6}>
           <Grid size={{ xs: 12, lg: 6 }}>
             <Paper
@@ -137,14 +125,14 @@ const HoroscopeView = () => {
                 borderColor: COLORS.background,
               }}
             >
-              <BirthChartWheel planets={chartData.planets} ascendant={chartData.summary.ascendant} />
+              <BirthChartWheel planets={myChart.planets} ascendant={myChart.summary.ascendant} />
 
               <Grid container spacing={2} sx={{ mt: 4 }}>
                 {[
-                  { label: 'Moon Sign (Rashi)', value: chartData.summary.moonSign },
-                  { label: 'Nakshatra', value: chartData.summary.nakshatra },
-                  { label: 'Ascendant', value: chartData.summary.ascendant },
-                  { label: 'Sun Sign', value: chartData.summary.sunSign },
+                  { label: 'Moon Sign (Rashi)', value: myChart.summary.moonSign },
+                  { label: 'Nakshatra', value: myChart.summary.nakshatra },
+                  { label: 'Ascendant', value: myChart.summary.ascendant },
+                  { label: 'Sun Sign', value: myChart.summary.sunSign },
                 ].map((pill) => (
                   <Grid size={{ xs: 6 }} key={pill.label}>
                     <Box sx={{ p: 2, bgcolor: COLORS.background, borderRadius: '16px', textAlign: 'center' }}>
@@ -164,7 +152,7 @@ const HoroscopeView = () => {
                   <TrendingUp sx={{ fontSize: 18, color: COLORS.accent }} /> Planetary Positions
                 </Typography>
                 <Box sx={{ maxHeight: 200, overflowY: 'auto', pr: 1 }}>
-                  {chartData.positions.map((position: any, index: number) => (
+                  {myChart.positions.map((position: any, index: number) => (
                     <Box key={index} sx={{ display: 'flex', justifyContent: 'space-between', py: 1, borderBottom: `1px solid ${COLORS.background}` }}>
                       <Typography variant="body2" sx={{ fontWeight: 600 }}>{position.planet}</Typography>
                       <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
@@ -256,26 +244,20 @@ const HoroscopeView = () => {
       )}
 
       <AnimatePresence>
-        {compatibilityResult && (
+        {compatibility && (
           <motion.div initial={{ opacity: 0, y: 40 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 40 }} transition={{ duration: 0.8 }}>
             <CompatibilityScores
-              overallScore={compatibilityResult.overallScore}
-              dimensions={compatibilityResult.dimensions}
-              userA={compatibilityResult.userA || { name: user?.name || 'You' }}
-              userB={compatibilityResult.userB}
+              overallScore={compatibility.overallScore}
+              dimensions={compatibility.dimensions}
+              userA={compatibility.userA || { name: user?.name || 'You' }}
+              userB={compatibility.userB || { name: 'Match' }}
+              explanation={compatibility.explanation}
             />
           </motion.div>
         )}
       </AnimatePresence>
-
-      <Box sx={{ mt: 8, p: 4, bgcolor: 'white', borderRadius: '24px', border: '1px solid', borderColor: COLORS.background, textAlign: 'center' }}>
-        <Typography variant="body2" sx={{ color: COLORS.textSecondary, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
-          <InfoOutlined sx={{ fontSize: 16 }} />
-          Our compatibility engine combines Ashtakoota Milan with personality and lifestyle analysis for a full matchmaking score.
-        </Typography>
-      </Box>
     </Box>
   );
-};
+}
 
 export default HoroscopeView;

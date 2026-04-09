@@ -105,6 +105,48 @@ export const sendAssistantMessage = asyncHandler(async (req, res) => {
   });
 });
 
+export const streamMessage = asyncHandler(async (req, res) => {
+  const { message, language = 'en', history = [] } = req.body ?? {};
+
+  // Validate input
+  if (!message || String(message).trim().length === 0) {
+    return res.status(400).json({
+      success: false,
+      message: 'Message content is required'
+    });
+  }
+
+  if (String(message).length > 1000) {
+    return res.status(400).json({
+      success: false,
+      message: 'Message must be under 1000 characters'
+    });
+  }
+
+  const user = await User.findById(req.user._id).lean();
+  if (!user) {
+    if (!res.headersSent) {
+      return res.status(404).json({
+        success: false,
+        message: 'Authenticated user not found'
+      });
+    }
+    return res.end();
+  }
+
+  // Call streaming chat
+  try {
+    await assistantService.streamChat(history, String(message).trim(), language, res);
+  } catch (error) {
+    if (!res.headersSent) {
+      return res.status(500).json({
+        success: false,
+        message: 'Stream error: ' + error.message
+      });
+    }
+  }
+});
+
 export const getChatHistory = asyncHandler(async (req, res) => {
   ensureObjectId(req.params.chatId, 'chatId');
 
@@ -142,5 +184,7 @@ export const getChatHistory = asyncHandler(async (req, res) => {
 
 export default {
   sendMessage,
+  sendAssistantMessage,
+  streamMessage,
   getChatHistory,
 };

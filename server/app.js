@@ -13,6 +13,7 @@ import { connectRedis } from './lib/redis.js';
 import errorHandler from './middleware/errorHandler.js';
 import logger from './utils/logger.js';
 import { seedDemoUsers } from './services/demoData.service.js';
+import './jobs/dailyMatches.job.js';
 
 dotenv.config();
 

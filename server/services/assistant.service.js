@@ -1,11 +1,20 @@
 import axios from 'axios';
+import OpenAI from 'openai';
 import { GoogleGenAI } from '@google/genai';
 import logger from '../utils/logger.js';
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4';
+const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-3.5-turbo';
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-pro';
+
+const client = OPENAI_API_KEY ? new OpenAI({ apiKey: OPENAI_API_KEY }) : null;
+
+const SYSTEM_PROMPTS = {
+  en: "You are RaashiBot, the AI assistant for RaashiLink.AI — Sri Lanka's intelligent matchmaking and wedding planning platform. You assist users with:\n\nUnderstanding their Vedic horoscope (Rashi, Nakshatra, Ascendant, planetary positions)\nInterpreting compatibility scores (Guna Milan, Big Five personality, lifestyle, family values)\nFinding and evaluating potential life partners\nWedding planning (venues, vendors, budgets, checklists, timelines)\nDiscovering honeymoon destinations suited to Sri Lankan couples\n\nBe warm, culturally sensitive to Sri Lankan Buddhist, Hindu, Muslim and Christian traditions. Always respond in the same language the user writes in. Keep responses under 150 words unless asked for detail. Use LKR for all currency amounts. Use DD/MM/YYYY date format.",
+  si: "ඔබ RaashiLink.AI හි AI සහාය RaashiBot ය — ශ්‍රී ලංකාවේ බුද්ධිමත් ගැටුම්කරණ සහ විවාහ සැලසුම් වේදිකාව। ඔබ පරිශීලකদට අනුමැතිය:\n\nඔවුන්ගේ වෙදического හෝරෝස්කෝපය තේරුම් ගැනීම (රාසි, නක්ෂත්‍ර, උසස්,행성 অবস్থান)\nසամ්‍යතා ගුණ දෙයක් සම්මතකරණ (ගුණ මිලාන, පංචාත්‍ම, ජීවන ශෙලි, පවුල් අගයන්)\nසිද්ධ ජීවන සගයින් සොයා ගැනීම සහ තක්සේරු කිරීම\nවිවාහ සැලසුම් (venue, විකිරුවන්, අයවැයන්, පරීක්ෂා ලැයිස්තු, කාලසීමාවන්)\nශ්‍රී ලංකා දම්පතිවරුන්ට සුදුසු පෙම්වතු ගවේෂණ\n\nවාත්‍යමුතු, සাংस්कृतිකව සংවේදි ශ්‍රී ලංකා බෞද්ධ, හින්දු, මුස්‍ලිම් සහ ක්‍රිස්තල සම්ප්‍රදාය වෙතින්. සෑම විටම පරිශීලකයා ලිවීමේ භාෂාවෙන් පිළිතුරු දෙන්න. විස්තර ඉල්ලා නොවුවහොත් 150 වචන තුළ පිළිතුරු පිළිබඳව. සියලුම මුදල් ප්‍රමාණ LKR සඳහා භාවිතා කරන්න. DD/MM/YYYY දින ආකෘතිය භාවිතා කරන්න.",
+  ta: "நீங்கள் RaashiLink.AI இன் AI உதவியாளர் RaashiBot ஆவீர் — இலங்கையின் বুद்ධிமான் சிநேகம் மற்றும் திருமண திட்டமிடல் தளம். நீங்கள் பயனர்களுக்கு உதவுகிறீர்கள்:\n\nவேத ஜாதகம் புரிந்து கொள்ளுதல் (ராசி, நக்ஷத்திரம், உச்சம், கிரহ நிலைகள்)\nஇணக்கতை மதிப்பெண்கள் விளக்குதல் (குண மிலன், ஐந்து பெரிய ব்যক்তிত்வம், வாழ்க்கை வகுப்பு, குடும்ப மূல்யங়கள்)\nகூட்டு வாழ்க்கை துணைவரை கண்டுபிடிப்பது மற்றும் மதிப்பிடுதல்\nதிருமண திட்டமிடல் (இடங்கள், விற்பனையாளர்கள், பட்ജெட்கள், சரிபார்ப்பு பட்டியல்கள், காலக்கெடு)\nஇலங்கை தம்பதிகளுக்கு பொருத்தமான சிறுவர் கண்டுபிடிப்பு\n\nவெப்பமான, சாംஸ்கார உணர்வுடன் இலங்கை பௌத்த, இந்து, முஸ்லீம் மற்றும் கிறிஸ்தவ மரபுக்கு. எப்போதும் பயனர் எழுதும் மொழியிலேயே பதிலளியுங்கள். விரிவான விரும்பினால் தவிர 150 சொற்களுக்கு குறைவாக வைத்திருங்கள். அனைத்து நாணய தொகைகளுக்கு LKR ஐ பயன்படுத்தவும். DD/MM/YYYY திகதி வடிவம் பயன்படுத்தவும்."
+};
 
 function formatLanguage(language) {
   switch (language) {
@@ -143,6 +152,61 @@ export async function generateAssistantReply({ user, message, language = 'en' })
   }
 }
 
+async function streamChat(history, userMessage, language = 'en', res) {
+  if (!client) {
+    throw new Error('OpenAI client not initialized');
+  }
+
+  try {
+    // Trim history to last 12 messages (6 turns)
+    const trimmedHistory = history.slice(-12);
+
+    // Build messages array: system prompt + history + new user message
+    const messages = [
+      { role: 'system', content: SYSTEM_PROMPTS[language] || SYSTEM_PROMPTS.en },
+      ...trimmedHistory,
+      { role: 'user', content: userMessage }
+    ];
+
+    // Set SSE headers
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+
+    // Create streaming response
+    const stream = await client.chat.completions.create({
+      model: OPENAI_MODEL,
+      messages,
+      max_tokens: 400,
+      temperature: 0.7,
+      stream: true
+    });
+
+    // Send chunks as SSE
+    for await (const chunk of stream) {
+      const content = chunk.choices[0]?.delta?.content;
+      if (content) {
+        res.write(`data: ${content}\n\n`);
+      }
+    }
+
+    // Send completion signal
+    res.write('data: [DONE]\n\n');
+    res.end();
+  } catch (error) {
+    logger.error('Stream chat failed', { message: error.message });
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        message: 'Stream failed: ' + error.message
+      });
+    } else {
+      res.end();
+    }
+  }
+}
+
 export default {
   generateAssistantReply,
+  streamChat,
 };
