@@ -50,6 +50,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
+import honeymoonService from '../services/honeymoonService';
 
 const COLORS = {
   primary: '#8B1A2E',
@@ -88,19 +89,79 @@ const CLIMATE_DATA = [
   { month: 'Dec', temp: 28, rain: 40 },
 ];
 
+const FALLBACK_DESTINATION_IMAGE = 'https://picsum.photos/seed/honeymoon-detail/1200/600';
+
+function mapDestinationDetail(destination: any) {
+  const region = destination?.region || 'Scenic Region';
+  const country = destination?.country || 'Sri Lanka';
+  const activities = Array.isArray(destination?.activityTags) ? destination.activityTags : [];
+  const highlights = Array.isArray(destination?.highlights) ? destination.highlights : [];
+  const images = Array.isArray(destination?.images) && destination.images.length > 0
+    ? destination.images
+    : [FALLBACK_DESTINATION_IMAGE, FALLBACK_DESTINATION_IMAGE, FALLBACK_DESTINATION_IMAGE];
+
+  return {
+    id: String(destination?._id || destination?.id || region),
+    name: region,
+    region,
+    country,
+    images,
+    bestTime: destination?.bestSeason || 'All year',
+    aiReason:
+      destination?.description ||
+      `We recommend ${region} because it aligns beautifully with a romantic, slow-paced honeymoon experience.`,
+    highlights: highlights.length > 0 ? highlights : ['Scenic views', 'Romantic stays', 'Curated couple experiences'],
+    activities: activities.length > 0 ? activities.map((item: string) => item.replace(/[-_]/g, ' ')) : ['Relaxation', 'Sightseeing', 'Fine Dining'],
+    itinerary: (activities.length > 0 ? activities.slice(0, 3) : ['Arrival', 'Explore', 'Relax']).map((activity: string, index: number) => ({
+      day: index + 1,
+      title: activity.replace(/[-_]/g, ' '),
+      desc: `Spend day ${index + 1} enjoying ${activity.replace(/[-_]/g, ' ')} in ${region}.`,
+    })),
+    travelInfo: {
+      visa: 'Check the latest travel requirements before booking.',
+      airlines: [
+        { name: 'SriLankan Airlines', price: 'Varies by season' },
+        { name: 'Partner airlines', price: 'Subject to availability' },
+      ],
+      currency: 'Check the local currency and payment rules before travel.',
+      safety: 'Review local travel guidance and seasonal weather advisories before departure.',
+    },
+  };
+}
+
 export default function DestinationDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [tabValue, setTabValue] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [destination, setDestination] = useState<any | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [isSaved, setIsSaved] = useState(false);
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
   useEffect(() => {
-    // Simulate API fetch
-    const timer = setTimeout(() => setLoading(false), 1200);
-    return () => clearTimeout(timer);
+    const fetchDestination = async () => {
+      setLoading(true);
+      try {
+        const response = await honeymoonService.getDestination(String(id));
+        setDestination(mapDestinationDetail(response?.data));
+        setError(null);
+      } catch (err) {
+        console.error('Failed to load honeymoon destination', err);
+        setError('Failed to load honeymoon destination details.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (id) {
+      fetchDestination();
+      return;
+    }
+
+    setLoading(false);
+    setError('Destination not found.');
   }, [id]);
 
   if (loading) {
@@ -123,37 +184,24 @@ export default function DestinationDetail() {
     );
   }
 
-  // Mock Data
-  const destination = {
-    id: '1',
-    name: 'Maldives',
-    region: 'South Asia',
-    country: 'Maldives',
-    images: [
-      'https://picsum.photos/seed/maldives1/1200/600',
-      'https://picsum.photos/seed/maldives2/1200/600',
-      'https://picsum.photos/seed/maldives3/1200/600',
-    ],
-    bestTime: 'November to April',
-    aiReason: "We recommend the Maldives because it perfectly matches your 'Beach Paradise' vibe and 'Luxury' budget. Its secluded overwater villas provide the ultimate romantic privacy you're looking for.",
-    highlights: ['Overwater Villas', 'Crystal Clear Lagoons', 'Private Island Dining', 'Underwater Spa'],
-    activities: ['Sunset Cruise', 'Snorkeling', 'Couples Spa', 'Fine Dining'],
-    itinerary: [
-      { day: 1, title: 'Arrival & Sunset Dinner', desc: 'Arrive at Velana International Airport, take a scenic seaplane to your resort. Enjoy a private candlelit dinner on the beach.' },
-      { day: 2, title: 'Lagoon Exploration & Spa', desc: 'Morning snorkeling in the house reef. Afternoon couples massage at the underwater spa. Evening cocktails at the overwater bar.' },
-      { day: 3, title: 'Sandbank Picnic', desc: 'Take a private boat to a secluded sandbank for a gourmet picnic. Enjoy swimming and sunbathing in total privacy.' },
-    ],
-    travelInfo: {
-      visa: 'Free 30-day visa on arrival for Sri Lankan passport holders.',
-      airlines: [
-        { name: 'SriLankan Airlines', price: 'USD 250+' },
-        { name: 'Emirates', price: 'USD 350+' },
-        { name: 'Qatar Airways', price: 'USD 400+' },
-      ],
-      currency: 'Maldivian Rufiyaa (MVR), but USD is widely accepted in resorts.',
-      safety: 'Very safe for tourists. Resorts are isolated and secure.',
-    }
-  };
+  if (error) {
+    return (
+      <Box sx={{ bgcolor: COLORS.cream, minHeight: '100vh', pt: 14 }}>
+        <Container maxWidth="lg">
+          <Typography variant="h5" sx={{ color: COLORS.primary, fontWeight: 800, mb: 2 }}>
+            {error}
+          </Typography>
+          <Button variant="contained" onClick={() => navigate('/honeymoon')} sx={{ bgcolor: COLORS.primary, borderRadius: 3 }}>
+            Back to destinations
+          </Button>
+        </Container>
+      </Box>
+    );
+  }
+
+  if (!destination) {
+    return null;
+  }
 
   return (
     <Box sx={{ bgcolor: COLORS.cream, minHeight: '100vh', pb: 8 }}>

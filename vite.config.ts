@@ -34,6 +34,49 @@ export default defineConfig(({ mode }) => {
         'motion/react',
       ],
     },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (!id.includes('node_modules')) {
+              return undefined;
+            }
+
+            if (id.includes('recharts') || id.includes('d3-')) {
+              return 'charts-vendor';
+            }
+
+            if (id.includes('motion')) {
+              return 'motion-vendor';
+            }
+
+            if (id.includes('lucide-react')) {
+              return 'icons-vendor';
+            }
+
+            if (id.includes('axios')) {
+              return 'network-vendor';
+            }
+
+            if (
+              id.includes('react-dom') ||
+              id.includes('react-router') ||
+              id.includes('/react/') ||
+              id.includes('@reduxjs/toolkit') ||
+              id.includes('react-redux')
+            ) {
+              return 'framework-vendor';
+            }
+
+            if (id.includes('@mui/') || id.includes('@emotion/')) {
+              return 'mui-vendor';
+            }
+
+            return undefined;
+          },
+        },
+      },
+    },
     server: {
       hmr: process.env.DISABLE_HMR !== 'true',
       warmup: {

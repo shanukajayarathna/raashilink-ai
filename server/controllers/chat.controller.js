@@ -182,9 +182,67 @@ export const getChatHistory = asyncHandler(async (req, res) => {
   });
 });
 
+export const getConversations = asyncHandler(async (req, res) => {
+  const conversations = await Conversation.find({ participants: req.user._id })
+    .sort({ lastMessageAt: -1 })
+    .limit(20)
+    .lean();
+
+  const otherUserIds = [...new Set(
+    conversations.flatMap((conversation) =>
+      (conversation.participants || [])
+        .filter((participantId) => String(participantId) !== String(req.user._id))
+        .map((participantId) => String(participantId))
+    )
+  )];
+
+  const users = otherUserIds.length > 0
+    ? await User.find({ _id: { $in: otherUserIds } })
+        .select('personalInfo.firstName personalInfo.lastName')
+        .lean()
+    : [];
+
+  const userNameMap = new Map(
+    users.map((user) => [
+      String(user._id),
+      [user.personalInfo?.firstName, user.personalInfo?.lastName].filter(Boolean).join(' ').trim() || 'Conversation',
+    ])
+  );
+
+  const items = await Promise.all(
+    conversations.map(async (conversation) => {
+      const lastMessage = await Message.findOne({ conversationId: conversation._id })
+        .sort({ createdAt: -1 })
+        .lean();
+
+      const title = (conversation.participants || [])
+        .filter((participantId) => String(participantId) !== String(req.user._id))
+        .map((participantId) => userNameMap.get(String(participantId)) || 'Conversation')
+        .join(', ') || 'Recent conversation';
+
+      return {
+        id: String(conversation._id),
+        title,
+        date: conversation.lastMessageAt
+          ? new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(new Date(conversation.lastMessageAt))
+          : 'Recently',
+        preview: lastMessage?.content || 'No messages yet',
+      };
+    })
+  );
+
+  res.status(200).json({
+    success: true,
+    data: {
+      items,
+    },
+  });
+});
+
 export default {
   sendMessage,
   sendAssistantMessage,
   streamMessage,
   getChatHistory,
+  getConversations,
 };

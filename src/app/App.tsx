@@ -3,11 +3,11 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { Provider, useSelector } from 'react-redux';
 import { Box, CircularProgress, CssBaseline, ThemeProvider } from '@mui/material';
 import { store, RootState } from '@/app/store/store';
-import MainLayout from '@/shared/components/layout/MainLayout';
-import LandingPage from '@/features/marketing/pages/LandingPage';
-import LoginPage from '@/features/auth/pages/LoginPage';
-import RegisterPage from '@/features/auth/pages/RegisterPage';
-import ForgotPasswordPage from '@/features/auth/pages/ForgotPasswordPage';
+const MainLayout = lazy(() => import('@/shared/components/layout/MainLayout'));
+const LandingPage = lazy(() => import('@/features/marketing/pages/LandingPage'));
+const LoginPage = lazy(() => import('@/features/auth/pages/LoginPage'));
+const RegisterPage = lazy(() => import('@/features/auth/pages/RegisterPage'));
+const ForgotPasswordPage = lazy(() => import('@/features/auth/pages/ForgotPasswordPage'));
 const DashboardRouter = lazy(() => import('@/features/dashboard/pages/DashboardRouter'));
 const HoroscopeView = lazy(() => import('@/features/horoscope/pages/HoroscopeView'));
 const MatchRecommendations = lazy(() => import('@/features/matchmaking/pages/MatchRecommendations'));

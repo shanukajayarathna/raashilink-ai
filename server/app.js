@@ -9,6 +9,7 @@ import vendorsRoutes from './routes/v1/vendors.routes.js';
 import weddingRoutes from './routes/v1/wedding.routes.js';
 import honeymoonRoutes from './routes/v1/honeymoon.routes.js';
 import horoscopeRoutes from './routes/v1/horoscope.routes.js';
+import adminRoutes from './routes/v1/admin.routes.js';
 import { connectRedis } from './lib/redis.js';
 import errorHandler from './middleware/errorHandler.js';
 import logger from './utils/logger.js';
@@ -79,6 +80,7 @@ app.use('/api/v1/vendors', vendorsRoutes);
 app.use('/api/v1/wedding', weddingRoutes);
 app.use('/api/v1/honeymoon', honeymoonRoutes);
 app.use('/api/v1/horoscope', horoscopeRoutes);
+app.use('/api/v1/admin', adminRoutes);
 app.use(errorHandler);
 
 export async function startServer() {

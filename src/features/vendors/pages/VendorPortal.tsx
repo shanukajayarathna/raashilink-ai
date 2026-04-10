@@ -43,7 +43,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import { RootState } from '@/app/store/store';
 import { logout } from '@/features/auth/store/authSlice';
-import axios from 'axios';
+import vendorService from '../services/vendorService';
 
 // Sub-components
 import PortfolioUpload from '../components/portal/PortfolioUpload';
@@ -133,35 +133,56 @@ export default function VendorPortal() {
   const { user, token } = useSelector((state: RootState) => state.auth);
 
   useEffect(() => {
-    // Simulate API fetch
     const fetchData = async () => {
       try {
         setLoading(true);
-        // In real app: const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/v1/vendor/profile`, { headers: { Authorization: `Bearer ${token}` } });
-        // setVendorData(response.data);
-        
-        // Mock data
-        setTimeout(() => {
-          setVendorData({
-            businessName: "Royal Ceylon Photography",
-            category: "Photography",
-            stats: {
-              views: "1,240",
-              quotes: "48",
-              bookings: "12",
-              rating: "4.9"
-            }
-          });
-          setLoading(false);
-        }, 1000);
+
+        const response = await vendorService.searchVendors();
+        const items = Array.isArray(response?.data?.items) ? response.data.items : [];
+        const currentUserId = String(user?.id || user?._id || '');
+        const currentVendor = items.find((entry: any) => String(entry?.userId) === currentUserId);
+
+        setVendorData({
+          businessName: currentVendor?.businessName || user?.vendorProfile?.businessName || user?.name || 'Vendor Account',
+          category: currentVendor?.category || user?.vendorProfile?.businessCategory || 'Vendor',
+          stats: {
+            views: String(currentVendor?.reviews?.length || 0),
+            quotes: String(currentVendor?.availabilityCalendar?.length || 0),
+            bookings: String((currentVendor?.availabilityCalendar || []).filter((item: any) => item?.status === 'booked').length),
+            rating: Number(currentVendor?.ratings?.average || user?.vendorProfile?.rating || 0).toFixed(1),
+          },
+          vendorProfile: user?.vendorProfile || null,
+          verification: {
+            ...(user?.verification || {}),
+            vendorVerified: Boolean(currentVendor?.verified),
+          },
+        });
       } catch (error) {
-        console.error("Error fetching vendor data", error);
+        console.error('Error fetching vendor data', error);
+        setVendorData({
+          businessName: user?.vendorProfile?.businessName || user?.name || 'Vendor Account',
+          category: user?.vendorProfile?.businessCategory || 'Vendor',
+          stats: {
+            views: '0',
+            quotes: '0',
+            bookings: '0',
+            rating: Number(user?.vendorProfile?.rating || 0).toFixed(1),
+          },
+          vendorProfile: user?.vendorProfile || null,
+          verification: user?.verification || {},
+        });
+      } finally {
         setLoading(false);
       }
     };
 
-    fetchData();
-  }, [token]);
+    if (token) {
+      fetchData();
+      return;
+    }
+
+    setLoading(false);
+  }, [token, user]);
 
   const handleLogout = () => {
     dispatch(logout());

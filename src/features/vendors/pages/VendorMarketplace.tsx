@@ -19,7 +19,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { useSelector } from 'react-redux';
 import { RootState } from '@/app/store/store';
-import axios from 'axios';
+import vendorService from '../services/vendorService';
 
 // Sub-components
 import VendorCard from '../components/VendorCard';
@@ -53,113 +53,38 @@ const DISTRICTS = [
   'Colombo', 'Kandy', 'Galle', 'Matara', 'Jaffna', 'Negombo', 'Kurunegala', 'Ratnapura'
 ];
 
-const MOCK_VENDORS = [
-  {
-    id: '1',
-    name: 'Galle Face Hotel',
-    category: 'Venue',
-    rating: 4.8,
-    reviewCount: 124,
-    location: 'Colombo 03, Western Province',
-    priceRange: 'LKR 250,000 — 800,000',
-    description: 'A historic hotel offering grand ballrooms and stunning ocean views for a truly majestic Sri Lankan wedding experience.',
-    image: 'https://picsum.photos/seed/galleface/800/600',
-    portfolio: [
-      'https://picsum.photos/seed/gf1/400/400',
-      'https://picsum.photos/seed/gf2/400/400',
-      'https://picsum.photos/seed/gf3/400/400'
-    ],
-    verified: true,
-    popular: true,
-    isFavorite: true
-  },
-  {
-    id: '2',
-    name: 'Dimitri Photography',
-    category: 'Photography',
-    rating: 4.9,
-    reviewCount: 86,
-    location: 'Mount Lavinia, Western Province',
-    priceRange: 'LKR 120,000 — 350,000',
-    description: 'Specializing in cinematic wedding storytelling and candid moments that capture the soul of your special day.',
-    image: 'https://picsum.photos/seed/dimitri/800/600',
-    portfolio: [
-      'https://picsum.photos/seed/dp1/400/400',
-      'https://picsum.photos/seed/dp2/400/400',
-      'https://picsum.photos/seed/dp3/400/400'
-    ],
-    verified: true,
-    popular: true
-  },
-  {
-    id: '3',
-    name: 'Royal Catering Services',
-    category: 'Catering',
-    rating: 4.7,
-    reviewCount: 52,
-    location: 'Colombo 07, Western Province',
-    priceRange: 'LKR 1,500 — 4,500 per plate',
-    description: 'Authentic Sri Lankan flavors and international cuisines prepared with the finest ingredients for your grand banquet.',
-    image: 'https://picsum.photos/seed/royalcat/800/600',
-    portfolio: [
-      'https://picsum.photos/seed/rc1/400/400',
-      'https://picsum.photos/seed/rc2/400/400',
-      'https://picsum.photos/seed/rc3/400/400'
-    ],
-    verified: false
-  },
-  {
-    id: '4',
-    name: 'Floral Dreams by Niro',
-    category: 'Decoration',
-    rating: 4.6,
-    reviewCount: 38,
-    location: 'Negombo, Western Province',
-    priceRange: 'LKR 80,000 — 250,000',
-    description: 'Transforming spaces into magical floral wonderlands with bespoke designs that reflect your unique personality.',
-    image: 'https://picsum.photos/seed/floralniro/800/600',
-    portfolio: [
-      'https://picsum.photos/seed/fn1/400/400',
-      'https://picsum.photos/seed/fn2/400/400',
-      'https://picsum.photos/seed/fn3/400/400'
-    ],
-    verified: true
-  },
-  {
-    id: '5',
-    name: 'Glamour Bridal Wear',
-    category: 'Bridal Wear',
-    rating: 4.5,
-    reviewCount: 45,
-    location: 'Kandy, Central Province',
-    priceRange: 'LKR 45,000 — 150,000',
-    description: 'Exquisite bridal sarees and custom-tailored suits that blend traditional elegance with modern sophistication.',
-    image: 'https://picsum.photos/seed/glamour/800/600',
-    portfolio: [
-      'https://picsum.photos/seed/gb1/400/400',
-      'https://picsum.photos/seed/gb2/400/400',
-      'https://picsum.photos/seed/gb3/400/400'
-    ],
-    verified: true
-  },
-  {
-    id: '6',
-    name: 'The Sound Crew',
-    category: 'Entertainment',
-    rating: 4.4,
-    reviewCount: 29,
-    location: 'Colombo 05, Western Province',
-    priceRange: 'LKR 35,000 — 90,000',
-    description: 'Professional DJs and live bands that keep the energy high and the dance floor packed all night long.',
-    image: 'https://picsum.photos/seed/soundcrew/800/600',
-    portfolio: [
-      'https://picsum.photos/seed/sc1/400/400',
-      'https://picsum.photos/seed/sc2/400/400',
-      'https://picsum.photos/seed/sc3/400/400'
-    ],
-    verified: false
-  }
-];
+const FALLBACK_VENDOR_IMAGE = 'https://picsum.photos/seed/vendor-marketplace/800/600';
+const CATEGORY_LABELS: Record<string, string> = {
+  Attire: 'Bridal Wear',
+  Decor: 'Decoration',
+  Music: 'Entertainment',
+  Planner: 'Wedding Planner',
+};
+
+function mapVendorCard(vendor: any) {
+  const portfolio = Array.isArray(vendor?.portfolioImages) && vendor.portfolioImages.length > 0
+    ? vendor.portfolioImages
+    : [FALLBACK_VENDOR_IMAGE, FALLBACK_VENDOR_IMAGE, FALLBACK_VENDOR_IMAGE];
+  const minPrice = Number(vendor?.pricingRange?.min || 0);
+  const maxPrice = Number(vendor?.pricingRange?.max || 0);
+  const category = CATEGORY_LABELS[vendor?.category] || vendor?.category || 'Vendor';
+
+  return {
+    id: String(vendor?.id || vendor?._id || ''),
+    name: vendor?.businessName || vendor?.owner?.name || 'Wedding Vendor',
+    category,
+    rating: Number(vendor?.ratings?.average || 0),
+    reviewCount: Number(vendor?.ratings?.count || vendor?.reviews?.length || 0),
+    location: Array.isArray(vendor?.serviceArea) && vendor.serviceArea.length > 0 ? vendor.serviceArea.join(', ') : 'Sri Lanka',
+    priceRange: `LKR ${minPrice.toLocaleString()} — ${maxPrice.toLocaleString()}`,
+    description: vendor?.description || 'Professional wedding services for your celebration.',
+    image: portfolio[0],
+    portfolio,
+    verified: Boolean(vendor?.verified),
+    popular: Boolean(vendor?.verified && Number(vendor?.ratings?.count || 0) >= 3),
+    isFavorite: false,
+  };
+}
 
 export default function VendorMarketplace() {
   const theme = useTheme();
@@ -184,16 +109,24 @@ export default function VendorMarketplace() {
     const fetchVendors = async () => {
       setLoading(true);
       try {
-        // Simulating API call to GET /api/v1/vendors
-        await new Promise(resolve => setTimeout(resolve, 1500));
-        setVendors(MOCK_VENDORS);
+        const response = await vendorService.searchVendors();
+        const items = Array.isArray(response?.data?.items) ? response.data.items : [];
+        setVendors(items.map(mapVendorCard));
       } catch (err) {
-        console.error(err);
+        console.error('Failed to load vendors', err);
+        setVendors([]);
       } finally {
         setLoading(false);
       }
     };
-    fetchVendors();
+
+    if (token) {
+      fetchVendors();
+      return;
+    }
+
+    setVendors([]);
+    setLoading(false);
   }, [token]);
 
   const handleCategoryChange = (_: React.SyntheticEvent, newValue: string) => {

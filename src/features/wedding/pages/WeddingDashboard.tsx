@@ -15,7 +15,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { useSelector } from 'react-redux';
 import { RootState } from '@/app/store/store';
-import axios from 'axios';
+import weddingService from '../services/weddingService';
 
 // Sub-components
 import OverviewTab from '../components/OverviewTab';
@@ -38,24 +38,38 @@ const COLORS = {
   warning: '#ED6C02'
 };
 
-// --- Mock Data ---
-const MOCK_WEDDING_PROJECT = {
-  couple: {
-    partner1: "Shanuka",
-    partner2: "Kavindi",
-    date: "2025-12-28",
-    venue: "Galle Face Hotel, Colombo",
-    heroImage: "https://picsum.photos/seed/wedding-hero/1200/600"
-  },
-  stats: {
-    totalBudget: 800000,
-    spentSoFar: 312000,
-    vendorsBooked: 4,
-    totalVendors: 12,
-    checklistProgress: 23,
-    totalTasks: 47
-  }
-};
+const DEFAULT_WEDDING_HERO_IMAGE = 'https://picsum.photos/seed/wedding-hero/1200/600';
+
+function buildWeddingDashboardData(project: any, budgetSummary: any, vendorsPayload: any, user: any) {
+  const checklist = Array.isArray(project?.checklist) ? project.checklist : [];
+  const bookedVendors = Array.isArray(project?.vendors)
+    ? project.vendors.filter((entry: any) => ['requested', 'booked'].includes(entry?.status)).length
+    : 0;
+  const totalVendors = vendorsPayload?.data?.total || vendorsPayload?.data?.items?.length || 0;
+  const completedTasks = checklist.filter((item: any) => item?.completed).length;
+  const partner1 = user?.firstName || user?.name?.split(' ')?.[0] || 'You';
+  const partner2 = user?.weddingProject?.partnerName || 'Partner';
+  const weddingDateValue =
+    project?.weddingDate || user?.weddingProject?.weddingDate || new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString();
+
+  return {
+    couple: {
+      partner1,
+      partner2,
+      date: new Date(weddingDateValue).toISOString().split('T')[0],
+      venue: project?.venueId ? 'Venue selected' : 'Venue planning in progress',
+      heroImage: user?.coverPhoto || user?.profilePic || DEFAULT_WEDDING_HERO_IMAGE,
+    },
+    stats: {
+      totalBudget: Number(budgetSummary?.data?.totalBudget || project?.totalBudget || 0),
+      spentSoFar: Number(budgetSummary?.data?.totalSpent || 0),
+      vendorsBooked: bookedVendors,
+      totalVendors,
+      checklistProgress: checklist.length > 0 ? Math.round((completedTasks / checklist.length) * 100) : 0,
+      totalTasks: checklist.length,
+    },
+  };
+}
 
 export default function WeddingDashboard() {
   const theme = useTheme();
@@ -65,30 +79,38 @@ export default function WeddingDashboard() {
   const [error, setError] = useState<string | null>(null);
   const [weddingData, setWeddingData] = useState<any>(null);
 
-  const { token } = useSelector((state: RootState) => state.auth);
+  const { token, user } = useSelector((state: RootState) => state.auth);
 
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
       try {
-        // In a real app:
-        // const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/v1/wedding/project`, {
-        //   headers: { Authorization: `Bearer ${token}` }
-        // });
-        // setWeddingData(response.data);
-        
-        // Simulating API call
-        await new Promise(resolve => setTimeout(resolve, 1500));
-        setWeddingData(MOCK_WEDDING_PROJECT);
+        const [projectResponse, budgetResponse, vendorsResponse] = await Promise.all([
+          weddingService.getProject(),
+          weddingService.getBudget(),
+          weddingService.getVendors(),
+        ]);
+
+        setWeddingData(
+          buildWeddingDashboardData(projectResponse?.data, budgetResponse, vendorsResponse, user)
+        );
+        setError(null);
       } catch (err) {
-        setError("Failed to load wedding details. Please try again.");
+        console.error('Failed to load wedding details', err);
+        setError('Failed to load wedding details. Please try again.');
       } finally {
         setLoading(false);
       }
     };
 
-    fetchData();
-  }, [token]);
+    if (token) {
+      fetchData();
+      return;
+    }
+
+    setWeddingData(buildWeddingDashboardData(null, null, null, user));
+    setLoading(false);
+  }, [token, user]);
 
   const handleTabChange = (_: React.SyntheticEvent, newValue: number) => {
     setActiveTab(newValue);

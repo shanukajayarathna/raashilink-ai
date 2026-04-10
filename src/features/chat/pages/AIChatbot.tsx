@@ -47,6 +47,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { useSelector } from 'react-redux';
 import { RootState } from '@/app/store/store';
+import chatService from '../services/chatService';
 // Components
 import ChatSidebar from '../components/ChatSidebar';
 import ChatInterface from '../components/ChatInterface';
@@ -65,18 +66,35 @@ const COLORS = {
   warning: '#ED6C02',
 };
 
-const MOCK_HISTORY = [
-  { id: '1', title: 'Wedding Planning in Colombo', date: 'Yesterday' },
-  { id: '2', title: 'Horoscope Compatibility Check', date: '2 days ago' },
-  { id: '3', title: 'Budget Advice for 200 Guests', date: 'Last week' },
-];
+const EMPTY_HISTORY: Array<{ id: string; title: string; date: string }> = [];
 
 export default function AIChatbot() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [isSidebarOpen, setIsSidebarOpen] = useState(!isMobile);
   const [language, setLanguage] = useState<'en' | 'si' | 'ta'>('en');
+  const [chatHistory, setChatHistory] = useState(EMPTY_HISTORY);
   const [chatKey, setChatKey] = useState(0); // Used to reset ChatInterface
+  const { token } = useSelector((state: RootState) => state.auth);
+
+  useEffect(() => {
+    const loadConversations = async () => {
+      try {
+        const response = await chatService.getConversations();
+        setChatHistory(Array.isArray(response?.data?.items) ? response.data.items : EMPTY_HISTORY);
+      } catch (error) {
+        console.error('Failed to load chat history', error);
+        setChatHistory(EMPTY_HISTORY);
+      }
+    };
+
+    if (token) {
+      loadConversations();
+      return;
+    }
+
+    setChatHistory(EMPTY_HISTORY);
+  }, [token, chatKey]);
 
   const handleLanguageChange = (lang: 'en' | 'si' | 'ta') => {
     setLanguage(lang);
@@ -95,7 +113,7 @@ export default function AIChatbot() {
             language={language}
             onLanguageChange={handleLanguageChange}
             onTopicClick={(topic) => {}} // Topics handled inside ChatInterface now or via ref
-            history={MOCK_HISTORY}
+            history={chatHistory}
             onClearChat={handleClearChat}
           />
         </Box>
@@ -112,7 +130,7 @@ export default function AIChatbot() {
           language={language}
           onLanguageChange={handleLanguageChange}
           onTopicClick={(topic) => { setIsSidebarOpen(false); }}
-          history={MOCK_HISTORY}
+          history={chatHistory}
           onClearChat={handleClearChat}
         />
       </Drawer>

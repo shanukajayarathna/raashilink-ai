@@ -33,7 +33,7 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import axios from 'axios';
+import honeymoonService from '../services/honeymoonService';
 import DestinationCard from '../components/DestinationCard';
 import WorldMapView from '../components/WorldMapView';
 
@@ -67,55 +67,50 @@ const DURATIONS = [
   { id: 'long', title: 'Two weeks', range: '14 days' },
 ];
 
-const MOCK_DESTINATIONS = [
-  {
-    id: '1',
-    name: 'Maldives',
-    region: 'South Asia',
-    country: 'Maldives',
-    image: 'https://picsum.photos/seed/maldives/800/600',
-    tags: ['🏖 Beach', '🌺 Romantic', '🌡 28°C avg'],
-    budget: 2400,
-    bestSeason: 'Nov-Apr',
-    description: 'Escape to a tropical paradise with overwater villas and crystal clear lagoons. Perfect for couples seeking privacy and luxury.',
-    matchScore: 95,
-    highlights: [{ icon: 'Waves', label: 'Swimming' }, { icon: 'Sparkles', label: 'Couples Spa' }, { icon: 'Utensils', label: 'Fine Dining' }, { icon: 'Sun', label: 'Sunset Views' }],
-    x: 65, y: 65, type: 'beach' as const,
-  },
-  {
-    id: '2',
-    name: 'Santorini',
-    region: 'Cyclades',
-    country: 'Greece',
-    image: 'https://picsum.photos/seed/santorini/800/600',
-    tags: ['🏛 Culture', '🌅 Sunset', '🌡 24°C avg'],
-    budget: 3500,
-    bestSeason: 'May-Oct',
-    description: 'Famous for its stunning sunsets and white-washed buildings. Explore volcanic beaches and ancient ruins with your partner.',
-    matchScore: 88,
-    highlights: [{ icon: 'Sun', label: 'Sunset Views' }, { icon: 'Camera', label: 'Photography' }, { icon: 'Utensils', label: 'Fine Dining' }],
-    x: 55, y: 25, type: 'culture' as const,
-  },
-  {
-    id: '3',
-    name: 'Bali',
-    region: 'Ubud',
-    country: 'Indonesia',
-    image: 'https://picsum.photos/seed/bali/800/600',
-    tags: ['🌴 Nature', '🧘 Spiritual', '🌡 29°C avg'],
-    budget: 1800,
-    bestSeason: 'Apr-Oct',
-    description: 'A spiritual haven with lush jungles and vibrant culture. Experience traditional Balinese hospitality and serene landscapes.',
-    matchScore: 92,
-    highlights: [{ icon: 'Trees', label: 'Nature' }, { icon: 'Sparkles', label: 'Couples Spa' }, { icon: 'Utensils', label: 'Fine Dining' }],
-    x: 80, y: 70, type: 'nature' as const,
-  },
-];
+const FALLBACK_DESTINATION_IMAGE = 'https://picsum.photos/seed/honeymoon-default/800/600';
+
+function mapDestinationType(activityTags: string[] = []): 'beach' | 'nature' | 'culture' {
+  if (activityTags.some((tag) => /beach|island|sea|surf|swim/i.test(tag))) return 'beach';
+  if (activityTags.some((tag) => /mountain|nature|forest|wildlife|hike|adventure/i.test(tag))) return 'nature';
+  return 'culture';
+}
+
+function mapDestinationCard(destination: any, index: number) {
+  const activityTags = Array.isArray(destination?.activityTags) ? destination.activityTags.filter(Boolean) : [];
+  const highlights = Array.isArray(destination?.highlights) ? destination.highlights : [];
+  const type = mapDestinationType(activityTags);
+  const budgetLookup: Record<string, number> = {
+    budget: 1500,
+    'mid-range': 3200,
+    luxury: 6000,
+  };
+
+  return {
+    id: String(destination?._id || destination?.id || index + 1),
+    name: destination?.region || destination?.country || 'Romantic Escape',
+    region: destination?.region || 'Scenic Region',
+    country: destination?.country || 'Sri Lanka',
+    image: destination?.images?.[0] || FALLBACK_DESTINATION_IMAGE,
+    tags: [
+      ...activityTags.slice(0, 2).map((tag: string) => tag.replace(/[-_]/g, ' ')),
+      destination?.budgetTier || 'curated',
+    ],
+    budget: budgetLookup[destination?.budgetTier] || 2500,
+    bestSeason: destination?.bestSeason || 'All year',
+    description: destination?.description || 'A romantic getaway curated for couples.',
+    matchScore: Math.max(72, 96 - index * 4),
+    highlights: highlights.slice(0, 4).map((label: string) => ({ icon: 'Sparkles', label })),
+    x: 18 + ((index * 17) % 62),
+    y: 22 + ((index * 11) % 46),
+    type,
+  };
+}
 
 export default function HoneymoonDestinations() {
   const [showQuiz, setShowQuiz] = useState(true);
   const [viewMode, setViewMode] = useState<'grid' | 'map'>('grid');
   const [loading, setLoading] = useState(false);
+  const [destinations, setDestinations] = useState<any[]>([]);
   const [preferences, setPreferences] = useState({
     vibe: '',
     budget: '',
@@ -127,13 +122,21 @@ export default function HoneymoonDestinations() {
   const handleGetRecommendations = async () => {
     if (!preferences.vibe || !preferences.budget || !preferences.duration) return;
     setLoading(true);
-    // Simulate API call
+
     try {
-      // await axios.post(`${process.env.REACT_APP_API_URL}/api/v1/honeymoon/preferences`, preferences);
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      const budgetTier = preferences.budget === 'mid' ? 'mid-range' : preferences.budget;
+      const response = await honeymoonService.getDestinations({
+        activity: preferences.vibe,
+        budgetTier,
+      });
+
+      const items = Array.isArray(response?.data?.items) ? response.data.items : [];
+      setDestinations(items.map((item: any, index: number) => mapDestinationCard(item, index)));
       setShowQuiz(false);
     } catch (err) {
-      console.error(err);
+      console.error('Failed to load honeymoon recommendations', err);
+      setDestinations([]);
+      setShowQuiz(false);
     } finally {
       setLoading(false);
     }
@@ -328,7 +331,7 @@ export default function HoneymoonDestinations() {
                     exit={{ opacity: 0, y: -20 }}
                   >
                     <Grid container spacing={4}>
-                      {MOCK_DESTINATIONS.map((dest, index) => (
+                      {destinations.map((dest, index) => (
                         <Grid size={{ xs: 12, md: 6 }} key={dest.id}>
                           <DestinationCard destination={dest} index={index} />
                         </Grid>
@@ -342,7 +345,7 @@ export default function HoneymoonDestinations() {
                     animate={{ opacity: 1, scale: 1 }}
                     exit={{ opacity: 0, scale: 0.95 }}
                   >
-                    <WorldMapView destinations={MOCK_DESTINATIONS} />
+                    <WorldMapView destinations={destinations} />
                   </motion.div>
                 )}
               </AnimatePresence>

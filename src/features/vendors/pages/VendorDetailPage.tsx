@@ -19,6 +19,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import { RootState } from '@/app/store/store';
+import vendorService from '../services/vendorService';
 
 // Sub-components
 import QuoteRequestModal from '../components/QuoteRequestModal';
@@ -36,74 +37,75 @@ const COLORS = {
   warning: '#ED6C02'
 };
 
-const MOCK_VENDOR_DETAIL = {
-  id: '1',
-  name: 'Galle Face Hotel',
-  category: 'Venue',
-  rating: 4.8,
-  reviewCount: 124,
-  location: 'Colombo 03, Western Province',
-  priceRange: 'LKR 250,000 — 800,000',
-  description: 'A historic hotel offering grand ballrooms and stunning ocean views for a truly majestic Sri Lankan wedding experience. Established in 1864, the Galle Face Hotel is one of the oldest hotels east of Suez. It is a colonial-style hotel located at 2, Galle Road, Colombo 03, Sri Lanka. The hotel is a member of the Galle Face Hotel Group and is a historic landmark in the city of Colombo.',
-  image: 'https://picsum.photos/seed/galleface/1920/1080',
-  logo: 'https://picsum.photos/seed/gflogo/200/200',
-  verified: true,
-  popular: true,
-  isFavorite: true,
-  experience: '150+ Years',
-  teamSize: '500+ Staff',
-  coverage: ['Colombo', 'Negombo', 'Kalutara'],
-  hours: 'Open 24/7',
-  social: {
-    facebook: 'https://facebook.com/gallefacehotel',
-    instagram: 'https://instagram.com/gallefacehotel',
-    website: 'https://gallefacehotel.com'
-  },
-  services: ['Wedding Ballrooms', 'Outdoor Lawn', 'Catering', 'Accommodation', 'Event Planning', 'Valet Parking'],
-  portfolio: [
-    { type: 'image', url: 'https://picsum.photos/seed/gf_p1/800/800' },
-    { type: 'image', url: 'https://picsum.photos/seed/gf_p2/800/800' },
-    { type: 'image', url: 'https://picsum.photos/seed/gf_p3/800/800' },
-    { type: 'image', url: 'https://picsum.photos/seed/gf_p4/800/800' },
-    { type: 'image', url: 'https://picsum.photos/seed/gf_p5/800/800' },
-    { type: 'image', url: 'https://picsum.photos/seed/gf_p6/800/800' },
-  ],
-  packages: [
-    {
-      name: 'Silver Package',
-      price: 'LKR 250,000',
-      includes: ['Ballroom for 4 hours', 'Standard Buffet Menu', 'Basic Decoration', 'Welcome Drinks']
+const FALLBACK_VENDOR_IMAGE = 'https://picsum.photos/seed/vendor-detail/1920/1080';
+
+function mapVendorDetail(vendor: any, reviewsPayload: any) {
+  const portfolioImages = Array.isArray(vendor?.portfolioImages) && vendor.portfolioImages.length > 0
+    ? vendor.portfolioImages
+    : [FALLBACK_VENDOR_IMAGE, FALLBACK_VENDOR_IMAGE, FALLBACK_VENDOR_IMAGE];
+  const reviews = Array.isArray(reviewsPayload?.data?.reviews) ? reviewsPayload.data.reviews : vendor?.reviews || [];
+  const ratingValue = Number(reviewsPayload?.data?.ratings?.average || vendor?.ratings?.average || 0);
+  const reviewCount = Number(reviewsPayload?.data?.ratings?.count || vendor?.ratings?.count || reviews.length || 0);
+  const minPrice = Number(vendor?.pricingRange?.min || 0);
+  const maxPrice = Number(vendor?.pricingRange?.max || 0);
+  const serviceArea = Array.isArray(vendor?.serviceArea) && vendor.serviceArea.length > 0 ? vendor.serviceArea : ['Sri Lanka'];
+  const services = [vendor?.category, ...serviceArea.slice(0, 2)].filter(Boolean);
+
+  return {
+    id: String(vendor?.id || vendor?._id || ''),
+    name: vendor?.businessName || 'Wedding Vendor',
+    category: vendor?.category || 'Vendor',
+    rating: Number.isFinite(ratingValue) ? Number(ratingValue.toFixed(1)) : 0,
+    reviewCount,
+    location: serviceArea.join(', '),
+    priceRange: `LKR ${minPrice.toLocaleString()} — ${maxPrice.toLocaleString()}`,
+    description: vendor?.description || 'Professional wedding services tailored for your celebration.',
+    image: portfolioImages[0],
+    logo: portfolioImages[0],
+    verified: Boolean(vendor?.verified),
+    popular: Boolean(vendor?.verified && reviewCount > 2),
+    isFavorite: false,
+    experience: `${Math.max(1, reviewCount)}+ Reviews`,
+    teamSize: `${Math.max(1, serviceArea.length)}+ Areas`,
+    coverage: serviceArea,
+    hours: 'Contact for latest availability',
+    social: {
+      facebook: '',
+      instagram: '',
+      website: '',
     },
-    {
-      name: 'Gold Package',
-      price: 'LKR 450,000',
-      includes: ['Ballroom for 6 hours', 'Premium Buffet Menu', 'Enhanced Decoration', 'Bridal Suite', 'Cake Structure']
-    },
-    {
-      name: 'Platinum Package',
-      price: 'LKR 800,000',
-      includes: ['Grand Ballroom for 8 hours', 'Luxury Buffet Menu', 'Full Floral Decoration', 'Presidential Suite', 'Live Band', 'Photography']
-    }
-  ],
-  reviews: [
-    {
-      id: 1,
-      user: 'Shanuka J.',
-      rating: 5,
-      date: '2 months ago',
-      comment: 'Absolutely stunning venue! The staff was incredibly helpful and the food was top-notch. Our wedding was a dream come true.',
-      response: 'Thank you Shanuka! It was a pleasure hosting your special day.'
-    },
-    {
-      id: 2,
-      user: 'Kavindi P.',
-      rating: 4,
-      date: '5 months ago',
-      comment: 'Beautiful location, but the coordination could have been slightly better. Overall a great experience.',
-      response: 'We appreciate your feedback Kavindi. We are working on improving our coordination services.'
-    }
-  ]
-};
+    services: services.length > 0 ? services : ['Wedding Services'],
+    portfolio: portfolioImages.map((url: string) => ({ type: 'image', url })),
+    packages: [
+      {
+        name: 'Standard Package',
+        price: `LKR ${minPrice.toLocaleString()}`,
+        includes: ['Core service delivery', 'Planning consultation', 'Event-day coordination'],
+      },
+      {
+        name: 'Premium Package',
+        price: `LKR ${Math.max(minPrice, Math.round((minPrice + maxPrice) / 2)).toLocaleString()}`,
+        includes: ['Extended service coverage', 'Priority scheduling', 'Enhanced customisation'],
+      },
+      {
+        name: 'Signature Package',
+        price: `LKR ${maxPrice.toLocaleString()}`,
+        includes: ['Full-service package', 'Premium support', 'Flexible event-day execution'],
+      },
+    ],
+    reviews: reviews.map((review: any, index: number) => ({
+      id: review?._id || index + 1,
+      user: typeof review?.reviewerId === 'string' ? review.reviewerId : `Client ${index + 1}`,
+      rating: Number(review?.rating || 0),
+      date: review?.createdAt ? new Date(review.createdAt).toLocaleDateString() : 'Recently',
+      comment: review?.comment || 'Verified review from a RaashiLink customer.',
+      response: null,
+    })),
+    contactPhone: 'Available on request',
+    contactEmail: vendor?.owner?.email || 'Not listed',
+    website: 'Available on request',
+  };
+}
 
 export default function VendorDetailPage() {
   const { id } = useParams();
@@ -120,16 +122,25 @@ export default function VendorDetailPage() {
     const fetchVendorDetail = async () => {
       setLoading(true);
       try {
-        // Simulating API call to GET /api/v1/vendors/:id
-        await new Promise(resolve => setTimeout(resolve, 1500));
-        setVendor(MOCK_VENDOR_DETAIL);
+        const [detailResponse, reviewsResponse] = await Promise.all([
+          vendorService.getVendorDetail(String(id)),
+          vendorService.getReviews(String(id)),
+        ]);
+        setVendor(mapVendorDetail(detailResponse?.data, reviewsResponse));
       } catch (err) {
-        console.error(err);
+        console.error('Failed to load vendor detail', err);
+        setVendor(null);
       } finally {
         setLoading(false);
       }
     };
-    fetchVendorDetail();
+
+    if (id) {
+      fetchVendorDetail();
+    } else {
+      setLoading(false);
+      setVendor(null);
+    }
   }, [id]);
 
   if (loading) return <LoadingState />;
@@ -385,7 +396,7 @@ function AboutTab({ vendor }: any) {
               </Box>
               <Box>
                 <Typography variant="caption" sx={{ color: 'text.secondary' }}>Phone Number</Typography>
-                <Typography variant="body2" sx={{ fontWeight: 700 }}>+94 11 234 5678</Typography>
+                <Typography variant="body2" sx={{ fontWeight: 700 }}>{vendor.contactPhone}</Typography>
               </Box>
             </Stack>
             <Stack direction="row" spacing={2} alignItems="center">
@@ -394,7 +405,7 @@ function AboutTab({ vendor }: any) {
               </Box>
               <Box>
                 <Typography variant="caption" sx={{ color: 'text.secondary' }}>Email Address</Typography>
-                <Typography variant="body2" sx={{ fontWeight: 700 }}>events@gallefacehotel.com</Typography>
+                <Typography variant="body2" sx={{ fontWeight: 700 }}>{vendor.contactEmail}</Typography>
               </Box>
             </Stack>
             <Stack direction="row" spacing={2} alignItems="center">
@@ -403,7 +414,7 @@ function AboutTab({ vendor }: any) {
               </Box>
               <Box>
                 <Typography variant="caption" sx={{ color: 'text.secondary' }}>Website</Typography>
-                <Typography variant="body2" sx={{ fontWeight: 700 }}>www.gallefacehotel.com</Typography>
+                <Typography variant="body2" sx={{ fontWeight: 700 }}>{vendor.website}</Typography>
               </Box>
             </Stack>
 

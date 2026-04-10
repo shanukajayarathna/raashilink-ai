@@ -34,6 +34,7 @@ const personalInfoSchema = new Schema(
     },
     phone: {
       type: String,
+      required: true,
       trim: true,
       match: [SRI_LANKA_PHONE_REGEX, 'Phone number must be a valid Sri Lankan mobile number'],
     },

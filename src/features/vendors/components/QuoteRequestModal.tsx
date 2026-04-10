@@ -10,6 +10,7 @@ import {
   X, Info, CheckCircle2, DollarSign 
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import vendorService from '../services/vendorService';
 
 const COLORS = {
   primary: '#8B1A2E',
@@ -43,6 +44,7 @@ export default function QuoteRequestModal({ open, onClose, vendor, weddingDate =
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [submitError, setSubmitError] = useState('');
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | { name?: string; value: unknown }>) => {
     const { name, value } = e.target;
@@ -51,12 +53,20 @@ export default function QuoteRequestModal({ open, onClose, vendor, weddingDate =
 
   const handleSubmit = async () => {
     setIsSubmitting(true);
+    setSubmitError('');
+
     try {
-      // Simulating API call to POST /api/v1/vendors/:id/quote
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      const parsedBudget = Number(String(formData.budget || '').replace(/[^\d]/g, '')) || 0;
+      await vendorService.submitQuote({
+        vendorId: vendor?.id,
+        category: vendor?.category,
+        quotedAmount: parsedBudget,
+        message: formData.requirements,
+      });
       setIsSuccess(true);
     } catch (err) {
-      console.error(err);
+      console.error('Failed to submit vendor quote request', err);
+      setSubmitError('Failed to send the quote request. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -110,6 +120,12 @@ export default function QuoteRequestModal({ open, onClose, vendor, weddingDate =
                 <Alert icon={<Info size={18} />} severity="info" sx={{ borderRadius: 3, bgcolor: `${COLORS.accent}10`, color: COLORS.accent, border: `1px solid ${COLORS.accent}20` }}>
                   Your wedding details are pre-filled to save time.
                 </Alert>
+
+                {submitError ? (
+                  <Alert severity="error" sx={{ borderRadius: 3 }}>
+                    {submitError}
+                  </Alert>
+                ) : null}
 
                 <Grid container spacing={2}>
                   <Grid size={{ xs: 12, sm: 6 }}>

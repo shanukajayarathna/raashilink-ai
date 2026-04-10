@@ -6,6 +6,7 @@ import User from '../models/User.js';
 import { redisClient } from '../lib/redis.js';
 import logger from '../utils/logger.js';
 import MatchInterest from '../models/MatchInterest.js';
+import { resolvePythonCommand } from '../utils/pythonRuntime.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -56,8 +57,8 @@ async function generateDailyMatches() {
         }).select('toUser').lean();
         const excludeIds = existingInterests.map(i => String(i.toUser));
 
-        // Call hybrid engine
-        const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
+        // Call hybrid engine using the shared workspace Python runtime
+        const pythonCmd = resolvePythonCommand();
         const engineOutput = await new Promise((resolve, reject) => {
           const child = spawn(pythonCmd, [HYBRID_ENGINE_PATH, JSON.stringify({
             userProfile,

@@ -91,6 +91,14 @@ sendMessage: async (messageData: any) => {
   },
 
   /**
+   * Get the authenticated user's recent conversations for the sidebar history.
+   */
+  getConversations: async () => {
+    const response = await axiosInstance.get('/chat/conversations');
+    return response.data;
+  },
+
+  /**
    * Get chat history with a specific recipient or chat room.
    * @param {string} chatId - ID of the chat to retrieve history for.
    * @param {object} params - Query parameters for pagination and filtering.

@@ -49,6 +49,7 @@ import { useSelector, useDispatch } from 'react-redux';
 import { RootState } from '@/app/store/store';
 import { logout } from '@/features/auth/store/authSlice';
 import { useNavigate } from 'react-router-dom';
+import adminService from '../services/adminService';
 import UsersTable from '../components/UsersTable';
 import VendorVerification from '../components/VendorVerification';
 import AdminAnalytics from '../components/AdminAnalytics';
@@ -113,6 +114,7 @@ const AdminDashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState('Overview');
   const [mobileOpen, setMobileOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [overviewData, setOverviewData] = useState<any>(null);
   const theme = useTheme();
   const navigate = useNavigate();
   const dispatch = useDispatch();
@@ -120,9 +122,20 @@ const AdminDashboard: React.FC = () => {
   const user = useSelector((state: RootState) => state.auth.user);
 
   useEffect(() => {
-    // Simulate loading
-    const timer = setTimeout(() => setLoading(false), 500);
-    return () => clearTimeout(timer);
+    const loadOverview = async () => {
+      try {
+        setLoading(true);
+        const response = await adminService.getOverview();
+        setOverviewData(response?.data || null);
+      } catch (error) {
+        console.error('Failed to load admin overview', error);
+        setOverviewData(null);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadOverview();
   }, []);
 
   const handleSignOut = () => {
@@ -143,6 +156,10 @@ const AdminDashboard: React.FC = () => {
     { name: 'Analytics', icon: <BarChart3 size={20} /> },
     { name: 'Settings', icon: <Settings size={20} /> },
   ];
+
+  const kpiData = overviewData?.kpis || KpiData;
+  const userGrowthData = overviewData?.growthData || UserGrowthData;
+  const recentActivity = overviewData?.recentActivity || RecentActivity;
 
   const drawer = (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: COLORS.primary, color: 'white' }}>
@@ -217,7 +234,7 @@ const AdminDashboard: React.FC = () => {
   const renderOverview = () => (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
         <Grid container spacing={3}>
-          {KpiData.map((kpi, index) => (
+          {kpiData.map((kpi, index) => (
             <Grid size={{ xs: 12, sm: 6, lg: 3 }} key={index}>
               <Paper
               sx={{
@@ -269,7 +286,7 @@ const AdminDashboard: React.FC = () => {
             </Box>
             <Box sx={{ height: 350, width: '100%' }}>
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={UserGrowthData}>
+                <AreaChart data={userGrowthData}>
                   <defs>
                     <linearGradient id="colorReg" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor={COLORS.primary} stopOpacity={0.1}/>
@@ -302,14 +319,14 @@ const AdminDashboard: React.FC = () => {
               <Button size="small" sx={{ color: COLORS.accent }}>View All</Button>
             </Box>
             <List disablePadding>
-              {RecentActivity.map((activity, index) => (
+              {recentActivity.map((activity, index) => (
                 <ListItem
                   key={activity.id}
                   disablePadding
                   sx={{
                     mb: 2,
                     pb: 2,
-                    borderBottom: index !== RecentActivity.length - 1 ? '1px solid #f0f0f0' : 'none'
+                    borderBottom: index !== recentActivity.length - 1 ? '1px solid #f0f0f0' : 'none'
                   }}
                 >
                   <Box sx={{ display: 'flex', gap: 2, width: '100%' }}>

@@ -64,7 +64,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { useSelector } from 'react-redux';
 import { RootState } from '@/app/store/store';
-import axios from 'axios';
+import weddingService from '@/features/wedding/services/weddingService';
 
 // Sub-components
 import AddExpenseModal from '../components/AddExpenseModal';
@@ -97,24 +97,48 @@ const CATEGORY_COLORS = {
   Others: '#78909C',
 };
 
-// --- Mock Data ---
-const MOCK_BUDGET = {
-  totalBudget: 1500000,
-  categories: [
-    { name: 'Venue', allocated: 500000, spent: 450000 },
-    { name: 'Catering', allocated: 300000, spent: 320000 },
-    { name: 'Photography', allocated: 200000, spent: 150000 },
-    { name: 'Decoration', allocated: 150000, spent: 165000 },
-    { name: 'Attire', allocated: 150000, spent: 120000 },
-    { name: 'Others', allocated: 200000, spent: 50000 },
-  ],
-  expenses: [
-    { id: 1, date: '2025-10-15', category: 'Venue', description: 'Advance payment for Ballroom', amount: 200000, hasReceipt: true },
-    { id: 2, date: '2025-10-20', category: 'Catering', description: 'Food tasting deposit', amount: 50000, hasReceipt: true },
-    { id: 3, date: '2025-11-05', category: 'Photography', description: 'Pre-wedding shoot balance', amount: 80000, hasReceipt: false },
-    { id: 4, date: '2025-11-12', category: 'Decoration', description: 'Flower arrangements deposit', amount: 65000, hasReceipt: true },
-  ]
-};
+function buildBudgetViewModel(budgetPayload: any) {
+  const summary = budgetPayload?.data || {};
+  const expenses = Array.isArray(summary.expenses) ? summary.expenses : [];
+  const grouped = expenses.reduce((acc: Record<string, number>, expense: any) => {
+    const category = expense?.category || 'Others';
+    acc[category] = (acc[category] || 0) + Number(expense?.amount || 0);
+    return acc;
+  }, {});
+
+  const categoryNames = Object.keys(grouped);
+  const totalBudget = Number(summary.totalBudget || 0);
+  const defaultAllocation = categoryNames.length > 0 ? Math.round(totalBudget / categoryNames.length) : totalBudget;
+
+  const categories = categoryNames.length > 0
+    ? categoryNames.map((name) => ({
+        name,
+        allocated: Math.max(grouped[name], defaultAllocation || grouped[name]),
+        spent: grouped[name],
+      }))
+    : [
+        {
+          name: 'Budget',
+          allocated: totalBudget,
+          spent: Number(summary.totalSpent || 0),
+        },
+      ];
+
+  return {
+    totalBudget,
+    categories,
+    expenses: expenses.map((expense: any, index: number) => ({
+      id: expense?._id || index + 1,
+      date: expense?.dueDate
+        ? new Date(expense.dueDate).toISOString().split('T')[0]
+        : new Date().toISOString().split('T')[0],
+      category: expense?.category || 'Others',
+      description: expense?.title || expense?.notes || 'Wedding expense',
+      amount: Number(expense?.amount || 0),
+      hasReceipt: false,
+    })),
+  };
+}
 
 export default function BudgetPlanner() {
   const theme = useTheme();
@@ -133,24 +157,29 @@ export default function BudgetPlanner() {
     const fetchBudget = async () => {
       setLoading(true);
       try {
-        // In a real app:
-        // const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/v1/wedding/budget`, {
-        //   headers: { Authorization: `Bearer ${token}` }
-        // });
-        // setBudgetData(response.data);
-        
-        // Simulating API call
-        await new Promise(resolve => setTimeout(resolve, 1500));
-        setBudgetData(MOCK_BUDGET);
-        setTempTotal(MOCK_BUDGET.totalBudget.toString());
+        const response = await weddingService.getBudget();
+        const viewModel = buildBudgetViewModel(response);
+        setBudgetData(viewModel);
+        setTempTotal(viewModel.totalBudget.toString());
       } catch (err) {
-        console.error("Failed to load budget details", err);
+        console.error('Failed to load budget details', err);
+        const emptyViewModel = buildBudgetViewModel({ data: { totalBudget: 0, totalSpent: 0, expenses: [] } });
+        setBudgetData(emptyViewModel);
+        setTempTotal('0');
       } finally {
         setLoading(false);
       }
     };
 
-    fetchBudget();
+    if (token) {
+      fetchBudget();
+      return;
+    }
+
+    const emptyViewModel = buildBudgetViewModel({ data: { totalBudget: 0, totalSpent: 0, expenses: [] } });
+    setBudgetData(emptyViewModel);
+    setTempTotal('0');
+    setLoading(false);
   }, [token]);
 
   const stats = useMemo(() => {
@@ -161,10 +190,17 @@ export default function BudgetPlanner() {
     return { totalSpent, remaining, usedPercent };
   }, [budgetData]);
 
-  const handleUpdateTotal = () => {
-    setBudgetData((prev: any) => ({ ...prev, totalBudget: parseInt(tempTotal) }));
-    setIsEditingTotal(false);
-    // API call would go here
+  const handleUpdateTotal = async () => {
+    const nextTotal = Number.parseInt(tempTotal, 10) || 0;
+
+    try {
+      await weddingService.updateProject({ totalBudget: nextTotal });
+      setBudgetData((prev: any) => ({ ...prev, totalBudget: nextTotal }));
+    } catch (error) {
+      console.error('Failed to update total budget', error);
+    } finally {
+      setIsEditingTotal(false);
+    }
   };
 
   if (loading) return <BudgetSkeleton />;
