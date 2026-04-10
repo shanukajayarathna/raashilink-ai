@@ -18,7 +18,7 @@ const conversationSchema = new mongoose.Schema(
         message: 'Conversation must contain exactly two unique matched users',
       },
     },
-    participantKey: { type: String, required: true, unique: true, index: true },
+    participantKey: { type: String, required: true, unique: true },
     lastMessageAt: { type: Date, default: Date.now },
   },
   {
@@ -35,7 +35,6 @@ conversationSchema.pre('validate', function setParticipantKey(next) {
 });
 
 conversationSchema.index({ participants: 1 });
-conversationSchema.index({ participantKey: 1 }, { unique: true });
 
 const Conversation =
   mongoose.models.Conversation || mongoose.model('Conversation', conversationSchema);
