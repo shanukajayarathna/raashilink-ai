@@ -13,7 +13,7 @@ import {
   Alert,
   alpha
 } from '@mui/material';
-import { Camera, Upload, X, Check } from 'lucide-react';
+import { Camera, Upload, X, Check, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Stack } from '@mui/material';
 import ImageCropper from '../../../shared/components/ImageCropper';
@@ -21,7 +21,9 @@ import ImageCropper from '../../../shared/components/ImageCropper';
 interface ProfilePhotoUploadProps {
   currentPhoto?: string;
   onUpload: (file: File) => Promise<void>;
+  onRemove?: () => Promise<void>;
   isUploading?: boolean;
+  isRemoving?: boolean;
 }
 
 const COLORS = {
@@ -35,7 +37,13 @@ const COLORS = {
 };
 const MAX_IMAGE_SIZE_BYTES = (6 * 1024 * 1024) - 1;
 
-export default function ProfilePhotoUpload({ currentPhoto, onUpload, isUploading = false }: ProfilePhotoUploadProps) {
+export default function ProfilePhotoUpload({
+  currentPhoto,
+  onUpload,
+  onRemove,
+  isUploading = false,
+  isRemoving = false,
+}: ProfilePhotoUploadProps) {
   const [open, setOpen] = useState(false);
   const [cropperOpen, setCropperOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -90,6 +98,12 @@ export default function ProfilePhotoUpload({ currentPhoto, onUpload, isUploading
       await onUpload(file);
       handleClose();
     }
+  };
+
+  const handleRemove = async () => {
+    if (!onRemove) return;
+    await onRemove();
+    handleClose();
   };
 
   const handleClose = () => {
@@ -219,26 +233,44 @@ export default function ProfilePhotoUpload({ currentPhoto, onUpload, isUploading
               cropShape="round"
               title="Crop Profile Photo"
               uploading={isUploading}
+              maxOutputWidth={720}
+              maxOutputHeight={720}
+              outputQuality={0.85}
             />
           </Box>
         </DialogContent>
-        <DialogActions sx={{ p: 3 }}>
-          <Button onClick={handleClose} sx={{ color: COLORS.textSecondary, fontWeight: 700 }}>Cancel</Button>
-          <Button 
-            onClick={handleUpload} 
-            disabled={!selectedFile || !croppedImage || isUploading}
-            variant="contained"
-            startIcon={isUploading ? <CircularProgress size={20} /> : <Check size={20} />}
-            sx={{ 
-              bgcolor: COLORS.primary, 
-              borderRadius: 2, 
-              px: 4,
-              fontWeight: 800,
-              '&:hover': { bgcolor: '#6B1424' }
-            }}
-          >
-            {isUploading ? 'Uploading...' : 'Save Photo'}
-          </Button>
+        <DialogActions sx={{ p: 3, justifyContent: 'space-between' }}>
+          <Box>
+            {currentPhoto && onRemove && (
+              <Button
+                onClick={handleRemove}
+                color="error"
+                disabled={isUploading || isRemoving}
+                startIcon={isRemoving ? <CircularProgress size={16} color="inherit" /> : <Trash2 size={18} />}
+                sx={{ fontWeight: 700 }}
+              >
+                {isRemoving ? 'Removing...' : 'Remove Photo'}
+              </Button>
+            )}
+          </Box>
+          <Stack direction="row" spacing={1}>
+            <Button onClick={handleClose} sx={{ color: COLORS.textSecondary, fontWeight: 700 }}>Cancel</Button>
+            <Button 
+              onClick={handleUpload} 
+              disabled={!selectedFile || !croppedImage || isUploading || isRemoving}
+              variant="contained"
+              startIcon={isUploading ? <CircularProgress size={20} /> : <Check size={20} />}
+              sx={{ 
+                bgcolor: COLORS.primary, 
+                borderRadius: 2, 
+                px: 4,
+                fontWeight: 800,
+                '&:hover': { bgcolor: '#6B1424' }
+              }}
+            >
+              {isUploading ? 'Uploading...' : 'Save Photo'}
+            </Button>
+          </Stack>
         </DialogActions>
       </Dialog>
     </Box>

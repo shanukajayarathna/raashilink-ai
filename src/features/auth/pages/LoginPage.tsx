@@ -116,11 +116,16 @@ const LoginPage = () => {
       
       setTimeout(() => navigate(targetPath), 600);
     } catch (err: any) {
-      const message =
-        err.response?.data?.message ||
-        (err.code === 'ERR_NETWORK'
-          ? 'API server is not reachable. Start the backend with npm run dev and try again.'
-          : 'Invalid credentials. Please try again.');
+      const status = err.response?.status;
+      const isStartupDelay =
+        err.code === 'ERR_NETWORK' ||
+        err.code === 'ECONNABORTED' ||
+        err.code === 'ECONNREFUSED' ||
+        [502, 503, 504].includes(status);
+
+      const message = isStartupDelay
+        ? 'The API server is still starting. Please wait a few seconds and try again.'
+        : err.response?.data?.message || 'Invalid credentials. Please try again.';
       setError(message);
       dispatch(showToast({ type: 'error', message }));
       setShake(true);

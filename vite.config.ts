@@ -17,8 +17,34 @@ export default defineConfig(({ mode }) => {
         '@': path.resolve(__dirname, 'src'),
       },
     },
+    optimizeDeps: {
+      include: [
+        'axios',
+        'react',
+        'react-dom',
+        'react-router-dom',
+        '@reduxjs/toolkit',
+        'react-redux',
+        '@mui/material',
+        '@mui/icons-material',
+        '@emotion/react',
+        '@emotion/styled',
+        'lucide-react',
+        'recharts',
+        'motion/react',
+      ],
+    },
     server: {
       hmr: process.env.DISABLE_HMR !== 'true',
+      warmup: {
+        clientFiles: [
+          './src/main.tsx',
+          './src/app/App.tsx',
+          './src/features/auth/pages/LoginPage.tsx',
+          './src/features/dashboard/pages/DashboardRouter.tsx',
+          './src/features/dashboard/pages/UserDashboard.tsx',
+        ],
+      },
       proxy: {
         '/api': {
           target: apiTarget,

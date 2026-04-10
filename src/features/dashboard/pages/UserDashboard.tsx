@@ -863,7 +863,7 @@ export default function UserDashboard() {
 
     const fetchProfile = async () => {
       try {
-        const profile = await userService.getProfile();
+        const profile = await userService.getProfile({ includeMedia: false });
         if (!mounted) return;
 
         dispatch(updateUser({ profilePic: profile.profilePic || null }));
@@ -892,7 +892,7 @@ export default function UserDashboard() {
       try {
         const [recommendationsResponse, weddingProjectResponse, budgetResponse, vendorsResponse] =
           await Promise.allSettled([
-            axiosInstance.get('/matches/recommendations'),
+            axiosInstance.get('/matches/recommendations', { params: { pageSize: 4, fast: true } }),
             axiosInstance.get('/wedding/project'),
             axiosInstance.get('/wedding/budget'),
             axiosInstance.get('/wedding/vendors'),
@@ -948,12 +948,12 @@ export default function UserDashboard() {
       }
     };
 
-    fetchProfile().then(fetchWidgets);
+    void Promise.allSettled([fetchProfile(), fetchWidgets()]);
 
     return () => {
       mounted = false;
     };
-  }, [user, dispatch]);
+  }, [dispatch]);
 
   // Update profile picture when user state changes
   useEffect(() => {

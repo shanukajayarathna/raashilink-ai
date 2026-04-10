@@ -132,7 +132,7 @@ export default function EditProfile() {
     };
 
     fetchProfile();
-  }, [user]);
+  }, [user?.id, user?._id]);
 
   useEffect(() => {
     const query = String(formData.birthPlace || '').trim();

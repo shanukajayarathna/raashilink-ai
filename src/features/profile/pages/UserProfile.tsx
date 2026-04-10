@@ -114,6 +114,8 @@ export default function UserProfile() {
   const [editData, setEditData] = useState<any>({});
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [uploadingCover, setUploadingCover] = useState(false);
+  const [removingPhoto, setRemovingPhoto] = useState(false);
+  const [removingCover, setRemovingCover] = useState(false);
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -185,7 +187,7 @@ export default function UserProfile() {
     };
 
     fetchProfile();
-  }, [user]);
+  }, [user?.id, user?._id]);
 
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
@@ -232,20 +234,74 @@ export default function UserProfile() {
     setUploadingCover(true);
     try {
       const response = await userService.uploadCoverPhoto(file);
-      setProfileData((prev: any) => ({
-        ...prev,
-        coverPhoto: response.coverPhoto
-      }));
-      setEditData((prev: any) => ({
-        ...prev,
-        coverPhoto: response.coverPhoto
-      }));
-      dispatch(showToast({ type: 'success', message: 'Cover photo updated successfully!' }));
-    } catch (err) {
+
+      if (response?.coverPhoto) {
+        dispatch(updateUser({ coverPhoto: response.coverPhoto }));
+        setProfileData((prev: any) => ({
+          ...prev,
+          coverPhoto: response.coverPhoto
+        }));
+        setEditData((prev: any) => ({
+          ...prev,
+          coverPhoto: response.coverPhoto
+        }));
+      }
+
+      dispatch(showToast({ type: 'success', message: response?.message || 'Cover photo updated successfully!' }));
+    } catch (err: any) {
       console.error('Failed to upload cover photo:', err);
-      dispatch(showToast({ type: 'error', message: 'Failed to upload cover photo. Please try again.' }));
+      dispatch(showToast({ type: 'error', message: err.response?.data?.message || 'Failed to upload cover photo. Please try again.' }));
     } finally {
       setUploadingCover(false);
+    }
+  };
+
+  const handlePhotoRemove = async () => {
+    setRemovingPhoto(true);
+    try {
+      const response = await userService.removePhoto();
+      dispatch(updateUser({ profilePic: response?.profilePic || null, photos: response?.photos || [] }));
+      setProfileData((prev: any) => prev ? {
+        ...prev,
+        profilePic: response?.profilePic || null,
+        photos: (response?.photos || []).map((photo: any, index: number) => ({
+          id: index + 1,
+          url: photo.url,
+          isMain: photo.isMain,
+        })),
+      } : prev);
+      setEditData((prev: any) => ({
+        ...prev,
+        profilePic: response?.profilePic || null,
+      }));
+      dispatch(showToast({ type: 'success', message: response?.message || 'Profile photo removed successfully!' }));
+    } catch (err: any) {
+      console.error('Failed to remove profile photo:', err);
+      dispatch(showToast({ type: 'error', message: err.response?.data?.message || 'Failed to remove profile photo. Please try again.' }));
+    } finally {
+      setRemovingPhoto(false);
+    }
+  };
+
+  const handleCoverPhotoRemove = async () => {
+    setRemovingCover(true);
+    try {
+      const response = await userService.removeCoverPhoto();
+      dispatch(updateUser({ coverPhoto: null }));
+      setProfileData((prev: any) => prev ? {
+        ...prev,
+        coverPhoto: null,
+      } : prev);
+      setEditData((prev: any) => ({
+        ...prev,
+        coverPhoto: null,
+      }));
+      dispatch(showToast({ type: 'success', message: response?.message || 'Cover photo removed successfully!' }));
+    } catch (err: any) {
+      console.error('Failed to remove cover photo:', err);
+      dispatch(showToast({ type: 'error', message: err.response?.data?.message || 'Failed to remove cover photo. Please try again.' }));
+    } finally {
+      setRemovingCover(false);
     }
   };
 
@@ -314,7 +370,9 @@ export default function UserProfile() {
           <CoverPhotoUpload 
             currentPhoto={profileData.coverPhoto}
             onUpload={handleCoverPhotoUpload}
+            onRemove={handleCoverPhotoRemove}
             isUploading={uploadingCover}
+            isRemoving={removingCover}
           />
         </Box>
 
@@ -325,7 +383,9 @@ export default function UserProfile() {
             <ProfilePhotoUpload 
               currentPhoto={profileData.profilePic || profileData.photos.find((p: any) => p.isMain)?.url} 
               onUpload={handlePhotoUpload}
+              onRemove={handlePhotoRemove}
               isUploading={uploadingPhoto}
+              isRemoving={removingPhoto}
             />
           </Box>
 

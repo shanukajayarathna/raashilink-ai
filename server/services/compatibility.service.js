@@ -199,7 +199,7 @@ async function runCompatibilityEngine(payload) {
   });
 }
 
-export async function calculateCompatibility({ userAId, userBId }) {
+export async function calculateCompatibility({ userAId, userBId, fastMode = false }) {
   validateObjectId(userAId, 'userAId');
   validateObjectId(userBId, 'userBId');
 
@@ -219,9 +219,35 @@ export async function calculateCompatibility({ userAId, userBId }) {
     logger.warn('Redis read failed, continuing without cache', { message: error.message, cacheKey });
   }
 
+  const compatibilityFieldSelection = [
+    '_id',
+    'birthData.dateOfBirth',
+    'birthData.timeOfBirth',
+    'birthData.placeOfBirth',
+    'birthData.knownBirthTime',
+    'horoscopeData.nakshatra',
+    'horoscopeData.rashi',
+    'horoscopeData.moonSign',
+    'horoscopeData.zodiacSign',
+    'horoscopeData.ascendant',
+    'personality.openness',
+    'personality.conscientiousness',
+    'personality.extraversion',
+    'personality.agreeableness',
+    'personality.neuroticism',
+    'lifestyle.religion',
+    'lifestyle.diet',
+    'lifestyle.smoking',
+    'lifestyle.drinking',
+    'lifestyle.preferredLocation',
+    'lifestyle.educationLevel',
+    'lifestyle.professionType',
+    'lifestyle.familyValues',
+  ].join(' ');
+
   const [userA, userB] = await Promise.all([
-    User.findById(userAId).lean({ virtuals: true }),
-    User.findById(userBId).lean({ virtuals: true }),
+    User.findById(userAId).select(compatibilityFieldSelection).lean({ virtuals: true }),
+    User.findById(userBId).select(compatibilityFieldSelection).lean({ virtuals: true }),
   ]);
 
   if (!userA || !userB) {
@@ -250,7 +276,9 @@ export async function calculateCompatibility({ userAId, userBId }) {
   let astroResponse = { totalScore: 18, subScores: {} };
   let astroNotes = [];
 
-  if (userAHoroscope && userBHoroscope) {
+  if (fastMode) {
+    astroNotes.push('Using quick compatibility mode for dashboard recommendations.');
+  } else if (userAHoroscope && userBHoroscope) {
     logger.info('Running horoscope compatibility calculation', {
       userAId: String(userAId),
       userBId: String(userBId),
@@ -274,7 +302,7 @@ export async function calculateCompatibility({ userAId, userBId }) {
         message: error.message,
       });
       astroNotes.push('Astrological engine unavailable, using baseline score.');
-      astroScore = 50; // Baseline score
+      astroScore = 50;
     }
   } else {
     if (!userAHoroscope && !userBHoroscope) {

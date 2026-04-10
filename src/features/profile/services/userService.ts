@@ -9,8 +9,10 @@ const userService = {
    * Get current user's profile information.
    * @returns {Promise<object>} - User profile data.
    */
-  getProfile: async () => {
-    const response = await axiosInstance.get('/users/profile');
+  getProfile: async (options?: { includeMedia?: boolean }) => {
+    const response = await axiosInstance.get('/users/profile', {
+      params: options?.includeMedia === undefined ? undefined : { includeMedia: options.includeMedia },
+    });
     return response.data;
   },
 
@@ -68,6 +70,16 @@ const userService = {
         'Content-Type': 'multipart/form-data',
       },
     });
+    return response.data;
+  },
+
+  removePhoto: async () => {
+    const response = await axiosInstance.delete('/users/profile/photo');
+    return response.data;
+  },
+
+  removeCoverPhoto: async () => {
+    const response = await axiosInstance.delete('/users/profile/cover-photo');
     return response.data;
   },
 

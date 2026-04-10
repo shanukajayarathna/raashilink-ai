@@ -18,11 +18,15 @@ import './jobs/dailyMatches.job.js';
 dotenv.config();
 
 const app = express();
+app.locals.isReady = false;
+app.locals.startupPhase = 'booting';
 
 app.use((req, res, next) => {
   const allowedOrigins = new Set([
     'http://localhost:3000',
     'http://127.0.0.1:3000',
+    'http://localhost:3001',
+    'http://127.0.0.1:3001',
     'http://localhost:4173',
     'http://127.0.0.1:4173',
     process.env.FRONTEND_URL,
@@ -47,7 +51,24 @@ app.use((req, res, next) => {
 app.use(express.json({ limit: '10mb' }));
 
 app.get(['/health', '/api/v1/health'], (req, res) => {
-  res.json({ success: true, message: 'RaashiLink API healthy' });
+  res.json({
+    success: true,
+    ready: Boolean(req.app.locals.isReady),
+    phase: req.app.locals.startupPhase || 'booting',
+    message: req.app.locals.isReady ? 'RaashiLink API healthy' : 'RaashiLink API is starting',
+  });
+});
+
+app.use((req, res, next) => {
+  if (req.app.locals.isReady) {
+    return next();
+  }
+
+  return res.status(503).json({
+    success: false,
+    message: 'RaashiLink API is still starting. Please try again in a few seconds.',
+    phase: req.app.locals.startupPhase || 'booting',
+  });
 });
 
 app.use('/api/v1/auth', authRoutes);
@@ -73,12 +94,6 @@ export async function startServer() {
     logger.error('MongoDB connection error', { message: error.message });
   });
 
-  await mongoose.connect(mongoUri);
-  logger.info('MongoDB connected');
-
-  await seedDemoUsers();
-  await connectRedis();
-
   const server = app.listen(port, () => {
     logger.info(`Server listening on port ${port}`);
   });
@@ -91,6 +106,34 @@ export async function startServer() {
       process.exit(1);
     }
   });
+
+  try {
+    app.locals.startupPhase = 'connecting-database';
+    await mongoose.connect(mongoUri);
+    logger.info('MongoDB connected');
+
+    app.locals.isReady = true;
+    app.locals.startupPhase = 'ready';
+    logger.info('API ready for requests');
+
+    void (async () => {
+      try {
+        app.locals.startupPhase = 'warming-services';
+        await Promise.allSettled([seedDemoUsers(), connectRedis()]);
+        app.locals.startupPhase = 'ready';
+        logger.info('Background startup tasks completed');
+      } catch (backgroundError) {
+        app.locals.startupPhase = 'degraded';
+        logger.error('Background startup tasks failed', {
+          message: backgroundError instanceof Error ? backgroundError.message : String(backgroundError),
+        });
+      }
+    })();
+  } catch (error) {
+    app.locals.startupPhase = 'startup-failed';
+    server.close();
+    throw error;
+  }
 
   return server;
 }

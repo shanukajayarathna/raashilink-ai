@@ -5,6 +5,9 @@ import path from 'node:path';
 const isWindows = process.platform === 'win32';
 const WATCH_WARMUP_MS = 3000;
 const SERVER_WATCH_EXTENSIONS = new Set(['.js', '.json']);
+const API_HEALTH_URL = process.env.DEV_API_HEALTH_URL || 'http://127.0.0.1:5000/api/v1/health';
+const API_READY_TIMEOUT_MS = 30000;
+const API_READY_POLL_MS = 500;
 
 function shouldRestartServer(filename = '') {
   const normalized = String(filename).replaceAll('\\', '/');
@@ -61,11 +64,11 @@ function stopChildProcess(child, onDone = () => {}) {
   }, 1500);
 }
 
-function run(name, scriptName, color, autoRestart = true) {
+function run(name, scriptName, color) {
   let child;
   let isRestarting = false;
 
-  function spawn_child() {
+  function spawnChild() {
     const { command, args } = createCommand(scriptName);
 
     child = spawn(command, args, {
@@ -103,18 +106,66 @@ function run(name, scriptName, color, autoRestart = true) {
     stopChildProcess(child, () => {
       setTimeout(() => {
         isRestarting = false;
-        spawn_child();
+        spawnChild();
       }, 300);
     });
   }
 
-  spawn_child();
+  spawnChild();
 
   return { child: () => child, restart };
 }
 
+async function getApiStatus() {
+  try {
+    const response = await fetch(API_HEALTH_URL);
+    const payload = await response.json().catch(() => null);
+
+    return {
+      reachable: response.ok,
+      ready: response.ok && payload?.ready !== false,
+    };
+  } catch {
+    return {
+      reachable: false,
+      ready: false,
+    };
+  }
+}
+
+async function waitForApiReady() {
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < API_READY_TIMEOUT_MS) {
+    const status = await getApiStatus();
+    if (status.ready) {
+      process.stdout.write(`\x1b[33m[api] Ready at ${API_HEALTH_URL}\x1b[0m\n`);
+      return true;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, API_READY_POLL_MS));
+  }
+
+  process.stderr.write(`\x1b[33m[api] Readiness check timed out after ${API_READY_TIMEOUT_MS}ms.\x1b[0m\n`);
+  return false;
+}
+
+let apiRunner;
+const initialApiStatus = await getApiStatus();
+if (initialApiStatus.reachable) {
+  process.stdout.write(`\x1b[33m[api] Reusing existing API server at ${API_HEALTH_URL}\x1b[0m\n`);
+  apiRunner = {
+    child: () => null,
+    restart: () => {
+      process.stdout.write(`\x1b[33m[api] Existing API server is managed outside this terminal.\x1b[0m\n`);
+    },
+  };
+} else {
+  apiRunner = run('api', 'dev:api', '\x1b[33m');
+}
+
 const webRunner = run('web', 'dev:web', '\x1b[36m');
-const apiRunner = run('api', 'dev:api', '\x1b[33m');
+void waitForApiReady();
 let serverWatchReady = false;
 let restartTimer;
 

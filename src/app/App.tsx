@@ -1,30 +1,43 @@
-import React, { useMemo } from 'react';
+import React, { Suspense, lazy, useMemo } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Provider, useSelector } from 'react-redux';
-import { CssBaseline, ThemeProvider } from '@mui/material';
+import { Box, CircularProgress, CssBaseline, ThemeProvider } from '@mui/material';
 import { store, RootState } from '@/app/store/store';
 import MainLayout from '@/shared/components/layout/MainLayout';
 import LandingPage from '@/features/marketing/pages/LandingPage';
 import LoginPage from '@/features/auth/pages/LoginPage';
 import RegisterPage from '@/features/auth/pages/RegisterPage';
 import ForgotPasswordPage from '@/features/auth/pages/ForgotPasswordPage';
-import DashboardRouter from '@/features/dashboard/pages/DashboardRouter';
-import HoroscopeView from '@/features/horoscope/pages/HoroscopeView';
-import MatchRecommendations from '@/features/matchmaking/pages/MatchRecommendations';
-import WeddingDashboard from '@/features/wedding/pages/WeddingDashboard';
-import AIChatbot from '@/features/chat/pages/AIChatbot';
-import BudgetPlanner from '@/features/budget/pages/BudgetPlanner';
-import HoneymoonDestinations from '@/features/honeymoon/pages/HoneymoonDestinations';
-import DestinationDetail from '@/features/honeymoon/pages/DestinationDetailPage';
-import UserProfile from '@/features/profile/pages/UserProfile';
-import EditProfile from '@/features/profile/pages/EditProfile';
-import VendorMarketplace from '@/features/vendors/pages/VendorMarketplace';
-import VendorDetailPage from '@/features/vendors/pages/VendorDetailPage';
-import AdminDashboard from '@/features/admin/pages/AdminDashboard';
-import VendorPortal from '@/features/vendors/pages/VendorPortal';
+const DashboardRouter = lazy(() => import('@/features/dashboard/pages/DashboardRouter'));
+const HoroscopeView = lazy(() => import('@/features/horoscope/pages/HoroscopeView'));
+const MatchRecommendations = lazy(() => import('@/features/matchmaking/pages/MatchRecommendations'));
+const WeddingDashboard = lazy(() => import('@/features/wedding/pages/WeddingDashboard'));
+const AIChatbot = lazy(() => import('@/features/chat/pages/AIChatbot'));
+const BudgetPlanner = lazy(() => import('@/features/budget/pages/BudgetPlanner'));
+const HoneymoonDestinations = lazy(() => import('@/features/honeymoon/pages/HoneymoonDestinations'));
+const DestinationDetail = lazy(() => import('@/features/honeymoon/pages/DestinationDetailPage'));
+const UserProfile = lazy(() => import('@/features/profile/pages/UserProfile'));
+const EditProfile = lazy(() => import('@/features/profile/pages/EditProfile'));
+const VendorMarketplace = lazy(() => import('@/features/vendors/pages/VendorMarketplace'));
+const VendorDetailPage = lazy(() => import('@/features/vendors/pages/VendorDetailPage'));
+const AdminDashboard = lazy(() => import('@/features/admin/pages/AdminDashboard'));
+const VendorPortal = lazy(() => import('@/features/vendors/pages/VendorPortal'));
 import createAppTheme from '@/theme/theme';
 import Toast from '@/components/Toast';
 import LoadingOverlay from '@/components/LoadingOverlay';
+
+const RouteFallback = () => (
+  <Box
+    sx={{
+      minHeight: '40vh',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+    }}
+  >
+    <CircularProgress size={32} />
+  </Box>
+);
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { token } = useSelector((state: RootState) => state.auth);
@@ -69,39 +82,41 @@ function AppShell() {
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <Router>
-        <Routes>
-          {/* Public Routes */}
-          <Route path="/" element={<LandingPage />} />
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/register" element={<RegisterPage />} />
-          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-          
-          {/* User Routes with MainLayout */}
-          <Route element={<MainLayout />}>
-            <Route path="/dashboard" element={<ProtectedRoute><DashboardRouter /></ProtectedRoute>} />
-            <Route path="/horoscope" element={<ProtectedRoute><HoroscopeView /></ProtectedRoute>} />
-            <Route path="/matches" element={<ProtectedRoute><MatchRecommendations /></ProtectedRoute>} />
-            <Route path="/wedding" element={<ProtectedRoute><WeddingDashboard /></ProtectedRoute>} />
-            <Route path="/chat" element={<ProtectedRoute><AIChatbot /></ProtectedRoute>} />
-            <Route path="/budget" element={<ProtectedRoute><BudgetPlanner /></ProtectedRoute>} />
-            <Route path="/honeymoon" element={<ProtectedRoute><HoneymoonDestinations /></ProtectedRoute>} />
-            <Route path="/honeymoon/:id" element={<ProtectedRoute><DestinationDetail /></ProtectedRoute>} />
-            <Route path="/profile" element={<ProtectedRoute><UserProfile /></ProtectedRoute>} />
-            <Route path="/edit-profile" element={<ProtectedRoute><EditProfile /></ProtectedRoute>} />
-            <Route path="/settings" element={<ProtectedRoute><EditProfile /></ProtectedRoute>} />
-            <Route path="/vendors" element={<ProtectedRoute><VendorMarketplace /></ProtectedRoute>} />
-            <Route path="/vendors/:id" element={<ProtectedRoute><VendorDetailPage /></ProtectedRoute>} />
-          </Route>
-          
-          {/* Admin Routes */}
-          <Route path="/admin" element={<AdminProtectedRoute><AdminDashboard /></AdminProtectedRoute>} />
-          
-          {/* Vendor Routes */}
-          <Route path="/vendor/*" element={<VendorProtectedRoute><VendorPortal /></VendorProtectedRoute>} />
-          
-          {/* Fallback */}
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+        <Suspense fallback={<RouteFallback />}>
+          <Routes>
+            {/* Public Routes */}
+            <Route path="/" element={<LandingPage />} />
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/register" element={<RegisterPage />} />
+            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+            
+            {/* User Routes with MainLayout */}
+            <Route element={<MainLayout />}>
+              <Route path="/dashboard" element={<ProtectedRoute><DashboardRouter /></ProtectedRoute>} />
+              <Route path="/horoscope" element={<ProtectedRoute><HoroscopeView /></ProtectedRoute>} />
+              <Route path="/matches" element={<ProtectedRoute><MatchRecommendations /></ProtectedRoute>} />
+              <Route path="/wedding" element={<ProtectedRoute><WeddingDashboard /></ProtectedRoute>} />
+              <Route path="/chat" element={<ProtectedRoute><AIChatbot /></ProtectedRoute>} />
+              <Route path="/budget" element={<ProtectedRoute><BudgetPlanner /></ProtectedRoute>} />
+              <Route path="/honeymoon" element={<ProtectedRoute><HoneymoonDestinations /></ProtectedRoute>} />
+              <Route path="/honeymoon/:id" element={<ProtectedRoute><DestinationDetail /></ProtectedRoute>} />
+              <Route path="/profile" element={<ProtectedRoute><UserProfile /></ProtectedRoute>} />
+              <Route path="/edit-profile" element={<ProtectedRoute><EditProfile /></ProtectedRoute>} />
+              <Route path="/settings" element={<ProtectedRoute><EditProfile /></ProtectedRoute>} />
+              <Route path="/vendors" element={<ProtectedRoute><VendorMarketplace /></ProtectedRoute>} />
+              <Route path="/vendors/:id" element={<ProtectedRoute><VendorDetailPage /></ProtectedRoute>} />
+            </Route>
+            
+            {/* Admin Routes */}
+            <Route path="/admin" element={<AdminProtectedRoute><AdminDashboard /></AdminProtectedRoute>} />
+            
+            {/* Vendor Routes */}
+            <Route path="/vendor/*" element={<VendorProtectedRoute><VendorPortal /></VendorProtectedRoute>} />
+            
+            {/* Fallback */}
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Suspense>
         <Toast />
         <LoadingOverlay />
       </Router>

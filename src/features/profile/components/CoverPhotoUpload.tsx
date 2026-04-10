@@ -12,14 +12,16 @@ import {
   Alert,
   alpha
 } from '@mui/material';
-import { Camera, Upload, Check } from 'lucide-react';
+import { Camera, Upload, Check, Trash2 } from 'lucide-react';
 import { Stack } from '@mui/material';
 import ImageCropper from '../../../shared/components/ImageCropper';
 
 interface CoverPhotoUploadProps {
   currentPhoto?: string;
   onUpload: (file: File) => Promise<void>;
+  onRemove?: () => Promise<void>;
   isUploading?: boolean;
+  isRemoving?: boolean;
 }
 
 const COLORS = {
@@ -33,7 +35,13 @@ const COLORS = {
 };
 const MAX_IMAGE_SIZE_BYTES = (6 * 1024 * 1024) - 1;
 
-export default function CoverPhotoUpload({ currentPhoto, onUpload, isUploading = false }: CoverPhotoUploadProps) {
+export default function CoverPhotoUpload({
+  currentPhoto,
+  onUpload,
+  onRemove,
+  isUploading = false,
+  isRemoving = false,
+}: CoverPhotoUploadProps) {
   const [open, setOpen] = useState(false);
   const [cropperOpen, setCropperOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -88,6 +96,12 @@ export default function CoverPhotoUpload({ currentPhoto, onUpload, isUploading =
       await onUpload(file);
       handleClose();
     }
+  };
+
+  const handleRemove = async () => {
+    if (!onRemove) return;
+    await onRemove();
+    handleClose();
   };
 
   const handleClose = () => {
@@ -208,26 +222,44 @@ export default function CoverPhotoUpload({ currentPhoto, onUpload, isUploading =
               cropShape="rect"
               title="Crop Cover Photo"
               uploading={isUploading}
+              maxOutputWidth={1200}
+              maxOutputHeight={400}
+              outputQuality={0.82}
             />
           </Box>
         </DialogContent>
-        <DialogActions sx={{ p: 3 }}>
-          <Button onClick={handleClose} sx={{ color: COLORS.textSecondary, fontWeight: 700 }}>Cancel</Button>
-          <Button 
-            onClick={handleUpload} 
-            disabled={!selectedFile || !croppedImage || isUploading}
-            variant="contained"
-            startIcon={isUploading ? <CircularProgress size={20} /> : <Check size={20} />}
-            sx={{ 
-              bgcolor: COLORS.primary, 
-              borderRadius: 2, 
-              px: 4,
-              fontWeight: 800,
-              '&:hover': { bgcolor: '#6B1424' }
-            }}
-          >
-            {isUploading ? 'Uploading...' : 'Save Cover Photo'}
-          </Button>
+        <DialogActions sx={{ p: 3, justifyContent: 'space-between' }}>
+          <Box>
+            {currentPhoto && onRemove && (
+              <Button
+                onClick={handleRemove}
+                color="error"
+                disabled={isUploading || isRemoving}
+                startIcon={isRemoving ? <CircularProgress size={16} color="inherit" /> : <Trash2 size={18} />}
+                sx={{ fontWeight: 700 }}
+              >
+                {isRemoving ? 'Removing...' : 'Remove Cover'}
+              </Button>
+            )}
+          </Box>
+          <Stack direction="row" spacing={1}>
+            <Button onClick={handleClose} sx={{ color: COLORS.textSecondary, fontWeight: 700 }}>Cancel</Button>
+            <Button 
+              onClick={handleUpload} 
+              disabled={!selectedFile || !croppedImage || isUploading || isRemoving}
+              variant="contained"
+              startIcon={isUploading ? <CircularProgress size={20} /> : <Check size={20} />}
+              sx={{ 
+                bgcolor: COLORS.primary, 
+                borderRadius: 2, 
+                px: 4,
+                fontWeight: 800,
+                '&:hover': { bgcolor: '#6B1424' }
+              }}
+            >
+              {isUploading ? 'Uploading...' : 'Save Cover Photo'}
+            </Button>
+          </Stack>
         </DialogActions>
       </Dialog>
     </>

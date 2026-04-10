@@ -144,7 +144,7 @@ export default function CoupleDashboard() {
     const fetchProfile = async () => {
       setLoading(true);
       try {
-        const response = await userService.getProfile();
+        const response = await userService.getProfile({ includeMedia: false });
         setProfile(response);
         dispatch(updateUser({ profilePic: response.profilePic || null }));
       } catch (error) {

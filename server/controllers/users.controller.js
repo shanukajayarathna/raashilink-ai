@@ -131,8 +131,27 @@ function fileToDataUri(file) {
   return `data:${file.mimetype};base64,${file.buffer.toString('base64')}`;
 }
 
-function mapProfile(user) {
-  const mainPhoto = user.photos?.find((photo) => photo.isMain)?.url || user.personalInfo?.profilePic;
+function sanitizeImageReference(value, { allowDataUri = true } = {}) {
+  if (!value) return null;
+
+  const normalized = String(value).trim();
+  if (!normalized) return null;
+
+  if (!allowDataUri && /^data:image\//i.test(normalized)) {
+    return null;
+  }
+
+  return normalized;
+}
+
+function mapProfile(user, { includeMedia = true } = {}) {
+  const mainPhoto = sanitizeImageReference(
+    user.photos?.find((photo) => photo.isMain)?.url || user.personalInfo?.profilePic,
+    { allowDataUri: includeMedia }
+  );
+  const coverPhoto = sanitizeImageReference(user.personalInfo?.coverPhoto || user.coverPhoto || null, {
+    allowDataUri: includeMedia,
+  });
   const personality = user.personality || {};
 
   return {
@@ -142,7 +161,7 @@ function mapProfile(user) {
     name: user.name,
     age: user.age || null,
     profilePic: mainPhoto || null,
-    coverPhoto: user.coverPhoto || null,
+    coverPhoto: coverPhoto || null,
     tagline: user.tagline || 'Building a meaningful future through shared values.',
     location: user.location || 'Sri Lanka',
     completion: getProfileCompletion(user),
@@ -219,16 +238,21 @@ function mapProfile(user) {
       familyPlans: 'Looking for a serious long-term relationship',
       socialPreference: Math.round((user.personality?.extraversion ?? 0.5) * 100),
     },
-    photos:
-      user.photos?.length > 0
-        ? user.photos.map((photo, index) => ({
-            id: index + 1,
-            url: photo.url,
-            isMain: photo.isMain,
-          }))
+    photos: includeMedia
+      ? user.photos?.length > 0
+        ? user.photos
+            .map((photo, index) => ({
+              id: index + 1,
+              url: sanitizeImageReference(photo.url, { allowDataUri: true }),
+              isMain: photo.isMain,
+            }))
+            .filter((photo) => photo.url)
         : mainPhoto
           ? [{ id: 1, url: mainPhoto, isMain: true }]
-          : [],
+          : []
+      : mainPhoto
+        ? [{ id: 1, url: mainPhoto, isMain: true }]
+        : [],
     privacy: {
       showLastSeen: user.privacy?.showLastSeen ?? true,
       showHoroscope: user.privacy?.showHoroscope ?? true,
@@ -255,13 +279,20 @@ function mapProfile(user) {
 }
 
 export const getProfile = asyncHandler(async (req, res) => {
-  const user = await User.findById(req.user._id).lean({ virtuals: true });
+  const includeMedia = req.query.includeMedia !== 'false';
+
+  const profileQuery = User.findById(req.user._id);
+  if (!includeMedia) {
+    profileQuery.select('-personalInfo.profilePic -personalInfo.coverPhoto -personalInfo.photos');
+  }
+
+  const user = await profileQuery.lean({ virtuals: true });
 
   if (!user) {
     throw new ApiError(404, 'User profile not found');
   }
 
-  res.status(200).json(mapProfile(user));
+  res.status(200).json(mapProfile(user, { includeMedia }));
 });
 
 export const updateProfile = asyncHandler(async (req, res) => {
@@ -286,6 +317,7 @@ export const updateProfile = asyncHandler(async (req, res) => {
     location: 'personalInfo.location',
     ethnicity: 'personalInfo.ethnicity',
     height: 'personalInfo.height',
+    coverPhoto: 'personalInfo.coverPhoto',
     education: 'lifestyle.educationLevel',
     occupation: 'lifestyle.professionType',
     religion: 'lifestyle.religion',
@@ -469,22 +501,36 @@ export const uploadCoverPhoto = asyncHandler(async (req, res) => {
     throw new ApiError(400, 'No cover photo file provided');
   }
 
-  const coverPhotoUrl = fileToDataUri(req.file);
-
-  const user = await User.findByIdAndUpdate(
-    req.user._id,
-    { $set: { 'personalInfo.coverPhoto': coverPhotoUrl } },
-    { new: true, runValidators: true }
-  ).lean({ virtuals: true });
-
+  const user = await User.findById(req.user._id);
   if (!user) {
     throw new ApiError(404, 'User profile not found');
   }
 
+  const coverPhotoUrl = fileToDataUri(req.file);
+  user.personalInfo = user.personalInfo || {};
+  user.personalInfo.coverPhoto = coverPhotoUrl;
+  await user.save({ validateModifiedOnly: true });
+
   res.status(200).json({
     success: true,
-    coverPhoto: user.coverPhoto || coverPhotoUrl,
+    coverPhoto: user.personalInfo?.coverPhoto || coverPhotoUrl,
     message: 'Cover photo uploaded successfully',
+  });
+});
+
+export const removeCoverPhoto = asyncHandler(async (req, res) => {
+  const user = await User.findById(req.user._id);
+  if (!user) {
+    throw new ApiError(404, 'User profile not found');
+  }
+
+  user.set('personalInfo.coverPhoto', undefined);
+  await user.save({ validateModifiedOnly: true });
+
+  res.status(200).json({
+    success: true,
+    coverPhoto: null,
+    message: 'Cover photo removed successfully',
   });
 });
 
@@ -521,6 +567,33 @@ export const uploadProfilePhoto = asyncHandler(async (req, res) => {
   });
 });
 
+export const removeProfilePhoto = asyncHandler(async (req, res) => {
+  const user = await User.findById(req.user._id);
+  if (!user) {
+    throw new ApiError(404, 'User profile not found');
+  }
+
+  const remainingPhotos = (user.personalInfo?.photos || []).filter((photo) => photo?.url && !photo.isMain);
+  const nextMainPhoto = remainingPhotos[0] || null;
+  const normalizedPhotos = nextMainPhoto
+    ? [
+        { url: nextMainPhoto.url, isMain: true },
+        ...remainingPhotos.slice(1).map((photo) => ({ url: photo.url, isMain: false })),
+      ]
+    : [];
+
+  user.set('personalInfo.profilePic', nextMainPhoto?.url || undefined);
+  user.set('personalInfo.photos', normalizedPhotos);
+  await user.save({ validateModifiedOnly: true });
+
+  res.status(200).json({
+    success: true,
+    profilePic: nextMainPhoto?.url || null,
+    photos: normalizedPhotos,
+    message: 'Profile photo removed successfully',
+  });
+});
+
 export const deleteAccount = asyncHandler(async (req, res) => {
   const userId = req.user._id;
 
@@ -543,7 +616,9 @@ export default {
   getProfile,
   updateProfile,
   uploadCoverPhoto,
+  removeCoverPhoto,
   uploadProfilePhoto,
+  removeProfilePhoto,
   requestContactVerification,
   confirmContactVerification,
   deleteAccount,

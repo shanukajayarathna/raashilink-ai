@@ -117,6 +117,7 @@ export const getRecommendations = asyncHandler(async (req, res) => {
   const currentUserId = String(req.user._id);
   const page = Math.max(1, Number(req.query.page) || 1);
   const pageSize = Math.min(20, Number(req.query.pageSize) || 10);
+  const fastMode = req.query.fast === 'true';
   const skip = (page - 1) * pageSize;
 
   // Check cache first
@@ -137,30 +138,56 @@ export const getRecommendations = asyncHandler(async (req, res) => {
     role: 'user',
     birthData: { $exists: true, $ne: null },
   })
-    .select('_id personalInfo photos lifestyle personality birthData horoscopeData')
+    .select([
+      '_id',
+      'personalInfo.firstName',
+      'personalInfo.lastName',
+      'personalInfo.age',
+      'personalInfo.location',
+      'personalInfo.bio',
+      'lifestyle.professionType',
+      'lifestyle.educationLevel',
+      'lifestyle.familyValues',
+      'personality.openness',
+      'personality.neuroticism',
+      'birthData.dateOfBirth',
+      'horoscopeData.moonSign',
+      'horoscopeData.rashi',
+      'horoscopeData.nakshatra',
+    ].join(' '))
     .lean({ virtuals: true })
     .skip(skip)
     .limit(pageSize);
 
-  const scored = [];
+  const scored = await Promise.all(
+    users.slice(0, pageSize).map(async (candidate) => {
+      const [compatibility, mutualInterest] = await Promise.all([
+        compatibilityService.calculateCompatibility({
+          userAId: currentUserId,
+          userBId: String(candidate._id),
+          fastMode,
+        }),
+        MatchInterest.findOne({
+          $or: [
+            { fromUser: req.user._id, toUser: candidate._id, status: 'mutual' },
+            { fromUser: candidate._id, toUser: req.user._id, status: 'mutual' },
+          ],
+        }).lean().select('_id'),
+      ]);
 
-  for (const candidate of users) {
-    const compatibility = await compatibilityService.calculateCompatibility({
-      userAId: currentUserId,
-      userBId: String(candidate._id),
-    });
+      if (!fastMode) {
+        void persistMatch(req.user._id, candidate._id, compatibility, Boolean(mutualInterest)).catch((error) => {
+          logger.warn('Unable to persist match cache after recommendation calculation', {
+            userAId: String(req.user._id),
+            userBId: String(candidate._id),
+            message: error.message,
+          });
+        });
+      }
 
-    const mutualInterest = await MatchInterest.findOne({
-      $or: [
-        { fromUser: req.user._id, toUser: candidate._id, status: 'mutual' },
-        { fromUser: candidate._id, toUser: req.user._id, status: 'mutual' },
-      ],
-    }).lean().select('_id');
-
-    await persistMatch(req.user._id, candidate._id, compatibility, Boolean(mutualInterest));
-
-    scored.push(buildCard(candidate, compatibility, Boolean(mutualInterest)));
-  }
+      return buildCard(candidate, compatibility, Boolean(mutualInterest));
+    })
+  );
 
   scored.sort((a, b) => b.score - a.score);
 
@@ -187,7 +214,28 @@ export const getRecommendations = asyncHandler(async (req, res) => {
 export const getMatchDetail = asyncHandler(async (req, res) => {
   ensureObjectId(req.params.id, 'matchId');
 
-  const user = await User.findById(req.params.id).lean({ virtuals: true });
+  const user = await User.findById(req.params.id)
+    .select([
+      '_id',
+      'role',
+      'personalInfo.firstName',
+      'personalInfo.lastName',
+      'personalInfo.age',
+      'personalInfo.location',
+      'personalInfo.profilePic',
+      'personalInfo.bio',
+      'personalInfo.photos',
+      'lifestyle.professionType',
+      'lifestyle.educationLevel',
+      'lifestyle.familyValues',
+      'personality.openness',
+      'personality.neuroticism',
+      'horoscopeData.moonSign',
+      'horoscopeData.rashi',
+      'horoscopeData.nakshatra',
+      'horoscopeData.ascendant',
+    ].join(' '))
+    .lean({ virtuals: true });
   if (!user || user.role !== 'user') {
     throw new ApiError(404, 'Match not found');
   }
@@ -219,7 +267,7 @@ export const expressInterest = asyncHandler(async (req, res) => {
     throw new ApiError(400, 'You cannot express interest in your own profile');
   }
 
-  const candidate = await User.findById(req.params.id).lean();
+  const candidate = await User.findById(req.params.id).select('_id role').lean();
   if (!candidate || candidate.role !== 'user') {
     throw new ApiError(404, 'Match not found');
   }

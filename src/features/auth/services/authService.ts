@@ -1,5 +1,22 @@
 import axiosInstance from '@/shared/config/axiosConfig';
 
+const LOGIN_STARTUP_RETRY_LIMIT = 4;
+const LOGIN_STARTUP_RETRY_DELAY_MS = 800;
+const LOGIN_STARTUP_RETRYABLE_STATUSES = new Set([502, 503, 504]);
+
+function isStartupRetryableError(error: any) {
+  return (
+    error?.code === 'ERR_NETWORK' ||
+    error?.code === 'ECONNABORTED' ||
+    error?.code === 'ECONNREFUSED' ||
+    LOGIN_STARTUP_RETRYABLE_STATUSES.has(error?.response?.status)
+  );
+}
+
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 /**
  * Authentication Service for RaashiLink.AI
  * Handles user login, registration, OTP verification, and password management.
@@ -34,11 +51,29 @@ const authService = {
    * @returns {Promise<object>} - User data and JWT token.
    */
   login: async (credentials: any) => {
-    const response = await axiosInstance.post('/auth/login', {
+    const payload = {
       identifier: credentials.identifier || credentials.email,
       password: credentials.password,
-    });
-    return response.data;
+    };
+
+    let lastError: any;
+
+    for (let attempt = 0; attempt < LOGIN_STARTUP_RETRY_LIMIT; attempt += 1) {
+      try {
+        const response = await axiosInstance.post('/auth/login', payload);
+        return response.data;
+      } catch (error: any) {
+        lastError = error;
+
+        if (!isStartupRetryableError(error) || attempt === LOGIN_STARTUP_RETRY_LIMIT - 1) {
+          break;
+        }
+
+        await wait(LOGIN_STARTUP_RETRY_DELAY_MS * (attempt + 1));
+      }
+    }
+
+    throw lastError;
   },
 
   /**

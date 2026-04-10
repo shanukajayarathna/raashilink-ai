@@ -11,10 +11,91 @@ interface AuthState {
   error: string | null;
 }
 
+function sanitizeCachedUser(user: any) {
+  if (!user) return null;
+
+  const mainPhoto = Array.isArray(user.photos)
+    ? user.photos.find((photo: any) => photo?.isMain)?.url || user.photos[0]?.url || null
+    : null;
+
+  return {
+    id: user.id || user._id || null,
+    _id: user._id || user.id || null,
+    name:
+      user.name ||
+      [user.firstName || user.personalInfo?.firstName, user.lastName || user.personalInfo?.lastName]
+        .filter(Boolean)
+        .join(' ')
+        .trim() ||
+      'User',
+    firstName: user.firstName || user.personalInfo?.firstName || '',
+    lastName: user.lastName || user.personalInfo?.lastName || '',
+    email: user.email || '',
+    phone: user.phone || user.personalInfo?.phone || '',
+    role: user.role || null,
+    profileType: user.profileType || null,
+    location: user.location || user.personalInfo?.location || 'Sri Lanka',
+    age: user.age ?? user.personalInfo?.age ?? null,
+    gender: user.gender || user.personalInfo?.gender || null,
+    tagline: user.tagline || '',
+    bio: user.bio || '',
+    ethnicity: user.ethnicity || user.personalInfo?.ethnicity || '',
+    height: user.height || user.personalInfo?.height || '',
+    profilePic: user.profilePic || mainPhoto || null,
+    verification: user.verification || {},
+    personalInfo: {
+      firstName: user.firstName || user.personalInfo?.firstName || '',
+      lastName: user.lastName || user.personalInfo?.lastName || '',
+      phone: user.phone || user.personalInfo?.phone || '',
+      age: user.age ?? user.personalInfo?.age ?? null,
+      gender: user.gender || user.personalInfo?.gender || null,
+      location: user.location || user.personalInfo?.location || 'Sri Lanka',
+      ethnicity: user.ethnicity || user.personalInfo?.ethnicity || '',
+      height: user.height || user.personalInfo?.height || '',
+    },
+    lifestyle: user.lifestyle
+      ? {
+          educationLevel: user.lifestyle.educationLevel || '',
+          professionType: user.lifestyle.professionType || '',
+          religion: user.lifestyle.religion || '',
+          languages: Array.isArray(user.lifestyle.languages) ? user.lifestyle.languages : [],
+          hobbies: Array.isArray(user.lifestyle.hobbies) ? user.lifestyle.hobbies : [],
+          diet: user.lifestyle.diet || '',
+          smoking: user.lifestyle.smoking || '',
+          drinking: user.lifestyle.drinking || '',
+        }
+      : undefined,
+    photos: user.profilePic || mainPhoto ? [{ url: user.profilePic || mainPhoto, isMain: true }] : [],
+  };
+}
+
+function readCachedUser() {
+  try {
+    return sanitizeCachedUser(JSON.parse(localStorage.getItem('user') || 'null'));
+  } catch {
+    localStorage.removeItem('user');
+    return null;
+  }
+}
+
+function persistCachedUser(user: any) {
+  const sanitized = sanitizeCachedUser(user);
+
+  if (sanitized) {
+    localStorage.setItem('user', JSON.stringify(sanitized));
+  } else {
+    localStorage.removeItem('user');
+  }
+
+  return sanitized;
+}
+
+const cachedUser = readCachedUser();
+
 const initialState: AuthState = {
-  user: JSON.parse(localStorage.getItem('user') || 'null'),
+  user: cachedUser,
   token: localStorage.getItem('token'),
-  role: (JSON.parse(localStorage.getItem('user') || 'null'))?.role || null,
+  role: cachedUser?.role || null,
   isAuthenticated: !!localStorage.getItem('token'),
   loading: false,
   error: null,
@@ -29,7 +110,7 @@ export const loginUser = createAsyncThunk(
     try {
       const data = await authService.login(credentials);
       localStorage.setItem('token', data.token);
-      localStorage.setItem('user', JSON.stringify(data.user));
+      persistCachedUser(data.user);
       return data;
     } catch (error: any) {
       return rejectWithValue(error.response?.data?.message || 'Login failed');
@@ -59,8 +140,8 @@ export const fetchProfile = createAsyncThunk(
   'auth/fetchProfile',
   async (_, { rejectWithValue }) => {
     try {
-      const data = await userService.getProfile();
-      localStorage.setItem('user', JSON.stringify(data));
+      const data = await userService.getProfile({ includeMedia: false });
+      persistCachedUser(data);
       return data;
     } catch (error: any) {
       return rejectWithValue(error.response?.data?.message || 'Failed to fetch profile');
@@ -81,7 +162,7 @@ const authSlice = createSlice({
       state.role = action.payload.role;
       state.isAuthenticated = true;
       localStorage.setItem('token', action.payload.token);
-      localStorage.setItem('user', JSON.stringify(action.payload.user));
+      persistCachedUser(action.payload.user);
     },
     /**
      * Logout user and clear session.
@@ -99,7 +180,7 @@ const authSlice = createSlice({
      */
     updateUser: (state, action: PayloadAction<any>) => {
       state.user = { ...state.user, ...action.payload };
-      localStorage.setItem('user', JSON.stringify(state.user));
+      persistCachedUser(state.user);
     },
     /**
      * Clear authentication error.

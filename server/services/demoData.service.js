@@ -240,53 +240,55 @@ const demoUsers = [
 
 export const DEMO_USER_EMAILS = demoUsers.map((entry) => entry.email);
 
+let seededPasswordHashPromise;
+
+function getSeedPasswordHash() {
+  if (!seededPasswordHashPromise) {
+    seededPasswordHashPromise = bcrypt.hash('password123', 10);
+  }
+
+  return seededPasswordHashPromise;
+}
+
 export async function seedDemoUsers() {
-  const passwordHash = await bcrypt.hash('password123', 10);
+  const passwordHash = await getSeedPasswordHash();
+  const verification = {
+    emailVerified: true,
+    phoneVerified: true,
+    emailVerifiedAt: new Date(),
+    phoneVerifiedAt: new Date(),
+  };
 
-  for (const entry of demoUsers) {
-    await User.updateOne(
-      { email: entry.email },
-      {
-        $setOnInsert: {
-          ...entry,
-          ...mapHoroscopeFields(entry.horoscope),
-          passwordHash,
-          verification: {
-            emailVerified: true,
-            phoneVerified: true,
-            emailVerifiedAt: new Date(),
-            phoneVerifiedAt: new Date(),
-          },
-        },
-      },
-      { upsert: true }
-    );
-
-    if (entry.horoscope) {
+  await Promise.all(
+    demoUsers.map(async (entry) => {
       await User.updateOne(
         { email: entry.email },
         {
-          $set: mapHoroscopeFields(entry.horoscope),
-        }
-      );
-    }
-
-    await User.updateOne(
-      { email: entry.email },
-      {
-        $set: {
-          verification: {
-            emailVerified: true,
-            phoneVerified: true,
-            emailVerifiedAt: new Date(),
-            phoneVerifiedAt: new Date(),
+          $setOnInsert: {
+            ...entry,
+            ...mapHoroscopeFields(entry.horoscope),
+            passwordHash,
+            verification,
           },
         },
-      }
-    );
-  }
+        { upsert: true }
+      );
 
-  const vendorOwner = await User.findOne({ email: 'vendor@raashilink.ai' });
+      const updates = {
+        verification,
+        ...(entry.horoscope ? mapHoroscopeFields(entry.horoscope) : {}),
+      };
+
+      await User.updateOne(
+        { email: entry.email },
+        {
+          $set: updates,
+        }
+      );
+    })
+  );
+
+  const vendorOwner = await User.findOne({ email: 'vendor@raashilink.ai' }).select('_id');
   if (vendorOwner) {
     await Vendor.findOneAndUpdate(
       { userId: vendorOwner._id },
@@ -309,49 +311,54 @@ export async function seedDemoUsers() {
     );
   }
 
-  const horoscopeUsers = await User.find({ role: 'user' }).lean({ virtuals: true });
-  for (const user of horoscopeUsers) {
-    const sourceHoroscope = user.horoscope || (user.birthData
-      ? {
-          dateOfBirth: user.birthData.dateOfBirth,
-          timeOfBirth: user.birthData.timeOfBirth,
-          placeOfBirth: user.birthData.placeOfBirth,
-          moonSign: user.horoscopeData?.moonSign,
-          rashi: user.horoscopeData?.rashi,
-          nakshatra: user.horoscopeData?.nakshatra,
-        }
-      : null);
+  const horoscopeUsers = await User.find({ role: 'user' })
+    .select('_id birthData horoscopeData')
+    .lean({ virtuals: true });
 
-    if (!sourceHoroscope) {
-      continue;
-    }
+  await Promise.all(
+    horoscopeUsers.map(async (user) => {
+      const sourceHoroscope = user.horoscope || (user.birthData
+        ? {
+            dateOfBirth: user.birthData.dateOfBirth,
+            timeOfBirth: user.birthData.timeOfBirth,
+            placeOfBirth: user.birthData.placeOfBirth,
+            moonSign: user.horoscopeData?.moonSign,
+            rashi: user.horoscopeData?.rashi,
+            nakshatra: user.horoscopeData?.nakshatra,
+          }
+        : null);
 
-    await Horoscope.findOneAndUpdate(
-      { userId: user._id },
-      {
-        $set: {
-          userId: user._id,
-          zodiacSign: sourceHoroscope.moonSign || sourceHoroscope.rashi || 'Unknown',
-          rashi: sourceHoroscope.rashi || sourceHoroscope.moonSign || 'Unknown',
-          nakshatra: sourceHoroscope.nakshatra || 'Unknown',
-          ascendant: user.horoscopeData?.ascendant || sourceHoroscope.moonSign || 'Unknown',
-          planetaryPositions:
-            user.horoscopeData?.planetaryPositions?.length > 0
-              ? user.horoscopeData.planetaryPositions
-              : [
-                  {
-                    planet: 'Sun',
-                    sign: sourceHoroscope.moonSign || sourceHoroscope.rashi || 'Unknown',
-                    house: 7,
-                    degree: 12.4,
-                  },
-                ],
-          gunaScore: user.horoscopeData?.gunaScore || 0,
+      if (!sourceHoroscope) {
+        return;
+      }
+
+      await Horoscope.findOneAndUpdate(
+        { userId: user._id },
+        {
+          $set: {
+            userId: user._id,
+            zodiacSign: sourceHoroscope.moonSign || sourceHoroscope.rashi || 'Unknown',
+            rashi: sourceHoroscope.rashi || sourceHoroscope.moonSign || 'Unknown',
+            nakshatra: sourceHoroscope.nakshatra || 'Unknown',
+            ascendant: user.horoscopeData?.ascendant || sourceHoroscope.moonSign || 'Unknown',
+            planetaryPositions:
+              user.horoscopeData?.planetaryPositions?.length > 0
+                ? user.horoscopeData.planetaryPositions
+                : [
+                    {
+                      planet: 'Sun',
+                      sign: sourceHoroscope.moonSign || sourceHoroscope.rashi || 'Unknown',
+                      house: 7,
+                      degree: 12.4,
+                    },
+                  ],
+            gunaScore: user.horoscopeData?.gunaScore || 0,
+          },
         },
-      },
-      { upsert: true, new: true }
-    );
-  }
+        { upsert: true, new: true }
+      );
+    })
+  );
 
   await HoneymoonDestination.findOneAndUpdate(
     { country: 'Sri Lanka', region: 'Ella' },

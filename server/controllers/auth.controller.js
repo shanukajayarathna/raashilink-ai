@@ -74,7 +74,24 @@ function mapPersonality(answers = []) {
   };
 }
 
+function sanitizeImageReference(value, { allowDataUri = false } = {}) {
+  if (!value) return null;
+
+  const normalized = String(value).trim();
+  if (!normalized) return null;
+
+  if (!allowDataUri && /^data:image\//i.test(normalized)) {
+    return null;
+  }
+
+  return normalized;
+}
+
 function sanitizeUser(user) {
+  const profilePic = sanitizeImageReference(
+    user.personalInfo?.profilePic || user.photos?.find((photo) => photo.isMain)?.url || null
+  );
+
   return {
     id: user._id,
     name: user.name,
@@ -85,8 +102,8 @@ function sanitizeUser(user) {
     role: user.role,
     profileType: user.profileType,
     location: user.location,
-    profilePic: user.personalInfo?.profilePic || user.photos?.find((photo) => photo.isMain)?.url || null,
-    photos: user.photos || [],
+    profilePic,
+    photos: profilePic ? [{ url: profilePic, isMain: true }] : [],
     verification: {
       emailVerified: Boolean(user.verification?.emailVerified),
       phoneVerified: Boolean(user.verification?.phoneVerified),
@@ -229,6 +246,19 @@ function validateRegistrationInput(input) {
   }
 }
 
+const AUTH_USER_SELECT = [
+  '_id',
+  'email',
+  'passwordHash',
+  'role',
+  'personalInfo.firstName',
+  'personalInfo.lastName',
+  'personalInfo.phone',
+  'personalInfo.location',
+  'verification.emailVerified',
+  'verification.phoneVerified',
+].join(' ');
+
 async function findUserByIdentifier(identifier) {
   const normalized = normalizeIdentifier(identifier);
   if (!normalized.value) return null;
@@ -237,7 +267,7 @@ async function findUserByIdentifier(identifier) {
     normalized.channel === 'email'
       ? { email: normalized.value }
       : { 'personalInfo.phone': normalized.value }
-  );
+  ).select(AUTH_USER_SELECT);
 }
 
 async function createOtp({ identifier, purpose }) {
@@ -582,7 +612,7 @@ export const logout = asyncHandler(async (req, res) => {
 export const refreshToken = [
   authenticate,
   asyncHandler(async (req, res) => {
-    const user = await User.findById(req.user._id);
+    const user = await User.findById(req.user._id).select(AUTH_USER_SELECT);
     if (!user) {
       throw new ApiError(401, 'Authenticated user not found');
     }

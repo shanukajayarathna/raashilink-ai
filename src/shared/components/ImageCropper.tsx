@@ -35,6 +35,9 @@ interface ImageCropperProps {
   cropShape?: 'rect' | 'round';
   title?: string;
   uploading?: boolean;
+  maxOutputWidth?: number;
+  maxOutputHeight?: number;
+  outputQuality?: number;
 }
 
 const MIN_ZOOM = 1;
@@ -55,7 +58,10 @@ const ImageCropper: React.FC<ImageCropperProps> = ({
   aspectRatio = 1,
   cropShape = 'round',
   title = 'Crop Image',
-  uploading = false
+  uploading = false,
+  maxOutputWidth = 1080,
+  maxOutputHeight = 1080,
+  outputQuality = 0.82,
 }) => {
   const [crop, setCrop] = useState<Point>({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
@@ -96,14 +102,17 @@ const ImageCropper: React.FC<ImageCropperProps> = ({
     return new Promise((resolve) => {
       image.onload = () => {
         const { width, height, x, y } = croppedAreaPixels;
+        const scale = Math.min(1, maxOutputWidth / width, maxOutputHeight / height);
+        const outputWidth = Math.max(1, Math.round(width * scale));
+        const outputHeight = Math.max(1, Math.round(height * scale));
 
-        canvas.width = width;
-        canvas.height = height;
+        canvas.width = outputWidth;
+        canvas.height = outputHeight;
 
         ctx.save();
 
         // Move to center of canvas
-        ctx.translate(width / 2, height / 2);
+        ctx.translate(outputWidth / 2, outputHeight / 2);
 
         // Rotate
         ctx.rotate((rotation * Math.PI) / 180);
@@ -115,21 +124,21 @@ const ImageCropper: React.FC<ImageCropperProps> = ({
           y,
           width,
           height,
-          -width / 2,
-          -height / 2,
-          width,
-          height
+          -outputWidth / 2,
+          -outputHeight / 2,
+          outputWidth,
+          outputHeight
         );
 
         ctx.restore();
 
-        const croppedImageUrl = canvas.toDataURL('image/jpeg', 0.9);
+        const croppedImageUrl = canvas.toDataURL('image/jpeg', outputQuality);
         resolve(croppedImageUrl);
       };
 
       image.src = imageSrc;
     });
-  }, [imageSrc, croppedAreaPixels, rotation]);
+  }, [croppedAreaPixels, imageSrc, maxOutputHeight, maxOutputWidth, outputQuality, rotation]);
 
   const handlePreview = async () => {
     const cropped = await createCroppedImage();
