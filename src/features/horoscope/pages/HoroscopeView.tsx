@@ -39,10 +39,22 @@ import { RootState } from '@/app/store/store';
 import { AppDispatch } from '@/app/store/store';
 import { fetchMyChart, calculateCompatibility } from '../store/horoscopeSlice';
 import { fetchProfile, updateUser } from '@/features/auth/store/authSlice';
+import { setLanguage } from '@/app/store/uiSlice';
 import BirthChartWheel from '../components/BirthChartWheel';
 import CompatibilityScores from '../components/CompatibilityScores';
 import matchService from '@/features/matchmaking/services/matchService';
 import userService from '@/features/profile/services/userService';
+import {
+  HOROSCOPE_LANGUAGE_OPTIONS,
+  HOROSCOPE_TEXT,
+  LANGUAGE_FONT_FAMILY,
+  type HoroscopeLanguage,
+  formatNakshatraPada,
+  translateHoroscopeValue,
+  translateHouseLabel,
+  translatePlanetName,
+  translateZodiacSign,
+} from '../utils/horoscopeLocalization';
 
 const COLORS = {
   primary: '#8B1A2E',
@@ -52,19 +64,63 @@ const COLORS = {
   textSecondary: '#555555',
 };
 
-const formatAccuracyMessage = (missingFields: string[]) => {
+const formatAccuracyMessage = (missingFields: string[], language: HoroscopeLanguage) => {
   if (!missingFields.length) return null;
 
+  const fieldLabels = {
+    en: {
+      'birth date': 'birth date',
+      'birth place': 'birth place',
+      'exact birth time': 'exact birth time',
+    },
+    si: {
+      'birth date': 'උපන් දිනය',
+      'birth place': 'උපන් ස්ථානය',
+      'exact birth time': 'නිවැරදි උපන් වේලාව',
+    },
+    ta: {
+      'birth date': 'பிறந்த தேதி',
+      'birth place': 'பிறந்த இடம்',
+      'exact birth time': 'சரியான பிறந்த நேரம்',
+    },
+  } as const;
+
+  const localizedMissing = missingFields.map((field) => fieldLabels[language][field as keyof typeof fieldLabels.en] || field);
+
   if (missingFields.length === 1 && missingFields[0] === 'exact birth time') {
-    return 'Your chart is using an approximate 12:00 birth time because the exact time is missing, so ascendant and house placements may be less accurate.';
+    return {
+      en: 'Your chart is using an approximate 12:00 birth time because the exact time is missing, so ascendant and house placements may be less accurate.',
+      si: 'නිවැරදි උපන් වේලාව නොමැති නිසා ඔබගේ කේන්දරය අනුමාන 12:00 වේලාවක් භාවිතා කරයි. ඒ නිසා ලග්නය සහ භාව ස්ථාන අඩු නිරවද්‍ය විය හැක.',
+      ta: 'சரியான பிறந்த நேரம் இல்லை என்பதால் உங்கள் ஜாதகம் கணிக்கப்பட்ட 12:00 நேரத்தை பயன்படுத்துகிறது. அதனால் லக்னமும் பாவ நிலைகளும் குறைந்த துல்லியமாக இருக்கலாம்.',
+    }[language];
   }
 
-  return `Some birth details are still missing (${missingFields.join(', ')}). Any horoscope generated without them may be less accurate.`;
+  return {
+    en: `Some birth details are still missing (${localizedMissing.join(', ')}). Any horoscope generated without them may be less accurate.`,
+    si: `සමහර උපන් විස්තර තවමත් හිඟයි (${localizedMissing.join(', ')}). ඒවා නොමැතිව ගණනය කරන හෝරාව අඩු නිරවද්‍ය විය හැක.`,
+    ta: `சில பிறப்பு விவரங்கள் இன்னும் இல்லை (${localizedMissing.join(', ')}). அவற்றின்றி உருவாகும் ஜாதகம் குறைந்த துல்லியமாக இருக்கலாம்.`,
+  }[language];
+};
+
+const toSafeDateInputValue = (value: unknown) => {
+  if (!value) return '';
+
+  const parsed = value instanceof Date ? value : new Date(String(value));
+  return Number.isNaN(parsed.getTime()) ? '' : parsed.toISOString().split('T')[0];
+};
+
+const formatSafeDisplayDate = (value: unknown, locale = 'en-LK') => {
+  if (!value) return null;
+
+  const parsed = value instanceof Date ? value : new Date(String(value));
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toLocaleDateString(locale);
 };
 
 const HoroscopeView = () => {
   const dispatch = useDispatch<AppDispatch>();
   const { user } = useSelector((state: RootState) => state.auth);
+  const language = useSelector((state: RootState) => state.ui.language);
+  const texts = HOROSCOPE_TEXT[language];
   const { myChart, compatibility, isLoading, isCalculating, error } = useSelector((state: RootState) => state.horoscope);
   const [selectedMatch, setSelectedMatch] = useState<any>(null);
   const [matches, setMatches] = useState<any[]>([]);
@@ -83,14 +139,17 @@ const HoroscopeView = () => {
   });
 
   const chartSummary = myChart?.summary;
+  const chartDetails = myChart?.details;
   const chartPlanets = myChart?.planets ?? [];
   const chartPositions = myChart?.positions ?? [];
+  const chartHouses = myChart?.houses ?? [];
+  const readingHighlights = myChart?.insights ?? [];
   const chartMeta = myChart?.meta;
 
   const storedBirthDate =
     chartMeta?.generatedFrom?.birthDate ||
-    user?.birthDate ||
-    (user?.birthData?.dateOfBirth ? new Date(user.birthData.dateOfBirth).toISOString().split('T')[0] : '');
+    toSafeDateInputValue(user?.birthDate) ||
+    toSafeDateInputValue(user?.birthData?.dateOfBirth);
   const storedBirthPlace =
     chartMeta?.generatedFrom?.birthPlace || user?.birthPlace || user?.birthData?.placeOfBirth?.city || '';
   const rawStoredBirthTime = chartMeta?.generatedFrom?.birthTime || user?.birthTime || user?.birthData?.timeOfBirth || '';
@@ -109,18 +168,35 @@ const HoroscopeView = () => {
   if (!storedBirthPlace) missingBirthFields.push('birth place');
   if (!storedKnownBirthTime) missingBirthFields.push('exact birth time');
 
-  const accuracyNotice = chartMeta?.accuracyNote || formatAccuracyMessage(missingBirthFields);
+  const accuracyNotice = formatAccuracyMessage(missingBirthFields, language);
   const hasCriticalBirthDetailsMissing = missingBirthFields.some((field) => field !== 'exact birth time');
+  const generatedFrom = chartMeta?.generatedFrom;
+  const normalizedStoredBirthPlace = String(storedBirthPlace || '').trim().toLowerCase();
+  const normalizedGeneratedBirthPlace = String(generatedFrom?.birthPlace || '').trim().toLowerCase();
+  const chartNeedsRefresh = Boolean(
+    myChart && (
+      !generatedFrom ||
+      String(chartMeta?.userId || '') !== String(user?._id || '') ||
+      (generatedFrom.birthDate || '') !== (storedBirthDate || '') ||
+      Number(chartMeta?.calculationVersion || 1) < 3 ||
+      normalizedGeneratedBirthPlace !== normalizedStoredBirthPlace ||
+      Boolean(generatedFrom.knownBirthTime !== false) !== Boolean(storedKnownBirthTime) ||
+      (storedKnownBirthTime && (generatedFrom.birthTime || '') !== (storedBirthTime || ''))
+    )
+  );
 
   useEffect(() => {
-    dispatch(fetchProfile());
-  }, [dispatch]);
-
-  useEffect(() => {
-    if (!myChart) {
-      dispatch(fetchMyChart());
+    const needsProfileRefresh = !user?.birthData?.dateOfBirth || !user?.birthData?.placeOfBirth?.city;
+    if (needsProfileRefresh) {
+      dispatch(fetchProfile());
     }
-  }, [dispatch, myChart]);
+  }, [dispatch, user?.birthData?.dateOfBirth, user?.birthData?.placeOfBirth?.city]);
+
+  useEffect(() => {
+    if (!hasCriticalBirthDetailsMissing && (!myChart || chartNeedsRefresh)) {
+      dispatch(fetchMyChart({ force: chartNeedsRefresh }));
+    }
+  }, [dispatch, myChart, hasCriticalBirthDetailsMissing, chartNeedsRefresh]);
 
   useEffect(() => {
     setBirthForm({
@@ -186,6 +262,12 @@ const HoroscopeView = () => {
     dispatch(calculateCompatibility({ userAId: String(user._id), userBId: selectedMatch.id }));
   };
 
+  const handleLanguageChange = (nextLanguage: HoroscopeLanguage) => {
+    if (nextLanguage !== language) {
+      dispatch(setLanguage(nextLanguage));
+    }
+  };
+
   const openEditor = () => {
     setBirthFormError(null);
     setEditorOpen(true);
@@ -216,14 +298,26 @@ const HoroscopeView = () => {
         knownBirthTime: birthForm.knowsBirthTime,
       });
 
-      dispatch(updateUser(updatedProfile));
-      await dispatch(fetchMyChart()).unwrap();
+      dispatch(
+        updateUser({
+          ...updatedProfile,
+          birthData: {
+            ...(user?.birthData || {}),
+            dateOfBirth: birthForm.birthDate,
+            timeOfBirth: birthForm.knowsBirthTime ? birthForm.birthTime : '',
+            knownBirthTime: birthForm.knowsBirthTime,
+            placeOfBirth: {
+              ...(user?.birthData?.placeOfBirth || {}),
+              city: trimmedBirthPlace,
+            },
+          },
+        })
+      );
+      await dispatch(fetchMyChart({ force: true })).unwrap();
 
       setBirthFeedback({
         type: birthForm.knowsBirthTime ? 'success' : 'warning',
-        message: birthForm.knowsBirthTime
-          ? 'Birth details saved and your horoscope has been reloaded.'
-          : 'Birth details saved and your horoscope has been reloaded using an approximate 12:00 birth time.',
+        message: birthForm.knowsBirthTime ? texts.refreshSuccess : texts.refreshApproximate,
       });
       setEditorOpen(false);
     } catch (saveError: any) {
@@ -251,27 +345,86 @@ const HoroscopeView = () => {
 
   return (
     <Box sx={{ p: { xs: 2, md: 4 }, maxWidth: '1200px', mx: 'auto' }}>
-      <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 2 }}>
-        <Box>
+      <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 2 }}>
+        <Box sx={{ flex: '1 1 420px', minWidth: 0, minHeight: { xs: 'auto', md: 88 } }}>
           <Typography variant="h3" sx={{ fontFamily: 'Playfair Display', fontWeight: 800, color: COLORS.primary, mb: 1 }}>
-            Your Vedic Birth Chart
+            {texts.birthChartTitle}
           </Typography>
-          <Typography variant="body1" sx={{ color: COLORS.textSecondary }}>
-            Calculated from the birth details stored in your RaashiLink profile.
+          <Typography variant="body1" sx={{ color: COLORS.textSecondary, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>
+            {texts.calculatedFromProfile}
           </Typography>
         </Box>
-        <Stack direction="row" spacing={2}>
-          <Button
-            variant="outlined"
-            startIcon={<Refresh />}
-            onClick={() => dispatch(fetchMyChart())}
-            sx={{ borderRadius: '12px', borderColor: COLORS.secondary, color: COLORS.secondary }}
+        <Stack
+          spacing={1.5}
+          alignItems={{ xs: 'stretch', md: 'flex-end' }}
+          sx={{ width: { xs: '100%', md: 'auto' }, minWidth: { md: 460 }, flexShrink: 0 }}
+        >
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+            <Button
+              variant="outlined"
+              startIcon={<Refresh />}
+              onClick={() => dispatch(fetchMyChart({ force: true }))}
+              sx={{
+                borderRadius: '12px',
+                borderColor: COLORS.secondary,
+                color: COLORS.secondary,
+                fontFamily: LANGUAGE_FONT_FAMILY[language],
+                width: { xs: '100%', sm: 220 },
+                justifyContent: 'center',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {texts.refresh}
+            </Button>
+            <Button
+              variant="contained"
+              startIcon={<Share />}
+              sx={{
+                borderRadius: '12px',
+                bgcolor: COLORS.primary,
+                fontFamily: LANGUAGE_FONT_FAMILY[language],
+                width: { xs: '100%', sm: 220 },
+                justifyContent: 'center',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {texts.shareChart}
+            </Button>
+          </Stack>
+          <Stack
+            direction="row"
+            spacing={1}
+            alignItems="center"
+            justifyContent={{ xs: 'flex-start', md: 'flex-end' }}
+            sx={{
+              flexWrap: 'nowrap',
+              overflowX: 'auto',
+              pb: 0.5,
+              '&::-webkit-scrollbar': { display: 'none' },
+            }}
           >
-            Refresh
-          </Button>
-          <Button variant="contained" startIcon={<Share />} sx={{ borderRadius: '12px', bgcolor: COLORS.primary }}>
-            Share Chart
-          </Button>
+            <Typography variant="caption" sx={{ color: COLORS.textSecondary, fontWeight: 700, mr: 0.5, fontFamily: LANGUAGE_FONT_FAMILY[language], flexShrink: 0 }}>
+              {texts.language}
+            </Typography>
+            {HOROSCOPE_LANGUAGE_OPTIONS.map((option) => (
+              <Chip
+                key={option.value}
+                label={option.label}
+                clickable
+                onClick={() => handleLanguageChange(option.value)}
+                color={language === option.value ? 'primary' : 'default'}
+                variant={language === option.value ? 'filled' : 'outlined'}
+                sx={{
+                  fontWeight: 700,
+                  fontFamily: LANGUAGE_FONT_FAMILY[option.value],
+                  minWidth: 82,
+                  height: 34,
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}
+              />
+            ))}
+          </Stack>
         </Stack>
       </Box>
 
@@ -305,28 +458,28 @@ const HoroscopeView = () => {
       >
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={3} justifyContent="space-between" alignItems={{ xs: 'flex-start', md: 'center' }}>
           <Box>
-            <Typography variant="overline" sx={{ letterSpacing: 1.5, fontWeight: 800, color: COLORS.accent }}>
-              Premium accuracy control
+            <Typography variant="overline" sx={{ letterSpacing: 1.5, fontWeight: 800, color: COLORS.accent, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>
+              {texts.premiumAccuracyControl}
             </Typography>
-            <Typography variant="h6" sx={{ fontWeight: 800, color: COLORS.primary, mb: 1 }}>
-              Edit birth details and reload your horoscope instantly
+            <Typography variant="h6" sx={{ fontWeight: 800, color: COLORS.primary, mb: 1, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>
+              {texts.editBirthDetailsReload}
             </Typography>
-            <Typography variant="body2" sx={{ color: COLORS.textSecondary, mb: 2 }}>
-              If your birth information changes, update it here and your saved database record plus horoscope chart will refresh together.
+            <Typography variant="body2" sx={{ color: COLORS.textSecondary, mb: 2, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>
+              {texts.editBirthDetailsDescription}
             </Typography>
             <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
-              <Chip icon={<CakeOutlined />} label={storedBirthDate || 'Birth date needed'} sx={{ bgcolor: 'white' }} />
+              <Chip icon={<CakeOutlined />} label={storedBirthDate || texts.birthDateNeeded} sx={{ bgcolor: 'white', fontFamily: LANGUAGE_FONT_FAMILY[language] }} />
               <Chip
                 icon={<AccessTimeOutlined />}
-                label={storedKnownBirthTime ? storedBirthTime || 'Birth time needed' : 'Approximate 12:00 time'}
-                sx={{ bgcolor: 'white' }}
+                label={storedKnownBirthTime ? storedBirthTime || texts.birthTimeNeeded : texts.approximateTimeLabel}
+                sx={{ bgcolor: 'white', fontFamily: LANGUAGE_FONT_FAMILY[language] }}
               />
-              <Chip icon={<PlaceOutlined />} label={storedBirthPlace || 'Birth place needed'} sx={{ bgcolor: 'white' }} />
+              <Chip icon={<PlaceOutlined />} label={storedBirthPlace || texts.birthPlaceNeeded} sx={{ bgcolor: 'white', fontFamily: LANGUAGE_FONT_FAMILY[language] }} />
               {chartMeta?.generatedAt && (
                 <Chip
                   icon={<AutoAwesome />}
-                  label={`Last refreshed ${new Date(chartMeta.generatedAt).toLocaleDateString('en-LK')}`}
-                  sx={{ bgcolor: 'white' }}
+                  label={`${texts.lastRefreshed} ${formatSafeDisplayDate(chartMeta.generatedAt, 'en-LK') || 'recently'}`}
+                  sx={{ bgcolor: 'white', fontFamily: LANGUAGE_FONT_FAMILY[language] }}
                 />
               )}
             </Stack>
@@ -340,29 +493,31 @@ const HoroscopeView = () => {
               borderRadius: '14px',
               px: 2.5,
               py: 1.2,
+              width: { xs: '100%', sm: 220 },
+              whiteSpace: 'nowrap',
               bgcolor: COLORS.primary,
               boxShadow: '0 10px 24px rgba(139,26,46,0.2)',
             }}
           >
-            Edit & Reload
+            {texts.editReload}
           </Button>
         </Stack>
       </Paper>
 
       {!isLoading && !chartSummary && (
         <Paper sx={{ p: 4, mb: 4, borderRadius: '24px', textAlign: 'center', bgcolor: 'white' }}>
-          <Typography variant="h6" sx={{ fontWeight: 800, color: COLORS.primary, mb: 1 }}>
-            Your horoscope needs complete birth details
+          <Typography variant="h6" sx={{ fontWeight: 800, color: COLORS.primary, mb: 1, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>
+            {texts.horoscopeNeedsDetails}
           </Typography>
-          <Typography variant="body2" sx={{ color: COLORS.textSecondary, mb: 3 }}>
-            Add your birth date and birth place here. If your exact time is unknown, we can still generate a chart, but the results will be marked as less accurate.
+          <Typography variant="body2" sx={{ color: COLORS.textSecondary, mb: 3, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>
+            {texts.horoscopeNeedsDetailsDescription}
           </Typography>
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} justifyContent="center">
-            <Button variant="contained" onClick={openEditor} sx={{ borderRadius: '12px', bgcolor: COLORS.primary }}>
-              Add Birth Details
+            <Button variant="contained" onClick={openEditor} sx={{ borderRadius: '12px', bgcolor: COLORS.primary, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>
+              {texts.addBirthDetails}
             </Button>
-            <Button variant="outlined" href="/edit-profile" sx={{ borderRadius: '12px', borderColor: COLORS.secondary, color: COLORS.secondary }}>
-              Open Full Profile
+            <Button variant="outlined" href="/edit-profile" sx={{ borderRadius: '12px', borderColor: COLORS.secondary, color: COLORS.secondary, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>
+              {texts.openFullProfile}
             </Button>
           </Stack>
         </Paper>
@@ -381,21 +536,58 @@ const HoroscopeView = () => {
                 borderColor: COLORS.background,
               }}
             >
-              <BirthChartWheel planets={chartPlanets} ascendant={chartSummary?.ascendant || 'Pending'} />
+              <BirthChartWheel planets={chartPlanets} ascendant={chartSummary?.ascendant || texts.pending} language={language} />
 
               <Grid container spacing={2} sx={{ mt: 4 }}>
                 {[
-                  { label: 'Moon Sign (Rashi)', value: chartSummary?.moonSign || 'Pending' },
-                  { label: 'Nakshatra', value: chartSummary?.nakshatra || 'Pending' },
-                  { label: 'Ascendant', value: chartSummary?.ascendant || 'Pending' },
-                  { label: 'Sun Sign', value: chartSummary?.sunSign || 'Pending' },
+                  { label: texts.moonSign, value: translateHoroscopeValue(chartSummary?.moonSign || texts.pending, language) },
+                  { label: texts.nakshatra, value: translateHoroscopeValue(chartSummary?.nakshatra || texts.pending, language) },
+                  { label: texts.ascendant, value: translateHoroscopeValue(chartSummary?.ascendant || texts.pending, language) },
+                  { label: texts.sunSign, value: translateHoroscopeValue(chartSummary?.sunSign || texts.pending, language) },
                 ].map((pill) => (
                   <Grid size={{ xs: 6 }} key={pill.label}>
-                    <Box sx={{ p: 2, bgcolor: COLORS.background, borderRadius: '16px', textAlign: 'center' }}>
-                      <Typography variant="caption" sx={{ color: COLORS.textSecondary, fontWeight: 700, display: 'block', mb: 0.5 }}>
+                    <Box
+                      sx={{
+                        p: 2,
+                        bgcolor: COLORS.background,
+                        borderRadius: '16px',
+                        textAlign: 'center',
+                        minHeight: 96,
+                        height: '100%',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          color: COLORS.textSecondary,
+                          fontWeight: 700,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          mb: 0.5,
+                          minHeight: 34,
+                          lineHeight: 1.3,
+                          fontFamily: LANGUAGE_FONT_FAMILY[language],
+                        }}
+                      >
                         {pill.label}
                       </Typography>
-                      <Typography variant="body1" sx={{ fontWeight: 800, color: COLORS.primary }}>
+                      <Typography
+                        variant="body1"
+                        sx={{
+                          fontWeight: 800,
+                          color: COLORS.primary,
+                          fontFamily: LANGUAGE_FONT_FAMILY[language],
+                          minHeight: 24,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          lineHeight: 1.25,
+                        }}
+                      >
                         {pill.value}
                       </Typography>
                     </Box>
@@ -404,15 +596,15 @@ const HoroscopeView = () => {
               </Grid>
 
               <Box sx={{ mt: 4 }}>
-                <Typography variant="subtitle2" sx={{ fontWeight: 800, color: 'text.primary', mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <TrendingUp sx={{ fontSize: 18, color: COLORS.accent }} /> Planetary Positions
+                <Typography variant="subtitle2" sx={{ fontWeight: 800, color: 'text.primary', mb: 2, display: 'flex', alignItems: 'center', gap: 1, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>
+                  <TrendingUp sx={{ fontSize: 18, color: COLORS.accent }} /> {texts.planetaryPositions}
                 </Typography>
                 <Box sx={{ maxHeight: 200, overflowY: 'auto', pr: 1 }}>
                   {chartPositions.map((position: any, index: number) => (
                     <Box key={index} sx={{ display: 'flex', justifyContent: 'space-between', py: 1, borderBottom: `1px solid ${COLORS.background}` }}>
-                      <Typography variant="body2" sx={{ fontWeight: 600 }}>{position.planet}</Typography>
-                      <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
-                        {position.sign} | {position.house} | {position.degree}
+                      <Typography variant="body2" sx={{ fontWeight: 600, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>{translatePlanetName(position.planet, language)}</Typography>
+                      <Typography variant="body2" sx={{ color: COLORS.textSecondary, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>
+                        {translateHoroscopeValue(position.sign, language)} | {translateHouseLabel(position.house, language)} | {position.degree}
                       </Typography>
                     </Box>
                   ))}
@@ -433,14 +625,14 @@ const HoroscopeView = () => {
                 height: '100%',
               }}
             >
-              <Typography variant="h5" sx={{ fontFamily: 'Playfair Display', fontWeight: 700, mb: 4, color: COLORS.primary }}>
-                Check Compatibility With
+              <Typography variant="h5" sx={{ fontFamily: LANGUAGE_FONT_FAMILY[language], fontWeight: 700, mb: 4, color: COLORS.primary }}>
+                {texts.checkCompatibilityWith}
               </Typography>
 
               <Stack spacing={4}>
                 <Box>
-                  <Typography variant="body2" sx={{ fontWeight: 700, mb: 1, color: COLORS.textSecondary }}>
-                    Select from your matches
+                  <Typography variant="body2" sx={{ fontWeight: 700, mb: 1, color: COLORS.textSecondary, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>
+                    {texts.selectFromMatches}
                   </Typography>
                   <Autocomplete
                     options={matches}
@@ -452,14 +644,14 @@ const HoroscopeView = () => {
                         <Box component="img" src={option.photo} sx={{ width: 40, height: 40, borderRadius: '50%' }} />
                         <Box>
                           <Typography variant="body2" sx={{ fontWeight: 700 }}>{option.name}</Typography>
-                          <Typography variant="caption" sx={{ color: COLORS.textSecondary }}>{option.sign} Moon Sign</Typography>
+                          <Typography variant="caption" sx={{ color: COLORS.textSecondary, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>{translateHoroscopeValue(option.sign, language)} · {texts.moonSign}</Typography>
                         </Box>
                       </Box>
                     )}
                     renderInput={(params) => (
                       <TextField
                         {...params}
-                        placeholder="Search partner name..."
+                        placeholder={texts.searchPartnerName}
                         InputProps={{
                           ...params.InputProps,
                           startAdornment: (
@@ -498,10 +690,120 @@ const HoroscopeView = () => {
                     boxShadow: '0 8px 24px rgba(201,168,76,0.3)',
                   }}
                 >
-                  {isCalculating ? <CircularProgress size={24} color="inherit" /> : 'Calculate Compatibility'}
+                  {isCalculating ? <CircularProgress size={24} color="inherit" /> : texts.calculateCompatibility}
                 </Button>
               </Stack>
             </Paper>
+          </Grid>
+
+          <Grid size={{ xs: 12 }}>
+            <Grid container spacing={4}>
+              <Grid size={{ xs: 12, lg: 7 }}>
+                <Paper
+                  sx={{
+                    p: 3,
+                    borderRadius: '28px',
+                    bgcolor: 'white',
+                    boxShadow: '0 10px 32px rgba(139,26,46,0.05)',
+                    border: '1px solid',
+                    borderColor: COLORS.background,
+                  }}
+                >
+                  <Typography variant="h6" sx={{ fontWeight: 800, color: COLORS.primary, mb: 2, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>
+                    {texts.traditionalDetails}
+                  </Typography>
+
+                  <Grid container spacing={1.5}>
+                    {[
+                      { label: texts.nakshatraPada, value: formatNakshatraPada(chartDetails?.nakshatraPada, language) },
+                      { label: texts.ascendant, value: `${translateHoroscopeValue(chartSummary?.ascendant || texts.pending, language)}${chartDetails?.ascendantDegree && chartDetails.ascendantDegree !== 'Pending' ? ` • ${chartDetails.ascendantDegree}` : ''}` },
+                      { label: texts.tithi, value: translateHoroscopeValue(chartDetails?.tithi || texts.pending, language) },
+                      { label: texts.paksha, value: translateHoroscopeValue(chartDetails?.paksha || texts.pending, language) },
+                      { label: texts.yoga, value: translateHoroscopeValue(chartDetails?.yoga || texts.pending, language) },
+                      { label: texts.karana, value: translateHoroscopeValue(chartDetails?.karana || texts.pending, language) },
+                      { label: texts.vedicDay, value: translateHoroscopeValue(chartDetails?.vedicDay || texts.pending, language) },
+                      { label: texts.ayanamsa, value: translateHoroscopeValue(chartDetails?.ayanamsa || 'Lahiri', language) },
+                      { label: texts.chartType, value: translateHoroscopeValue(chartDetails?.chartType || 'Sri Lankan Vedic / Sidereal', language) },
+                      { label: texts.timeZone, value: chartDetails?.timezone || chartMeta?.timezone || 'Asia/Colombo' },
+                    ].map((item) => (
+                      <Grid size={{ xs: 12, sm: 6 }} key={item.label}>
+                        <Box sx={{ p: 1.5, borderRadius: '14px', bgcolor: COLORS.background, height: '100%' }}>
+                          <Typography variant="caption" sx={{ display: 'block', mb: 0.5, color: COLORS.textSecondary, fontWeight: 700, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>
+                            {item.label}
+                          </Typography>
+                          <Typography variant="body2" sx={{ color: COLORS.primary, fontWeight: 800, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>
+                            {item.value}
+                          </Typography>
+                        </Box>
+                      </Grid>
+                    ))}
+                  </Grid>
+
+                  {!!chartHouses.length && (
+                    <Box sx={{ mt: 3 }}>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 800, color: 'text.primary', mb: 1.5, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>
+                        {texts.houseOverview}
+                      </Typography>
+                      <Grid container spacing={1.25}>
+                        {chartHouses.map((house: any) => (
+                          <Grid size={{ xs: 12, sm: 6, md: 4 }} key={`${house.house}-${house.sign}`}>
+                            <Box sx={{ p: 1.5, borderRadius: '14px', border: '1px solid rgba(139,26,46,0.08)', height: '100%' }}>
+                              <Typography variant="caption" sx={{ display: 'block', color: COLORS.textSecondary, fontWeight: 700, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>
+                                {translateHouseLabel(house.house, language)}
+                              </Typography>
+                              <Typography variant="body2" sx={{ color: COLORS.primary, fontWeight: 800, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>
+                                {translateHoroscopeValue(house.sign, language)}
+                              </Typography>
+                              <Typography variant="caption" sx={{ display: 'block', mt: 0.5, color: COLORS.textSecondary, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>
+                                {house.occupants?.length
+                                  ? `${texts.occupiedBy}: ${house.occupants.map((planet: string) => translatePlanetName(planet, language)).join(', ')}`
+                                  : texts.empty}
+                              </Typography>
+                            </Box>
+                          </Grid>
+                        ))}
+                      </Grid>
+                    </Box>
+                  )}
+                </Paper>
+              </Grid>
+
+              <Grid size={{ xs: 12, lg: 5 }}>
+                <Paper
+                  sx={{
+                    p: 3,
+                    borderRadius: '28px',
+                    bgcolor: 'white',
+                    boxShadow: '0 10px 32px rgba(139,26,46,0.05)',
+                    border: '1px solid',
+                    borderColor: COLORS.background,
+                    height: '100%',
+                  }}
+                >
+                  <Typography variant="h6" sx={{ fontWeight: 800, color: COLORS.primary, mb: 2, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>
+                    {texts.readingHighlights}
+                  </Typography>
+                  <Stack spacing={1.25}>
+                    {readingHighlights.length ? (
+                      readingHighlights.map((insight: string, index: number) => (
+                        <Alert
+                          key={`${index}-${insight.slice(0, 12)}`}
+                          icon={<AutoAwesome fontSize="inherit" />}
+                          severity="info"
+                          sx={{ borderRadius: '14px', '& .MuiAlert-message': { fontFamily: LANGUAGE_FONT_FAMILY[language] } }}
+                        >
+                          {insight}
+                        </Alert>
+                      ))
+                    ) : (
+                      <Alert severity="info" sx={{ borderRadius: '14px', '& .MuiAlert-message': { fontFamily: LANGUAGE_FONT_FAMILY[language] } }}>
+                        {accuracyNotice || texts.pending}
+                      </Alert>
+                    )}
+                  </Stack>
+                </Paper>
+              </Grid>
+            </Grid>
           </Grid>
         </Grid>
       )}
@@ -510,11 +812,11 @@ const HoroscopeView = () => {
         <DialogTitle sx={{ pb: 1 }}>
           <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={2}>
             <Box>
-              <Typography variant="overline" sx={{ fontWeight: 800, letterSpacing: 1.5, color: COLORS.accent }}>
-                Horoscope update
+              <Typography variant="overline" sx={{ fontWeight: 800, letterSpacing: 1.5, color: COLORS.accent, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>
+                {texts.horoscopeUpdate}
               </Typography>
-              <Typography variant="h5" sx={{ fontWeight: 800, color: COLORS.primary }}>
-                Edit birth details
+              <Typography variant="h5" sx={{ fontWeight: 800, color: COLORS.primary, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>
+                {texts.editBirthDetails}
               </Typography>
             </Box>
             <IconButton onClick={() => setEditorOpen(false)} disabled={isSavingBirthDetails}>
@@ -532,11 +834,11 @@ const HoroscopeView = () => {
               background: 'linear-gradient(135deg, rgba(26,107,114,0.08) 0%, rgba(201,168,76,0.18) 100%)',
             }}
           >
-            <Typography variant="body2" sx={{ color: 'text.primary', fontWeight: 600 }}>
-              Save your updated birth details here and the horoscope section will reload with the latest chart.
+            <Typography variant="body2" sx={{ color: 'text.primary', fontWeight: 600, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>
+              {texts.dialogDescription}
             </Typography>
-            <Typography variant="caption" sx={{ display: 'block', mt: 0.75, color: COLORS.textSecondary }}>
-              If the exact birth time is unknown, we will still generate the chart using an approximate 12:00 PM time and show an accuracy notice.
+            <Typography variant="caption" sx={{ display: 'block', mt: 0.75, color: COLORS.textSecondary, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>
+              {texts.enterBirthTimeHelp}
             </Typography>
           </Paper>
 
@@ -548,7 +850,7 @@ const HoroscopeView = () => {
 
           <Stack spacing={2.5}>
             <TextField
-              label="Birth date"
+              label={texts.birthDate}
               type="date"
               value={birthForm.birthDate}
               onChange={(event) => setBirthForm((current) => ({ ...current, birthDate: event.target.value }))}
@@ -570,11 +872,11 @@ const HoroscopeView = () => {
                   sx={{ color: COLORS.primary }}
                 />
               }
-              label="I don't know my exact birth time"
+              label={texts.unknownBirthTime}
             />
 
             <TextField
-              label="Birth time"
+              label={texts.birthTime}
               type="time"
               value={birthForm.birthTime}
               onChange={(event) => setBirthForm((current) => ({ ...current, birthTime: event.target.value }))}
@@ -582,8 +884,8 @@ const HoroscopeView = () => {
               disabled={!birthForm.knowsBirthTime}
               helperText={
                 birthForm.knowsBirthTime
-                  ? 'Enter the time as accurately as possible for the best horoscope.'
-                  : 'We will use 12:00 PM as an approximation, so some chart details may be less accurate.'
+                  ? texts.enterBirthTimeHelp
+                  : texts.approximateTimeHelp
               }
               fullWidth
             />
@@ -596,9 +898,9 @@ const HoroscopeView = () => {
               renderInput={(params) => (
                 <TextField
                   {...params}
-                  label="Birth place"
-                  placeholder="Start typing a Sri Lankan town or village"
-                  helperText="Top OpenStreetMap suggestions will appear while you type."
+                  label={texts.birthPlace}
+                  placeholder={texts.birthPlace}
+                  helperText={texts.birthPlaceHelp}
                   InputProps={{
                     ...params.InputProps,
                     endAdornment: (
@@ -613,16 +915,16 @@ const HoroscopeView = () => {
             />
 
             <Stack direction={{ xs: 'column-reverse', sm: 'row' }} spacing={1.5} justifyContent="flex-end">
-              <Button variant="text" onClick={() => setEditorOpen(false)} disabled={isSavingBirthDetails}>
-                Cancel
+              <Button variant="text" onClick={() => setEditorOpen(false)} disabled={isSavingBirthDetails} sx={{ fontFamily: LANGUAGE_FONT_FAMILY[language] }}>
+                {texts.cancel}
               </Button>
               <Button
                 variant="contained"
                 onClick={handleSaveBirthDetails}
                 disabled={isSavingBirthDetails}
-                sx={{ borderRadius: '12px', bgcolor: COLORS.primary }}
+                sx={{ borderRadius: '12px', bgcolor: COLORS.primary, fontFamily: LANGUAGE_FONT_FAMILY[language] }}
               >
-                {isSavingBirthDetails ? <CircularProgress size={22} color="inherit" /> : 'Save & Reload Horoscope'}
+                {isSavingBirthDetails ? <CircularProgress size={22} color="inherit" /> : texts.saveReload}
               </Button>
             </Stack>
           </Stack>

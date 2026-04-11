@@ -3,6 +3,7 @@ import sys
 import os
 import math
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 try:
     import swisseph as swe
@@ -44,14 +45,94 @@ NAKSHATRAS = [
     "Purva Bhadrapada", "Uttara Bhadrapada", "Revati"
 ]
 
-def calculate_horoscope(birth_date, birth_time, lat, lon):
-    try:
-        # Parse date and time
-        dt = datetime.fromisoformat(f"{birth_date}T{birth_time}")
-        year, month, day = dt.year, dt.month, dt.day
-        hour = dt.hour + dt.minute / 60.0 + dt.second / 3600.0
+SHUKLA_TITHIS = [
+    "Pratipada", "Dwitiya", "Tritiya", "Chaturthi", "Panchami", "Shashthi", "Saptami",
+    "Ashtami", "Navami", "Dashami", "Ekadashi", "Dwadashi", "Trayodashi", "Chaturdashi", "Purnima"
+]
 
-        # Calculate Julian Day
+KRISHNA_TITHIS = [
+    "Pratipada", "Dwitiya", "Tritiya", "Chaturthi", "Panchami", "Shashthi", "Saptami",
+    "Ashtami", "Navami", "Dashami", "Ekadashi", "Dwadashi", "Trayodashi", "Chaturdashi", "Amavasya"
+]
+
+YOGAS = [
+    "Vishkambha", "Priti", "Ayushman", "Saubhagya", "Shobhana", "Atiganda", "Sukarma",
+    "Dhriti", "Shoola", "Ganda", "Vriddhi", "Dhruva", "Vyaghata", "Harshana", "Vajra",
+    "Siddhi", "Vyatipata", "Variyana", "Parigha", "Shiva", "Siddha", "Sadhya", "Shubha",
+    "Shukla", "Brahma", "Indra", "Vaidhriti"
+]
+
+REPEATING_KARANAS = ["Bava", "Balava", "Kaulava", "Taitila", "Garaja", "Vanija", "Vishti"]
+
+
+def resolve_timezone(timezone_name="Asia/Colombo"):
+    try:
+        return ZoneInfo(timezone_name or "Asia/Colombo")
+    except Exception:
+        return ZoneInfo("Asia/Colombo")
+
+
+def to_local_datetime(birth_date, birth_time, timezone_name="Asia/Colombo"):
+    return datetime.fromisoformat(f"{birth_date}T{birth_time}").replace(tzinfo=resolve_timezone(timezone_name))
+
+
+def to_utc_datetime(birth_date, birth_time, timezone_name="Asia/Colombo"):
+    return to_local_datetime(birth_date, birth_time, timezone_name).astimezone(ZoneInfo("UTC"))
+
+
+def calculate_panchanga(moon_longitude, sun_longitude, local_dt):
+    lunar_phase = (moon_longitude - sun_longitude) % 360
+
+    tithi_number = int(lunar_phase / 12) + 1
+    paksha = "Shukla Paksha" if tithi_number <= 15 else "Krishna Paksha"
+    tithi_name = SHUKLA_TITHIS[tithi_number - 1] if tithi_number <= 15 else KRISHNA_TITHIS[tithi_number - 16]
+
+    yoga_index = int(((moon_longitude + sun_longitude) % 360) / (360 / 27)) % 27
+    yoga = YOGAS[yoga_index]
+
+    karana_index = int(lunar_phase / 6)
+    if karana_index == 0:
+        karana = "Kimstughna"
+    elif karana_index >= 57:
+        karana = {57: "Shakuni", 58: "Chatushpada", 59: "Naga"}.get(karana_index, "Kimstughna")
+    else:
+        karana = REPEATING_KARANAS[(karana_index - 1) % len(REPEATING_KARANAS)]
+
+    return {
+        "tithi": tithi_name,
+        "paksha": paksha,
+        "yoga": yoga,
+        "karana": karana,
+        "vedicDay": local_dt.strftime("%A"),
+    }
+
+
+def determine_house(longitude, house_cusps):
+    normalized_longitude = longitude % 360
+    cusps = [(cusp % 360) for cusp in list(house_cusps)[:12]]
+
+    for index, start in enumerate(cusps):
+        end = cusps[(index + 1) % len(cusps)]
+        if start <= end:
+            in_house = start <= normalized_longitude < end
+        else:
+            in_house = normalized_longitude >= start or normalized_longitude < end
+
+        if in_house:
+            return index + 1
+
+    return 12
+
+
+def calculate_horoscope(birth_date, birth_time, lat, lon, timezone="Asia/Colombo"):
+    try:
+        # Parse local birth date/time and convert to UTC for Swiss Ephemeris
+        dt_local = to_local_datetime(birth_date, birth_time, timezone)
+        dt_utc = dt_local.astimezone(ZoneInfo("UTC"))
+        year, month, day = dt_utc.year, dt_utc.month, dt_utc.day
+        hour = dt_utc.hour + dt_utc.minute / 60.0 + dt_utc.second / 3600.0
+
+        # Calculate Julian Day in UTC
         jd = swe.julday(year, month, day, hour)
 
         # Calculate ascendant
@@ -69,14 +150,7 @@ def calculate_horoscope(birth_date, birth_time, lat, lon):
             longitude = pos[0]
             sign_index = int(longitude / 30) % 12
             sign = SIGNS[sign_index]
-            house = 0
-            for i, cusp in enumerate(houses):
-                if longitude >= cusp:
-                    house = i + 1
-                else:
-                    break
-            if house == 0:  # If longitude < first cusp, it's in 12th house
-                house = 12
+            house = determine_house(longitude, houses)
             degree = longitude % 30
 
             planetary_positions.append({
@@ -95,14 +169,7 @@ def calculate_horoscope(birth_date, birth_time, lat, lon):
         ketu_longitude = (rahu_pos["longitude"] + 180) % 360
         ketu_sign_index = int(ketu_longitude / 30) % 12
         ketu_sign = SIGNS[ketu_sign_index]
-        ketu_house = 0
-        for i, cusp in enumerate(houses):
-            if ketu_longitude >= cusp:
-                ketu_house = i + 1
-            else:
-                break
-        if ketu_house == 0:
-            ketu_house = 12
+        ketu_house = determine_house(ketu_longitude, houses)
         ketu_degree = ketu_longitude % 30
 
         planetary_positions.append({
@@ -129,15 +196,26 @@ def calculate_horoscope(birth_date, birth_time, lat, lon):
         # Zodiac sign (Western, based on Sun)
         sun_pos = next(p for p in planetary_positions if p["planet"] == "Sun")
         zodiac_sign = sun_pos["sign"]
+        panchanga = calculate_panchanga(moon_longitude, sun_pos["longitude"], dt_local)
 
         return {
             "success": True,
             "zodiacSign": zodiac_sign,
+            "moonSign": rashi,
             "rashi": rashi,
             "nakshatra": nakshatra,
             "nakshatraPada": pada,
             "ascendant": ascendant,
             "ascendantDegree": round(ascendant_degree, 4),
+            "tithi": panchanga["tithi"],
+            "paksha": panchanga["paksha"],
+            "yoga": panchanga["yoga"],
+            "karana": panchanga["karana"],
+            "vedicDay": panchanga["vedicDay"],
+            "ayanamsa": "Lahiri",
+            "timezone": timezone,
+            "utcDateTime": dt_utc.isoformat(),
+            "localDateTime": dt_local.isoformat(),
             "planetaryPositions": planetary_positions
         }
 
@@ -174,8 +252,9 @@ def main():
         birth_time = data["birthTime"]
         lat = float(data["lat"])
         lon = float(data["lon"])
+        timezone = data.get("timezone", "Asia/Colombo")
 
-        result = calculate_horoscope(birth_date, birth_time, lat, lon)
+        result = calculate_horoscope(birth_date, birth_time, lat, lon, timezone)
         print(json.dumps(result))
 
     except json.JSONDecodeError as e:

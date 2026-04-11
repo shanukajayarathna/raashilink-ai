@@ -89,7 +89,11 @@ function sanitizeImageReference(value, { allowDataUri = false } = {}) {
 
 function sanitizeUser(user) {
   const profilePic = sanitizeImageReference(
-    user.personalInfo?.profilePic || user.photos?.find((photo) => photo.isMain)?.url || null
+    user.personalInfo?.profilePic ||
+      user.personalInfo?.photos?.find((photo) => photo.isMain)?.url ||
+      user.photos?.find((photo) => photo.isMain)?.url ||
+      null,
+    { allowDataUri: true }
   );
 
   return {
@@ -251,10 +255,13 @@ const AUTH_USER_SELECT = [
   'email',
   'passwordHash',
   'role',
+  'profileType',
   'personalInfo.firstName',
   'personalInfo.lastName',
   'personalInfo.phone',
   'personalInfo.location',
+  'personalInfo.profilePic',
+  'personalInfo.photos',
   'verification.emailVerified',
   'verification.phoneVerified',
 ].join(' ');

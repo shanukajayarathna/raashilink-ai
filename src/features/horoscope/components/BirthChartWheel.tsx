@@ -1,6 +1,15 @@
 import React from 'react';
 import { Box, Typography, Tooltip, useTheme } from '@mui/material';
 import { motion } from 'motion/react';
+import {
+  HOROSCOPE_TEXT,
+  LANGUAGE_FONT_FAMILY,
+  type HoroscopeLanguage,
+  getZodiacShortLabel,
+  translateHouseLabel,
+  translatePlanetName,
+  translateZodiacSign,
+} from '../utils/horoscopeLocalization';
 
 // Design Constants
 const COLORS = {
@@ -25,6 +34,7 @@ interface Planet {
 interface BirthChartWheelProps {
   planets: Planet[];
   ascendant: string;
+  language?: HoroscopeLanguage;
 }
 
 const ZODIAC_SIGNS = [
@@ -42,8 +52,9 @@ const ZODIAC_SIGNS = [
   { name: 'Pisces', symbol: '♓' },
 ];
 
-const BirthChartWheel: React.FC<BirthChartWheelProps> = ({ planets, ascendant }) => {
+const BirthChartWheel: React.FC<BirthChartWheelProps> = ({ planets, ascendant, language = 'en' }) => {
   const theme = useTheme();
+  const texts = HOROSCOPE_TEXT[language];
 
   // Helper to calculate planet position on the wheel
   const getPlanetPos = (house: number, offset: number = 0) => {
@@ -127,9 +138,14 @@ const BirthChartWheel: React.FC<BirthChartWheelProps> = ({ planets, ascendant })
                 y={ly} 
                 textAnchor="middle" 
                 dy=".3em" 
-                style={{ fontSize: '3px', fill: isAscendant ? COLORS.primary : COLORS.textSecondary, fontWeight: isAscendant ? 'bold' : 'normal' }}
+                style={{
+                  fontSize: '3px',
+                  fill: isAscendant ? COLORS.primary : COLORS.textSecondary,
+                  fontWeight: isAscendant ? 'bold' : 'normal',
+                  fontFamily: LANGUAGE_FONT_FAMILY[language],
+                }}
               >
-                {sign.symbol} {sign.name.substring(0, 3)}
+                {sign.symbol} {getZodiacShortLabel(sign.name, language)}
               </text>
             </g>
           );
@@ -137,8 +153,14 @@ const BirthChartWheel: React.FC<BirthChartWheelProps> = ({ planets, ascendant })
 
         {/* Inner Circle */}
         <circle cx="50" cy="50" r="30" fill="white" stroke={COLORS.primary} strokeWidth="0.2" />
-        <text x="50" y="50" textAnchor="middle" dy=".3em" style={{ fontSize: '4px', fill: COLORS.primary, fontWeight: 'bold', fontFamily: 'Playfair Display' }}>
-          ASC
+        <text
+          x="50"
+          y="50"
+          textAnchor="middle"
+          dy=".3em"
+          style={{ fontSize: '4px', fill: COLORS.primary, fontWeight: 'bold', fontFamily: LANGUAGE_FONT_FAMILY[language] }}
+        >
+          {language === 'si' ? 'ලග්' : language === 'ta' ? 'லக்' : 'ASC'}
         </text>
 
         {/* Planets */}
@@ -147,7 +169,7 @@ const BirthChartWheel: React.FC<BirthChartWheelProps> = ({ planets, ascendant })
           return (
             <Tooltip 
               key={planet.name} 
-              title={`${planet.name}: ${planet.sign} ${planet.degree} (${planet.house} House)`}
+              title={`${translatePlanetName(planet.name, language)}: ${translateZodiacSign(planet.sign, language)} ${planet.degree} (${translateHouseLabel(planet.house, language)})`}
               arrow
               placement="top"
             >
@@ -164,7 +186,7 @@ const BirthChartWheel: React.FC<BirthChartWheelProps> = ({ planets, ascendant })
                   x={pos.x} 
                   y={pos.y + 4} 
                   textAnchor="middle" 
-                  style={{ fontSize: '2.5px', fill: COLORS.textPrimary, fontWeight: 'bold' }}
+                  style={{ fontSize: '2.5px', fill: COLORS.textPrimary, fontWeight: 'bold', fontFamily: LANGUAGE_FONT_FAMILY[language] }}
                 >
                   {planet.symbol}
                 </text>

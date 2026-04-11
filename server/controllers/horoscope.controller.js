@@ -34,10 +34,99 @@ const PLANET_COLORS = {
   Ketu: '#8B1A2E',
 };
 
+const SIGNS = [
+  'Aries', 'Taurus', 'Gemini', 'Cancer', 'Leo', 'Virgo',
+  'Libra', 'Scorpio', 'Sagittarius', 'Capricorn', 'Aquarius', 'Pisces',
+];
+
+const ASCENDANT_TRAITS = {
+  Aries: 'a direct, courageous, and action-oriented life approach',
+  Taurus: 'a steady, practical, and comfort-seeking life approach',
+  Gemini: 'a curious, adaptable, and communicative life approach',
+  Cancer: 'an intuitive, protective, and family-centred life approach',
+  Leo: 'a confident, expressive, and leadership-driven life approach',
+  Virgo: 'an analytical, service-minded, and detail-focused life approach',
+  Libra: 'a diplomatic, relationship-aware, and balanced life approach',
+  Scorpio: 'an intense, resilient, and deeply transformative life approach',
+  Sagittarius: 'an optimistic, truth-seeking, and growth-driven life approach',
+  Capricorn: 'a disciplined, ambitious, and responsibility-focused life approach',
+  Aquarius: 'an independent, humanitarian, and future-minded life approach',
+  Pisces: 'a compassionate, intuitive, and spiritually sensitive life approach',
+};
+
+const MOON_TRAITS = {
+  Aries: 'quick emotions, initiative, and a need to move forward confidently',
+  Taurus: 'emotional steadiness, loyalty, and a strong need for security',
+  Gemini: 'a lively mind, conversation, and emotional variety',
+  Cancer: 'deep sensitivity, family attachment, and strong intuition',
+  Leo: 'warmth, pride, and a need to feel appreciated',
+  Virgo: 'careful thinking, service, and emotional precision',
+  Libra: 'harmony-seeking emotions and a strong sense of fairness',
+  Scorpio: 'intense feelings, privacy, and powerful inner endurance',
+  Sagittarius: 'idealism, honesty, and emotional freedom',
+  Capricorn: 'self-control, realism, and quiet determination',
+  Aquarius: 'independence, objectivity, and unconventional thinking',
+  Pisces: 'empathy, imagination, and spiritual openness',
+};
+
+const HOUSE_THEMES = {
+  1: 'self-expression, confidence, and physical vitality',
+  2: 'speech, family resources, and financial stability',
+  3: 'communication, courage, and initiative',
+  4: 'home life, property, and emotional foundations',
+  5: 'creativity, romance, and learning',
+  6: 'service, health, discipline, and daily challenges',
+  7: 'partnership, marriage, and mutual agreements',
+  8: 'transformation, hidden matters, and resilience',
+  9: 'fortune, values, higher learning, and blessings',
+  10: 'career, status, and public life',
+  11: 'gains, networks, and long-term ambitions',
+  12: 'spirituality, retreat, overseas links, and inner healing',
+};
+
+const SIGN_LORDS = {
+  Aries: 'Mars',
+  Taurus: 'Venus',
+  Gemini: 'Mercury',
+  Cancer: 'Moon',
+  Leo: 'Sun',
+  Virgo: 'Mercury',
+  Libra: 'Venus',
+  Scorpio: 'Mars',
+  Sagittarius: 'Jupiter',
+  Capricorn: 'Saturn',
+  Aquarius: 'Saturn',
+  Pisces: 'Jupiter',
+};
+
+const DAY_LORDS = {
+  Sunday: 'Sun',
+  Monday: 'Moon',
+  Tuesday: 'Mars',
+  Wednesday: 'Mercury',
+  Thursday: 'Jupiter',
+  Friday: 'Venus',
+  Saturday: 'Saturn',
+};
+
+const HORA_SEQUENCE = ['Sun', 'Venus', 'Mercury', 'Moon', 'Saturn', 'Jupiter', 'Mars'];
+const BENEFIC_PLANETS = new Set(['Jupiter', 'Venus', 'Mercury', 'Moon']);
+
 function formatDegree(value = 0) {
   const numeric = Number(value || 0);
-  const whole = Math.floor(numeric);
-  const minutes = Math.round((numeric - whole) * 60);
+  if (!Number.isFinite(numeric)) {
+    return `0° 00'`;
+  }
+
+  let normalized = ((numeric % 30) + 30) % 30;
+  let whole = Math.floor(normalized);
+  let minutes = Math.round((normalized - whole) * 60);
+
+  if (minutes === 60) {
+    whole = (whole + 1) % 30;
+    minutes = 0;
+  }
+
   return `${whole}° ${String(minutes).padStart(2, '0')}'`;
 }
 
@@ -55,6 +144,160 @@ function getRequiredBirthFields(user) {
   if (!user?.birthData?.placeOfBirth?.city) missingFields.push('birth place');
 
   return missingFields;
+}
+
+function formatMinutesAsClock(totalMinutes) {
+  const normalized = ((totalMinutes % 1440) + 1440) % 1440;
+  const hours24 = Math.floor(normalized / 60);
+  const minutes = normalized % 60;
+  const suffix = hours24 >= 12 ? 'PM' : 'AM';
+  const hours12 = hours24 % 12 || 12;
+  return `${hours12}:${String(minutes).padStart(2, '0')} ${suffix}`;
+}
+
+function getCurrentMinutesInTimezone(timeZone = 'Asia/Colombo') {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone,
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(new Date());
+
+  const hour = Number(parts.find((part) => part.type === 'hour')?.value || 0);
+  const minute = Number(parts.find((part) => part.type === 'minute')?.value || 0);
+  return hour * 60 + minute;
+}
+
+function calculateAuspiciousTime(horoscopeData = {}, user = {}) {
+  const ascendant = horoscopeData.ascendant;
+  const moonSign = horoscopeData.moonSign || horoscopeData.rashi;
+  const timezone = horoscopeData.timezone || user?.birthData?.placeOfBirth?.timezone || 'Asia/Colombo';
+
+  if (!ascendant || !moonSign || ascendant === 'Pending' || moonSign === 'Pending') {
+    return {
+      time: 'Update birth details to calculate',
+      reason: 'Birth chart data is required for a personalized auspicious time.',
+    };
+  }
+
+  const weekday = new Intl.DateTimeFormat('en-US', { weekday: 'long', timeZone: timezone }).format(new Date());
+  const dayLord = DAY_LORDS[weekday] || 'Sun';
+  const ascendantLord = SIGN_LORDS[ascendant] || null;
+  const moonLord = SIGN_LORDS[moonSign] || null;
+  const currentMinutes = getCurrentMinutesInTimezone(timezone);
+  const startSequenceIndex = HORA_SEQUENCE.indexOf(dayLord);
+  const nakshatraPada = Number(horoscopeData.nakshatraPada || 1);
+  const ascDegree = Number(horoscopeData.ascendantDegree || 0);
+
+  let bestWindow = null;
+
+  for (let index = 0; index < 12; index += 1) {
+    const startMinutes = 6 * 60 + index * 60;
+    const endMinutes = startMinutes + 60;
+    const horaPlanet = HORA_SEQUENCE[(startSequenceIndex + index) % HORA_SEQUENCE.length];
+
+    let score = 0;
+    if (horaPlanet === ascendantLord) score += 3;
+    if (horaPlanet === moonLord) score += 3.5;
+    if (BENEFIC_PLANETS.has(horaPlanet)) score += 1.5;
+    if (horaPlanet === dayLord) score += 1;
+    if (((nakshatraPada + index + Math.floor(ascDegree / 10)) % 4) === 0) score += 0.75;
+    if (endMinutes >= currentMinutes) score += 0.5;
+    if (['Mars', 'Saturn'].includes(horaPlanet) && horaPlanet !== ascendantLord && horaPlanet !== moonLord) {
+      score -= 1;
+    }
+
+    const candidate = {
+      startMinutes,
+      endMinutes,
+      horaPlanet,
+      score,
+    };
+
+    if (
+      !bestWindow ||
+      candidate.score > bestWindow.score ||
+      (candidate.score === bestWindow.score && Math.abs(candidate.startMinutes - currentMinutes) < Math.abs(bestWindow.startMinutes - currentMinutes))
+    ) {
+      bestWindow = candidate;
+    }
+  }
+
+  if (!bestWindow) {
+    return {
+      time: '10:30 AM - 12:00 PM',
+      reason: 'Default window used while horoscope data is stabilizing.',
+    };
+  }
+
+  return {
+    time: `${formatMinutesAsClock(bestWindow.startMinutes)} - ${formatMinutesAsClock(bestWindow.endMinutes)}`,
+    reason: `Favourable ${bestWindow.horaPlanet} hora selected for your ${ascendant} Lagna and ${moonSign} Moon sign on ${weekday}.`,
+  };
+}
+
+function buildHouseDetails(ascendant, positionsSource = []) {
+  const ascendantIndex = SIGNS.indexOf(ascendant);
+  if (ascendantIndex === -1) {
+    return [];
+  }
+
+  return Array.from({ length: 12 }, (_, index) => {
+    const houseNumber = index + 1;
+    const sign = SIGNS[(ascendantIndex + index) % SIGNS.length];
+    const occupants = positionsSource
+      .filter((position) => Number(position.house) === houseNumber)
+      .map((position) => position.planet);
+
+    return {
+      house: houseNumber,
+      sign,
+      occupants,
+      isAscendantHouse: houseNumber === 1,
+    };
+  });
+}
+
+function buildReadingHighlights(horoscopeData = {}, positionsSource = [], accuracyMeta) {
+  const moonSign = horoscopeData.moonSign || horoscopeData.rashi;
+  const ascendant = horoscopeData.ascendant;
+  const sunSign = horoscopeData.zodiacSign;
+  const venus = positionsSource.find((position) => position.planet === 'Venus');
+  const jupiter = positionsSource.find((position) => position.planet === 'Jupiter');
+
+  const highlights = [];
+
+  if (ascendant) {
+    highlights.push(`Lagna in ${ascendant} suggests ${ASCENDANT_TRAITS[ascendant] || 'a distinctive and purposeful life approach'}.`);
+  }
+
+  if (moonSign) {
+    const padaText = horoscopeData.nakshatraPada ? ` (Pada ${horoscopeData.nakshatraPada})` : '';
+    highlights.push(
+      `Moon sign ${moonSign} in ${horoscopeData.nakshatra || 'your birth nakshatra'}${padaText} points to ${MOON_TRAITS[moonSign] || 'a sensitive and evolving emotional nature'}.`
+    );
+  }
+
+  if (venus) {
+    highlights.push(
+      `Venus in ${venus.sign} through the ${formatHouseLabel(venus.house)} house highlights ${HOUSE_THEMES[Number(venus.house) || 1]} in love, beauty, and relationship choices.`
+    );
+  }
+
+  if (jupiter || sunSign) {
+    const focusPlanet = jupiter || positionsSource.find((position) => position.planet === 'Sun');
+    if (focusPlanet) {
+      highlights.push(
+        `${focusPlanet.planet} in ${focusPlanet.sign} through the ${formatHouseLabel(focusPlanet.house)} house supports ${HOUSE_THEMES[Number(focusPlanet.house) || 1]} and long-term direction.`
+      );
+    }
+  }
+
+  if (accuracyMeta?.usesApproximateBirthTime) {
+    highlights.push('Because the birth time is approximate, Lagna and house readings should be treated as guidance rather than as exact certainties.');
+  }
+
+  return highlights.slice(0, 4);
 }
 
 function getBirthAccuracyMeta(user) {
@@ -96,12 +339,30 @@ function buildChartData(user) {
       ];
   const sunPosition = positionsSource.find((position) => position.planet === 'Sun');
 
+  const auspiciousTime = calculateAuspiciousTime(horoscopeData, user);
+
   return {
     summary: {
       moonSign,
       nakshatra: horoscopeData.nakshatra || 'Pending',
+      nakshatraPada: horoscopeData.nakshatraPada || null,
       ascendant: horoscopeData.ascendant || 'Pending',
+      ascendantDegree: horoscopeData.ascendantDegree ? formatDegree(horoscopeData.ascendantDegree) : 'Pending',
       sunSign: horoscopeData.zodiacSign || sunPosition?.sign || 'Pending',
+      auspiciousTime: auspiciousTime.time,
+      auspiciousTimeReason: auspiciousTime.reason,
+    },
+    details: {
+      nakshatraPada: horoscopeData.nakshatraPada || null,
+      ascendantDegree: horoscopeData.ascendantDegree ? formatDegree(horoscopeData.ascendantDegree) : 'Pending',
+      tithi: horoscopeData.tithi || 'Pending',
+      paksha: horoscopeData.paksha || 'Pending',
+      yoga: horoscopeData.yoga || 'Pending',
+      karana: horoscopeData.karana || 'Pending',
+      vedicDay: horoscopeData.vedicDay || 'Pending',
+      ayanamsa: horoscopeData.ayanamsa || 'Lahiri',
+      timezone: horoscopeData.timezone || user?.birthData?.placeOfBirth?.timezone || 'Asia/Colombo',
+      chartType: 'Sri Lankan Vedic / Sidereal',
     },
     planets: positionsSource.map((position) => ({
       name: position.planet,
@@ -114,17 +375,23 @@ function buildChartData(user) {
     positions: positionsSource.map((position) => ({
       planet: position.planet,
       sign: position.sign || 'Pending',
-      house: formatHouseLabel(position.house),
+      house: Number(position.house) || 1,
       degree: formatDegree(position.degree),
     })),
+    houses: buildHouseDetails(horoscopeData.ascendant, positionsSource),
+    insights: buildReadingHighlights(horoscopeData, positionsSource, accuracyMeta),
     meta: {
       ...accuracyMeta,
+      userId: user?._id ? String(user._id) : null,
+      userName: user?.name || user?.personalInfo?.firstName || null,
       generatedFrom: {
         birthDate: user?.birthData?.dateOfBirth ? new Date(user.birthData.dateOfBirth).toISOString().split('T')[0] : null,
         birthTime: user?.birthData?.timeOfBirth || null,
         birthPlace: user?.birthData?.placeOfBirth?.city || null,
         knownBirthTime: user?.birthData?.knownBirthTime !== false,
       },
+      timezone: horoscopeData.timezone || user?.birthData?.placeOfBirth?.timezone || 'Asia/Colombo',
+      calculationVersion: Number(horoscopeData.calculationVersion || 1),
       generatedAt: horoscopeData.generatedAt || null,
     },
   };
@@ -150,6 +417,7 @@ function buildBirthPayload(user) {
     birthTime: user.birthData.timeOfBirth || '12:00',
     lat: user.birthData.placeOfBirth.latitude || 6.9271,
     lon: user.birthData.placeOfBirth.longitude || 79.8612,
+    timezone: user.birthData.placeOfBirth.timezone || 'Asia/Colombo',
   };
 }
 
@@ -158,7 +426,7 @@ async function generateAndPersistHoroscope(user, { force = false } = {}) {
     throw new ApiError(404, 'User not found');
   }
 
-  if (!force && hasGeneratedChart(user)) {
+  if (!force && hasGeneratedChart(user) && Number(user?.horoscopeData?.calculationVersion || 1) >= 3) {
     return user;
   }
 
@@ -230,11 +498,21 @@ async function generateAndPersistHoroscope(user, { force = false } = {}) {
 
   const horoscopeData = {
     zodiacSign: result.zodiacSign,
-    moonSign: result.rashi,
+    moonSign: result.moonSign || result.rashi,
     rashi: result.rashi,
     nakshatra: result.nakshatra,
+    nakshatraPada: result.nakshatraPada,
     ascendant: result.ascendant,
+    ascendantDegree: result.ascendantDegree,
+    tithi: result.tithi,
+    paksha: result.paksha,
+    yoga: result.yoga,
+    karana: result.karana,
+    vedicDay: result.vedicDay,
+    ayanamsa: result.ayanamsa || 'Lahiri',
     planetaryPositions: result.planetaryPositions,
+    timezone: payload.timezone || 'Asia/Colombo',
+    calculationVersion: 3,
     gunaScore: 0,
     generatedAt: new Date(),
   };
@@ -349,23 +627,31 @@ async function syncHoroscopeDocument(user) {
     { userId: user._id },
     {
       $set: {
-        zodiacSign: user.horoscope.moonSign || user.horoscope.rashi || 'Unknown',
-        rashi: user.horoscope.rashi || user.horoscope.moonSign || 'Unknown',
-        nakshatra: user.horoscope.nakshatra || 'Unknown',
-        ascendant: user.horoscopeData?.ascendant || user.horoscope.moonSign || 'Unknown',
+        zodiacSign: user.horoscopeData?.zodiacSign || user.horoscope?.zodiacSign || 'Unknown',
+        rashi: user.horoscopeData?.rashi || user.horoscope?.rashi || user.horoscope?.moonSign || 'Unknown',
+        nakshatra: user.horoscopeData?.nakshatra || user.horoscope?.nakshatra || 'Unknown',
+        nakshatraPada: user.horoscopeData?.nakshatraPada,
+        ascendant: user.horoscopeData?.ascendant || user.horoscope?.ascendant || 'Unknown',
+        ascendantDegree: user.horoscopeData?.ascendantDegree,
+        tithi: user.horoscopeData?.tithi,
+        paksha: user.horoscopeData?.paksha,
+        yoga: user.horoscopeData?.yoga,
+        karana: user.horoscopeData?.karana,
+        vedicDay: user.horoscopeData?.vedicDay,
+        ayanamsa: user.horoscopeData?.ayanamsa || 'Lahiri',
         planetaryPositions:
           user.horoscopeData?.planetaryPositions?.length > 0
             ? user.horoscopeData.planetaryPositions
             : [
                 {
                   planet: 'Sun',
-                  sign: user.horoscope.moonSign || user.horoscope.rashi || 'Unknown',
+                  sign: user.horoscopeData?.zodiacSign || user.horoscope?.zodiacSign || 'Unknown',
                   house: 7,
                   degree: 12.4,
                 },
                 {
                   planet: 'Moon',
-                  sign: user.horoscope.moonSign || user.horoscope.rashi || 'Unknown',
+                  sign: user.horoscopeData?.rashi || user.horoscope?.rashi || user.horoscope?.moonSign || 'Unknown',
                   house: 8,
                   degree: 18.1,
                 },
@@ -452,15 +738,15 @@ export const postCompatibility = asyncHandler(async (req, res) => {
 });
 
 export const calculateCompatibility = asyncHandler(async (req, res) => {
-  const { userAId, userBId } = req.body;
+  const { userAId, userBId, forceRefresh = false } = req.body;
 
   if (!userAId || !userBId) {
     throw new ApiError(400, 'userAId and userBId are required');
   }
 
-  // Check DB first
+  // Check DB first unless the client explicitly requests a fresh recalculation.
   const [first, second] = [String(userAId), String(userBId)].sort();
-  const existingMatch = await Match.findOne({ userAId: first, userBId: second }).lean();
+  const existingMatch = forceRefresh ? null : await Match.findOne({ userAId: first, userBId: second }).lean();
 
   if (existingMatch) {
     // Return cached DB result
@@ -491,8 +777,8 @@ export const calculateCompatibility = asyncHandler(async (req, res) => {
     });
   }
 
-  // Calculate new
-  const result = await compatibilityService.calculateFullCompatibility(userAId, userBId);
+  const result = await compatibilityService.calculateCompatibility({ userAId, userBId });
+  await persistMatchResult(userAId, userBId, result);
 
   const [currentUser, partner] = await Promise.all([
     User.findById(userAId).lean({ virtuals: true }),

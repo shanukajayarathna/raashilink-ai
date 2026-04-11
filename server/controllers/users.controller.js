@@ -168,9 +168,23 @@ function mapProfile(user, { includeMedia = true } = {}) {
     status: 'Online Now',
     bio: user.bio || '',
     birthDate: user.birthData?.dateOfBirth ? new Date(user.birthData.dateOfBirth).toISOString().split('T')[0] : '',
-    birthTime: user.birthData?.timeOfBirth || '',
+    birthTime: user.birthData?.knownBirthTime === false ? '' : user.birthData?.timeOfBirth || '',
     birthPlace: user.birthData?.placeOfBirth?.city || '',
     knownBirthTime: user.birthData?.knownBirthTime !== false,
+    birthData: {
+      dateOfBirth: user.birthData?.dateOfBirth || null,
+      timeOfBirth: user.birthData?.knownBirthTime === false ? '' : user.birthData?.timeOfBirth || '',
+      knownBirthTime: user.birthData?.knownBirthTime !== false,
+      placeOfBirth: user.birthData?.placeOfBirth
+        ? {
+            city: user.birthData.placeOfBirth.city || '',
+            country: user.birthData.placeOfBirth.country || 'Sri Lanka',
+            latitude: user.birthData.placeOfBirth.latitude || null,
+            longitude: user.birthData.placeOfBirth.longitude || null,
+            timezone: user.birthData.placeOfBirth.timezone || 'Asia/Colombo',
+          }
+        : null,
+    },
     education: user.lifestyle?.educationLevel || '',
     occupation: user.lifestyle?.professionType || '',
     religion: user.lifestyle?.religion || '',

@@ -69,6 +69,7 @@ import userService from '@/features/profile/services/userService';
 import { showToast } from '@/app/store/uiSlice';
 import { updateUser } from '@/features/auth/store/authSlice';
 import CoupleDashboard from '@/features/dashboard/pages/CoupleDashboard';
+import { translateZodiacSign } from '@/features/horoscope/utils/horoscopeLocalization';
 
 // Design System Constants
 const COLORS = {
@@ -143,6 +144,25 @@ function formatVendors(vendors: any[]) {
     rating: Number(vendor.ratings?.average || 0).toFixed(1),
     photo: vendor.portfolioImages?.[0] || '',
   }));
+}
+
+function resolveProfilePic(...sources: any[]) {
+  for (const source of sources) {
+    if (!source) continue;
+
+    if (source.profilePic) {
+      return source.profilePic;
+    }
+
+    if (Array.isArray(source.photos) && source.photos.length > 0) {
+      const mainPhoto = source.photos.find((photo: any) => photo?.isMain)?.url || source.photos[0]?.url;
+      if (mainPhoto) {
+        return mainPhoto;
+      }
+    }
+  }
+
+  return null;
 }
 
 const WidgetHeader = ({ title, action }: { title: string; action?: React.ReactNode }) => (
@@ -823,7 +843,8 @@ export default function UserDashboard() {
       summary: {
         name: userData.firstName || userData.name || 'User',
         nakshatra: 'Pending',
-        auspiciousTime: '10:30 AM - 12:00 PM',
+        ascendant: 'Pending',
+        auspiciousTime: 'Calculating...',
         profileCompletion: 75,
         missingItems: ['Add Profile Photo', 'Complete Personality Quiz'],
         matchStats: {
@@ -833,7 +854,7 @@ export default function UserDashboard() {
           weeklyActivity: buildWeeklyActivity(0),
         },
       },
-      profilePic: userData.profilePic || null,
+      profilePic: resolveProfilePic(userData),
       email: userData.email || '',
       phone: userData.phone || '',
       todayMatch: null,
@@ -857,29 +878,42 @@ export default function UserDashboard() {
   const [otpValue, setOtpValue] = useState('');
   const [busyChannel, setBusyChannel] = useState<'email' | 'phone' | null>(null);
   const [verifying, setVerifying] = useState(false);
+  const liveProfilePic = resolveProfilePic(user, data);
 
   useEffect(() => {
     let mounted = true;
 
     const fetchProfile = async () => {
       try {
-        const profile = await userService.getProfile({ includeMedia: false });
+        const [profileResult, chartResult] = await Promise.allSettled([
+          userService.getProfile({ includeMedia: false }),
+          axiosInstance.get('/horoscope/my-chart'),
+        ]);
+
         if (!mounted) return;
 
-        dispatch(updateUser({ profilePic: profile.profilePic || null }));
+        const profile = profileResult.status === 'fulfilled' ? profileResult.value : null;
+        const chartSummary =
+          chartResult.status === 'fulfilled'
+            ? chartResult.value.data?.data?.summary || chartResult.value.data?.summary || null
+            : null;
+        const nextProfilePic = resolveProfilePic(profile, user);
+
         setData((prev: any) => ({
           ...prev,
           summary: {
             ...prev.summary,
             name: user?.firstName || profile?.name || 'User',
-            nakshatra: profile.astrology?.nakshatra || 'Pending',
-            profileCompletion: profile.completion || prev.summary.profileCompletion,
-            missingItems: profile.verification?.missingItems || prev.summary.missingItems,
+            nakshatra: chartSummary?.nakshatra || profile?.astrology?.nakshatra || 'Pending',
+            ascendant: chartSummary?.ascendant || profile?.astrology?.ascendant || prev.summary.ascendant || 'Pending',
+            auspiciousTime: chartSummary?.auspiciousTime || prev.summary.auspiciousTime || 'Calculating...',
+            profileCompletion: profile?.completion || prev.summary.profileCompletion,
+            missingItems: profile?.verification?.missingItems || prev.summary.missingItems,
           },
-          profilePic: profile.profilePic || user?.profilePic || null,
+          profilePic: nextProfilePic || prev.profilePic || null,
           email: user?.email || profile?.email || '',
           phone: user?.phone || profile?.personalInfo?.phone || '',
-          verification: profile.verification,
+          verification: profile?.verification || prev.verification,
         }));
       } catch (error) {
         console.error('Error fetching dashboard profile', error);
@@ -959,9 +993,9 @@ export default function UserDashboard() {
   useEffect(() => {
     setData((prev: any) => ({
       ...prev,
-      profilePic: user?.profilePic || prev.profilePic,
+      profilePic: liveProfilePic || prev.profilePic,
     }));
-  }, [user?.profilePic]);
+  }, [liveProfilePic]);
 
   // Update other user data when user state changes
   useEffect(() => {
@@ -1064,10 +1098,12 @@ export default function UserDashboard() {
       {/* Header Section */}
       <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: { xs: 1, md: 3 }, flexWrap: 'wrap' }}>
         <Avatar
-          src={data.profilePic || user?.profilePic || undefined}
+          src={liveProfilePic || undefined}
           alt={data.summary.name}
-          sx={{ width: 64, height: 64, border: `3px solid ${alpha(COLORS.secondary, 0.5)}`, boxShadow: '0 8px 24px rgba(139,26,46,0.12)', flexShrink: 0 }}
-        />
+          sx={{ width: 64, height: 64, border: `3px solid ${alpha(COLORS.secondary, 0.5)}`, boxShadow: '0 8px 24px rgba(139,26,46,0.12)', flexShrink: 0, bgcolor: alpha(COLORS.secondary, 0.16), color: COLORS.primary, fontWeight: 700 }}
+        >
+          {data.summary.name?.charAt(0) || 'U'}
+        </Avatar>
         <MotionBox
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
@@ -1082,6 +1118,23 @@ export default function UserDashboard() {
               {getGregorianDate()} |
             </Typography>
             <Chip label={`${data.summary.nakshatra} Nakshatra`} size="small" sx={{ bgcolor: COLORS.secondary, color: COLORS.primary, fontWeight: 700, height: 24 }} />
+            <Chip
+              label={`ලග්නය (Ascendant): ${
+                data.summary.ascendant && data.summary.ascendant !== 'Pending'
+                  ? `${translateZodiacSign(data.summary.ascendant, 'si')} (${data.summary.ascendant})`
+                  : 'බලාපොරොත්තු වේ (Pending)'
+              }`}
+              size="small"
+              sx={{
+                bgcolor: alpha(COLORS.primary, 0.08),
+                color: COLORS.primary,
+                fontWeight: 800,
+                height: 26,
+                '& .MuiChip-label': {
+                  fontFamily: '"Noto Sans Sinhala", "Iskoola Pota", "Segoe UI", sans-serif',
+                },
+              }}
+            />
           </Stack>
           <Typography variant="caption" sx={{ color: COLORS.accent, fontWeight: 700 }}>
             Your auspicious time today: {data.summary.auspiciousTime}

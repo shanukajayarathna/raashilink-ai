@@ -202,7 +202,12 @@ export default function UserProfile() {
       const response = await userService.uploadPhoto(formData);
 
       if (response && response.profilePic) {
-        dispatch(updateUser({ profilePic: response.profilePic }));
+        const nextPhotos = [
+          { url: response.profilePic, isMain: true },
+          ...((user?.photos || []).filter((photo: any) => !photo?.isMain)),
+        ];
+
+        dispatch(updateUser({ profilePic: response.profilePic, photos: nextPhotos }));
         setProfileData((prev: any) => {
           if (!prev) {
             return null;

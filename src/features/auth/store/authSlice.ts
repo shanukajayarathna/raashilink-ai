@@ -14,9 +14,13 @@ interface AuthState {
 function sanitizeCachedUser(user: any) {
   if (!user) return null;
 
-  const mainPhoto = Array.isArray(user.photos)
-    ? user.photos.find((photo: any) => photo?.isMain)?.url || user.photos[0]?.url || null
-    : null;
+  const sourcePhotos = Array.isArray(user.photos)
+    ? user.photos
+    : Array.isArray(user.personalInfo?.photos)
+      ? user.personalInfo.photos
+      : [];
+  const mainPhoto = sourcePhotos.find((photo: any) => photo?.isMain)?.url || sourcePhotos[0]?.url || null;
+  const profilePic = user.profilePic || user.personalInfo?.profilePic || mainPhoto || null;
 
   return {
     id: user.id || user._id || null,
@@ -39,9 +43,29 @@ function sanitizeCachedUser(user: any) {
     gender: user.gender || user.personalInfo?.gender || null,
     tagline: user.tagline || '',
     bio: user.bio || '',
+    birthDate:
+      user.birthDate ||
+      (user.birthData?.dateOfBirth ? new Date(user.birthData.dateOfBirth).toISOString().split('T')[0] : ''),
+    birthTime:
+      user.knownBirthTime === false || user.birthData?.knownBirthTime === false
+        ? ''
+        : user.birthTime || user.birthData?.timeOfBirth || '',
+    birthPlace: user.birthPlace || user.birthData?.placeOfBirth?.city || '',
+    knownBirthTime:
+      typeof user.knownBirthTime === 'boolean'
+        ? user.knownBirthTime
+        : user.birthData?.knownBirthTime !== false,
+    birthData: user.birthData
+      ? {
+          dateOfBirth: user.birthData.dateOfBirth || null,
+          timeOfBirth: user.birthData.knownBirthTime === false ? '' : user.birthData.timeOfBirth || '',
+          knownBirthTime: user.birthData.knownBirthTime !== false,
+          placeOfBirth: user.birthData.placeOfBirth || null,
+        }
+      : undefined,
     ethnicity: user.ethnicity || user.personalInfo?.ethnicity || '',
     height: user.height || user.personalInfo?.height || '',
-    profilePic: user.profilePic || mainPhoto || null,
+    profilePic,
     verification: user.verification || {},
     personalInfo: {
       firstName: user.firstName || user.personalInfo?.firstName || '',
@@ -65,7 +89,7 @@ function sanitizeCachedUser(user: any) {
           drinking: user.lifestyle.drinking || '',
         }
       : undefined,
-    photos: user.profilePic || mainPhoto ? [{ url: user.profilePic || mainPhoto, isMain: true }] : [],
+    photos: profilePic ? [{ url: profilePic, isMain: true }] : sourcePhotos,
   };
 }
 
@@ -138,14 +162,32 @@ export const registerUser = createAsyncThunk(
  */
 export const fetchProfile = createAsyncThunk(
   'auth/fetchProfile',
-  async (_, { rejectWithValue }) => {
+  async (_, { rejectWithValue, getState }) => {
     try {
       const data = await userService.getProfile({ includeMedia: false });
-      persistCachedUser(data);
-      return data;
+      const existingUser = (getState() as { auth?: AuthState })?.auth?.user || readCachedUser();
+      const mergedUser = {
+        ...(existingUser || {}),
+        ...data,
+        profilePic: data?.profilePic || existingUser?.profilePic || null,
+        photos:
+          Array.isArray(data?.photos) && data.photos.length > 0
+            ? data.photos
+            : existingUser?.photos || [],
+        coverPhoto: data?.coverPhoto || existingUser?.coverPhoto || null,
+      };
+
+      persistCachedUser(mergedUser);
+      return mergedUser;
     } catch (error: any) {
       return rejectWithValue(error.response?.data?.message || 'Failed to fetch profile');
     }
+  },
+  {
+    condition: (_, { getState }) => {
+      const state = getState() as { auth?: AuthState };
+      return !state.auth?.loading;
+    },
   }
 );
 
@@ -157,12 +199,12 @@ const authSlice = createSlice({
      * Set user credentials and session.
      */
     setCredentials: (state, action: PayloadAction<{ user: any; token: string; role: any }>) => {
-      state.user = action.payload.user;
+      const sanitizedUser = persistCachedUser(action.payload.user);
+      state.user = sanitizedUser;
       state.token = action.payload.token;
-      state.role = action.payload.role;
+      state.role = action.payload.role || sanitizedUser?.role || null;
       state.isAuthenticated = true;
       localStorage.setItem('token', action.payload.token);
-      persistCachedUser(action.payload.user);
     },
     /**
      * Logout user and clear session.
@@ -179,8 +221,7 @@ const authSlice = createSlice({
      * Update current user's information.
      */
     updateUser: (state, action: PayloadAction<any>) => {
-      state.user = { ...state.user, ...action.payload };
-      persistCachedUser(state.user);
+      state.user = persistCachedUser({ ...state.user, ...action.payload });
     },
     /**
      * Clear authentication error.
@@ -199,8 +240,9 @@ const authSlice = createSlice({
       .addCase(loginUser.fulfilled, (state, action) => {
         state.loading = false;
         state.isAuthenticated = true;
-        state.user = action.payload.user;
+        state.user = persistCachedUser(action.payload.user);
         state.token = action.payload.token;
+        state.role = action.payload.role || action.payload.user?.role || null;
       })
       .addCase(loginUser.rejected, (state, action) => {
         state.loading = false;
@@ -224,7 +266,7 @@ const authSlice = createSlice({
       })
       .addCase(fetchProfile.fulfilled, (state, action) => {
         state.loading = false;
-        state.user = action.payload;
+        state.user = persistCachedUser(action.payload);
       })
       .addCase(fetchProfile.rejected, (state, action) => {
         state.loading = false;

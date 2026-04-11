@@ -1,6 +1,4 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
-import { store } from '@/app/store/store';
-import { logout } from '@/features/auth/store/authSlice';
 import { showNotification } from '@/app/store/uiSlice';
 
 // Extend InternalAxiosRequestConfig to include metadata
@@ -34,6 +32,11 @@ function resolveApiBaseUrl() {
 }
 
 const API_BASE_URL = resolveApiBaseUrl();
+
+async function getAppStore() {
+  const storeModule = await import('@/app/store/store');
+  return storeModule.store;
+}
 
 /**
  * Axios instance configuration for RaashiLink.AI
@@ -138,8 +141,13 @@ axiosInstance.interceptors.response.use(
     if (response?.status === 401 && !isAuthEntryRequest) {
       const hasToken = !!localStorage.getItem('token');
       if (hasToken) {
-        store.dispatch(logout());
-        store.dispatch(
+        const [{ logout }, appStore] = await Promise.all([
+          import('@/features/auth/store/authSlice'),
+          getAppStore(),
+        ]);
+
+        appStore.dispatch(logout());
+        appStore.dispatch(
           showNotification({
             message: 'Session expired. Please login again.',
             type: 'error',
@@ -152,7 +160,8 @@ axiosInstance.interceptors.response.use(
       }
       // If no token, user likely logged out, don't show session expired message
     } else if (response?.status === 500 && !isAuthEntryRequest) {
-      store.dispatch(
+      const appStore = await getAppStore();
+      appStore.dispatch(
         showNotification({
           message: 'Internal Server Error. Our team is working on it.',
           type: 'error',
@@ -165,7 +174,8 @@ axiosInstance.interceptors.response.use(
     ) {
       // Only show this if we've exhausted all retries
       if ((config as any)?.metadata?.retryCount >= RETRY_CONFIG.maxRetries || !config) {
-        store.dispatch(
+        const appStore = await getAppStore();
+        appStore.dispatch(
           showNotification({
             message:
               'Could not reach the API server. If you are running locally, make sure the backend is running and try again.',
@@ -176,7 +186,8 @@ axiosInstance.interceptors.response.use(
       }
     } else if (response?.data) {
       const apiError = (response.data as any).message || 'An unexpected error occurred.';
-      store.dispatch(
+      const appStore = await getAppStore();
+      appStore.dispatch(
         showNotification({
           message: apiError,
           type: 'error',

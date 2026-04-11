@@ -1,4 +1,5 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
+import { logout } from '@/features/auth/store/authSlice';
 import horoscopeService from '../services/horoscopeService';
 
 interface CompatibilityCache {
@@ -26,11 +27,15 @@ const initialState: HoroscopeState = {
 // Async thunk for fetching user's birth chart
 export const fetchMyChart = createAsyncThunk(
   'horoscope/fetchMyChart',
-  async (_, { rejectWithValue }) => {
+  async (options: { force?: boolean } = {}, { rejectWithValue }) => {
     try {
+      if (options.force) {
+        return await horoscopeService.generateMyChart();
+      }
+
       return await horoscopeService.getMyChart();
     } catch (error: any) {
-      if ([404, 422].includes(error.response?.status)) {
+      if (!options.force && [404, 422].includes(error.response?.status)) {
         try {
           return await horoscopeService.generateMyChart();
         } catch (generateError: any) {
@@ -40,6 +45,12 @@ export const fetchMyChart = createAsyncThunk(
 
       return rejectWithValue(error.response?.data?.message || 'Failed to load birth chart');
     }
+  },
+  {
+    condition: (_, { getState }) => {
+      const state = getState() as { horoscope?: HoroscopeState };
+      return !state.horoscope?.isLoading;
+    },
   }
 );
 
@@ -82,7 +93,8 @@ const horoscopeSlice = createSlice({
       .addCase(fetchMyChart.rejected, (state, action) => {
         state.isLoading = false;
         state.error = action.payload as string;
-      });
+      })
+      .addCase(logout, () => initialState);
 
     // Calculate Compatibility
     builder

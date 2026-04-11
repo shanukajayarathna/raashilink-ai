@@ -28,7 +28,15 @@ const horoscopeSchema = new Schema(
     zodiacSign: { type: String, required: true, trim: true, maxlength: 30 },
     rashi: { type: String, required: true, trim: true, maxlength: 30 },
     nakshatra: { type: String, required: true, trim: true, maxlength: 30 },
+    nakshatraPada: { type: Number, min: 1, max: 4 },
     ascendant: { type: String, required: true, trim: true, maxlength: 30 },
+    ascendantDegree: { type: Number, min: 0, max: 360 },
+    tithi: { type: String, trim: true, maxlength: 40 },
+    paksha: { type: String, trim: true, maxlength: 40 },
+    yoga: { type: String, trim: true, maxlength: 40 },
+    karana: { type: String, trim: true, maxlength: 40 },
+    vedicDay: { type: String, trim: true, maxlength: 20 },
+    ayanamsa: { type: String, trim: true, maxlength: 40, default: 'Lahiri' },
     planetaryPositions: {
       type: [planetaryPositionSchema],
       validate: {
