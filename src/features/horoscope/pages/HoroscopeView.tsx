@@ -20,6 +20,7 @@ import {
   IconButton,
   Checkbox,
   FormControlLabel,
+  alpha,
 } from '@mui/material';
 import {
   Search,
@@ -144,6 +145,11 @@ const HoroscopeView = () => {
   const chartPositions = myChart?.positions ?? [];
   const chartHouses = myChart?.houses ?? [];
   const readingHighlights = myChart?.insights ?? [];
+  const profileHighlights = myChart?.highlights;
+  const luckyColors = profileHighlights?.luckyColors ?? [];
+  const auspiciousDays = profileHighlights?.auspiciousDays ?? [];
+  const favorablePartners = profileHighlights?.favorablePartners ?? [];
+  const profileFacts = profileHighlights?.profileFacts ?? [];
   const chartMeta = myChart?.meta;
 
   const storedBirthDate =
@@ -799,6 +805,68 @@ const HoroscopeView = () => {
                       <Alert severity="info" sx={{ borderRadius: '14px', '& .MuiAlert-message': { fontFamily: LANGUAGE_FONT_FAMILY[language] } }}>
                         {accuracyNotice || texts.pending}
                       </Alert>
+                    )}
+
+                    {!!luckyColors.length && (
+                      <Box sx={{ mt: 1.5 }}>
+                        <Typography variant="caption" sx={{ display: 'block', color: COLORS.textSecondary, fontWeight: 700, mb: 0.75, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>
+                          Lucky Colors
+                        </Typography>
+                        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                          {luckyColors.map((color: string) => (
+                            <Box
+                              key={color}
+                              sx={{
+                                width: 24,
+                                height: 24,
+                                borderRadius: '999px',
+                                bgcolor: color,
+                                border: '2px solid #fff',
+                                boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
+                              }}
+                            />
+                          ))}
+                        </Stack>
+                      </Box>
+                    )}
+
+                    {!!auspiciousDays.length && (
+                      <Box sx={{ mt: 1.5 }}>
+                        <Typography variant="caption" sx={{ display: 'block', color: COLORS.textSecondary, fontWeight: 700, mb: 0.75, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>
+                          Auspicious Days
+                        </Typography>
+                        <Stack direction="row" spacing={0.8} flexWrap="wrap" useFlexGap>
+                          {auspiciousDays.map((day: string) => (
+                            <Chip key={day} label={day} size="small" sx={{ bgcolor: alpha(COLORS.accent, 0.12), color: COLORS.accent, fontWeight: 700 }} />
+                          ))}
+                        </Stack>
+                      </Box>
+                    )}
+
+                    {!!favorablePartners.length && (
+                      <Box sx={{ mt: 1.5 }}>
+                        <Typography variant="caption" sx={{ display: 'block', color: COLORS.textSecondary, fontWeight: 700, mb: 0.75, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>
+                          Favorable Signs
+                        </Typography>
+                        <Typography variant="body2" sx={{ color: COLORS.textSecondary, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>
+                          {favorablePartners.join(', ')}
+                        </Typography>
+                      </Box>
+                    )}
+
+                    {!!profileFacts.length && (
+                      <Box sx={{ mt: 1.5 }}>
+                        <Typography variant="caption" sx={{ display: 'block', color: COLORS.textSecondary, fontWeight: 700, mb: 0.75, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>
+                          Personal Horoscope Facts
+                        </Typography>
+                        <Stack spacing={0.8}>
+                          {profileFacts.map((fact: string, index: number) => (
+                            <Typography key={`${fact}-${index}`} variant="body2" sx={{ color: COLORS.textSecondary, lineHeight: 1.55, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>
+                              • {fact}
+                            </Typography>
+                          ))}
+                        </Stack>
+                      </Box>
                     )}
                   </Stack>
                 </Paper>

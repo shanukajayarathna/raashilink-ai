@@ -12,6 +12,7 @@ import {
   removeGalleryPhoto,
   requestContactVerification,
   confirmContactVerification,
+  exportUserData,
   deleteAccount,
 } from '../../controllers/users.controller.js';
 
@@ -42,6 +43,7 @@ router.post('/profile/photo', upload.single('photo'), uploadProfilePhoto);
 router.delete('/profile/photo', removeProfilePhoto);
 router.post('/profile/photos', upload.single('photo'), uploadGalleryPhoto);
 router.delete('/profile/photos/:photoId', removeGalleryPhoto);
+router.get('/export', exportUserData);
 router.delete('/account', deleteAccount);
 router.post('/verification/request', requestContactVerification);
 router.post('/verification/confirm', confirmContactVerification);

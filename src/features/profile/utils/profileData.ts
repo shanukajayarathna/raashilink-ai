@@ -7,6 +7,84 @@ const DEFAULT_PRIVACY = {
 };
 
 const PLACEHOLDER_VALUES = new Set(['not provided', 'unknown']);
+const PERSONALITY_SUBJECTS = [
+  'Openness',
+  'Conscientiousness',
+  'Extraversion',
+  'Agreeableness',
+  'Neuroticism',
+];
+const PERSONALITY_KEY_BY_SUBJECT: Record<string, string> = {
+  Openness: 'openness',
+  Conscientiousness: 'conscientiousness',
+  Extraversion: 'extraversion',
+  Agreeableness: 'agreeableness',
+  Neuroticism: 'neuroticism',
+};
+const PERSONALITY_QUESTION_COUNT = 10;
+
+function average(values: number[]) {
+  if (!values.length) return 3;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function normalizeLikert(value: any) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return 3;
+  return Math.max(1, Math.min(5, Math.round(parsed)));
+}
+
+function likertFromPercent(score: number) {
+  if (!Number.isFinite(score)) return 3;
+  return Math.max(1, Math.min(5, Math.round(score / 25) + 1));
+}
+
+function derivePersonalityAnswers(profile: any) {
+  const answerSource = Array.isArray(profile?.personalityAnswers) ? profile.personalityAnswers : null;
+  if (answerSource && answerSource.length >= PERSONALITY_QUESTION_COUNT) {
+    return answerSource.slice(0, PERSONALITY_QUESTION_COUNT).map(normalizeLikert);
+  }
+
+  const traits = normalizePersonality(profile);
+  const traitValue = (subject: string) => {
+    const trait = traits.find((item) => item.subject === subject);
+    return likertFromPercent(Number(trait?.A ?? 50));
+  };
+
+  const extraversion = traitValue('Extraversion');
+  const conscientiousness = traitValue('Conscientiousness');
+  const neuroticism = traitValue('Neuroticism');
+  const openness = traitValue('Openness');
+  const agreeableness = traitValue('Agreeableness');
+
+  return [
+    extraversion,
+    conscientiousness,
+    neuroticism,
+    openness,
+    agreeableness,
+    extraversion,
+    conscientiousness,
+    openness,
+    agreeableness,
+    6 - neuroticism,
+  ].map(normalizeLikert);
+}
+
+export function mapPersonalityFromAnswers(answers: any[] = []) {
+  const safe = Array.isArray(answers) && answers.length >= PERSONALITY_QUESTION_COUNT
+    ? answers.slice(0, PERSONALITY_QUESTION_COUNT).map(normalizeLikert)
+    : new Array(PERSONALITY_QUESTION_COUNT).fill(3);
+  const normalizeScore = (score: number) => Number(((score - 1) / 4).toFixed(2));
+
+  return {
+    extraversion: normalizeScore(average([safe[0], safe[5]])),
+    conscientiousness: normalizeScore(average([safe[1], safe[6]])),
+    neuroticism: normalizeScore(average([safe[2], 6 - safe[9]])),
+    openness: normalizeScore(average([safe[3], safe[7]])),
+    agreeableness: normalizeScore(average([safe[4], safe[8]])),
+  };
+}
 
 function isPlaceholderValue(value: any) {
   return typeof value === 'string' && PLACEHOLDER_VALUES.has(value.trim().toLowerCase());
@@ -43,6 +121,31 @@ function normalizeOptionalValue(value: any) {
   return value;
 }
 
+function normalizePersonality(profile: any) {
+  const arraySource = Array.isArray(profile?.personality) ? profile.personality : null;
+  const objectSource = profile?.personality && typeof profile.personality === 'object' && !Array.isArray(profile.personality)
+    ? profile.personality
+    : null;
+
+  return PERSONALITY_SUBJECTS.map((subject) => {
+    const traitFromArray = arraySource?.find((item: any) => item?.subject === subject);
+    const key = PERSONALITY_KEY_BY_SUBJECT[subject];
+
+    const fromArray = Number(traitFromArray?.A);
+    const fromObject = Number(objectSource?.[key]);
+    const raw = Number.isFinite(fromArray)
+      ? fromArray
+      : Number.isFinite(fromObject)
+        ? fromObject <= 1
+          ? fromObject * 100
+          : fromObject
+        : 50;
+
+    const score = Math.max(0, Math.min(100, Math.round(raw)));
+    return { subject, A: score, fullMark: 100 };
+  });
+}
+
 export function normalizeProfileData(profile: any) {
   const personalInfo = profile?.personalInfo || {};
   const lifestyle = profile?.lifestyle || {};
@@ -50,11 +153,14 @@ export function normalizeProfileData(profile: any) {
   const privacy = { ...DEFAULT_PRIVACY, ...(profile?.privacy || {}) };
   const languages = normalizeStringArray(personalInfo.languages || profile?.languages || profile?.lifestyle?.languages);
   const hobbies = normalizeStringArray(lifestyle.hobbies || profile?.hobbies);
-  const height = normalizeString(profile?.height || personalInfo.height);
-  const education = normalizeString(profile?.education || personalInfo.education);
-  const occupation = normalizeString(profile?.occupation || personalInfo.occupation);
-  const religion = normalizeString(profile?.religion || personalInfo.religion);
-  const ethnicity = normalizeString(profile?.ethnicity || personalInfo.ethnicity);
+  // Prefer nested personal info first while editing; top-level fields can be stale snapshots.
+  const height = normalizeString(personalInfo.height ?? profile?.height);
+  const education = normalizeString(personalInfo.education ?? profile?.education);
+  const occupation = normalizeString(personalInfo.occupation ?? profile?.occupation);
+  const religion = normalizeString(personalInfo.religion ?? profile?.religion);
+  const ethnicity = normalizeString(personalInfo.ethnicity ?? profile?.ethnicity);
+  const personality = normalizePersonality(profile);
+  const personalityAnswers = derivePersonalityAnswers(profile);
 
   return {
     ...profile,
@@ -101,6 +207,7 @@ export function normalizeProfileData(profile: any) {
       luckyColors: normalizeStringArray(astrology.luckyColors),
       auspiciousDays: normalizeStringArray(astrology.auspiciousDays),
       favorablePartners: normalizeStringArray(astrology.favorablePartners),
+      profileFacts: normalizeStringArray(astrology.profileFacts),
     },
     lifestyle: {
       ...lifestyle,
@@ -113,6 +220,8 @@ export function normalizeProfileData(profile: any) {
       familyPlans: normalizeString(lifestyle.familyPlans),
       socialPreference: normalizeNumber(lifestyle.socialPreference, 50),
     },
+    personality,
+    personalityAnswers,
     privacy,
     photos: Array.isArray(profile?.photos) ? profile.photos : [],
   };
@@ -126,16 +235,26 @@ export function buildProfileUpdatePayload(source: any) {
     .join(' ')
     .trim();
 
+  // Only include birth fields when birthDate is actually set, to avoid incorrectly
+  // triggering the backend's birth-data update path for general profile saves.
+  const birthPayload = normalized.birthDate
+    ? {
+        birthDate: normalized.birthDate,
+        birthTime: normalized.birthTime || '',
+        birthPlace: normalized.birthPlace || undefined,
+        knownBirthTime: normalized.knownBirthTime,
+      }
+    : {};
+
+  const personalityPayload = mapPersonalityFromAnswers(normalized.personalityAnswers || []);
+
   return {
     name: derivedName || normalized.name,
     bio: normalized.bio,
     tagline: normalized.tagline,
     location: normalized.location,
     age: Number.isFinite(age) ? age : undefined,
-    birthDate: normalized.birthDate || undefined,
-    birthTime: normalized.birthTime || '',
-    birthPlace: normalized.birthPlace || undefined,
-    knownBirthTime: normalized.knownBirthTime,
+    ...birthPayload,
     height: normalized.personalInfo.height,
     education: normalized.personalInfo.education,
     occupation: normalized.personalInfo.occupation,
@@ -150,6 +269,8 @@ export function buildProfileUpdatePayload(source: any) {
     careerAmbitions: normalized.lifestyle.careerAmbitions,
     familyPlans: normalized.lifestyle.familyPlans,
     socialPreference: normalized.lifestyle.socialPreference,
+    personality: personalityPayload,
+    personalityAnswers: normalized.personalityAnswers,
     privacy: normalized.privacy,
   };
 }

@@ -26,7 +26,14 @@ import {
   LinearProgress,
   CircularProgress,
   MenuItem,
-  InputAdornment
+  InputAdornment,
+  Autocomplete,
+  Backdrop,
+  Fade,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions
 } from '@mui/material';
 import { 
   MapPin, 
@@ -54,7 +61,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
 import { RootState } from '@/app/store/store';
-import { updateUser } from '@/features/auth/store/authSlice';
+import { logout, updateUser } from '@/features/auth/store/authSlice';
 import { showToast } from '@/app/store/uiSlice';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -68,6 +75,8 @@ import {
 import CoverPhotoUpload from '../components/CoverPhotoUpload';
 import ProfilePhotoUpload from '../components/ProfilePhotoUpload';
 import userService from '../services/userService';
+import horoscopeService from '../../horoscope/services/horoscopeService';
+import { fetchMyChart } from '../../horoscope/store/horoscopeSlice';
 import { buildProfileUpdatePayload, formatProfileValue, normalizeProfileData } from '../utils/profileData';
 import ImageCropper from '@/shared/components/ImageCropper';
 
@@ -101,6 +110,51 @@ const EXERCISE_OPTIONS = ['Daily', 'Regularly', 'Occasionally', 'Rarely', 'Never
 const DIET_OPTIONS = ['Vegetarian', 'Non-veg', 'Vegan', 'Pescatarian', 'Other'];
 const SMOKING_OPTIONS = ['Never', 'Occasionally', 'Regularly'];
 const DRINKING_OPTIONS = ['Never', 'Occasionally', 'Regularly'];
+const PERSONALITY_QUIZ_QUESTIONS = [
+  'I enjoy meeting new people',
+  'I prefer organized plans',
+  'I am easily stressed',
+  'I enjoy creative activities',
+  'I am helpful and unselfish',
+  'I am talkative and outgoing',
+  'I am reliable and hardworking',
+  'I am curious about many things',
+  'I am forgiving of others',
+  'I am calm and emotionally stable',
+];
+const SRI_LANKAN_RELIGIONS = ['Buddhist', 'Hindu', 'Muslim', 'Christian', 'Catholic', 'Other'];
+const SRI_LANKAN_ETHNICITIES = [
+  'Sinhalese',
+  'Sri Lankan Tamil',
+  'Indian Tamil',
+  'Sri Lankan Moor',
+  'Burgher',
+  'Malay',
+  'Vedda',
+  'Other',
+];
+const LANGUAGE_OPTIONS = [
+  'Sinhala',
+  'Tamil',
+  'English',
+  'Arabic',
+  'Chinese',
+  'French',
+  'German',
+  'Hindi',
+  'Italian',
+  'Japanese',
+  'Korean',
+  'Malay',
+  'Mandarin',
+  'Portuguese',
+  'Russian',
+  'Spanish',
+  'Telugu',
+  'Thai',
+  'Turkish',
+  'Urdu',
+];
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -153,10 +207,39 @@ function getProfileHeroTitle(profile: any) {
   return `${name}, ${age}`;
 }
 
+function formatLocationDisplay(location: any) {
+  const normalized = typeof location === 'string' ? location.trim() : '';
+  if (!normalized || normalized.toLowerCase() === 'not provided') {
+    return 'Location not provided';
+  }
+
+  return /sri lanka/i.test(normalized) ? normalized : `${normalized}, Sri Lanka`;
+}
+
+function buildPersonalityChartFromAnswers(answers: any[], fallbackData: any[]) {
+  const safe = Array.isArray(answers) && answers.length >= 10
+    ? answers.slice(0, 10).map((value) => Math.max(1, Math.min(5, Number(value) || 3)))
+    : null;
+
+  if (!safe) return Array.isArray(fallbackData) ? fallbackData : [];
+
+  const average = (values: number[]) => values.reduce((sum, value) => sum + value, 0) / values.length;
+  const toPercent = (score: number) => Math.round(((score - 1) / 4) * 100);
+
+  return [
+    { subject: 'Openness', A: toPercent(average([safe[3], safe[7]])), fullMark: 100 },
+    { subject: 'Conscientiousness', A: toPercent(average([safe[1], safe[6]])), fullMark: 100 },
+    { subject: 'Extraversion', A: toPercent(average([safe[0], safe[5]])), fullMark: 100 },
+    { subject: 'Agreeableness', A: toPercent(average([safe[4], safe[8]])), fullMark: 100 },
+    { subject: 'Neuroticism', A: toPercent(average([safe[2], 6 - safe[9]])), fullMark: 100 },
+  ];
+}
+
 export default function UserProfile() {
   const navigate = useNavigate();
   const { user, token } = useSelector((state: RootState) => state.auth);  const dispatch = useDispatch();  const [tabValue, setTabValue] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [profileData, setProfileData] = useState<any>(null);
   const [editing, setEditing] = useState(false);
   const [editData, setEditData] = useState<any>({});
@@ -169,6 +252,13 @@ export default function UserProfile() {
   const [galleryCropperOpen, setGalleryCropperOpen] = useState(false);
   const [gallerySelectedFile, setGallerySelectedFile] = useState<File | null>(null);
   const [galleryCroppedImage, setGalleryCroppedImage] = useState<string | null>(null);
+  const [locationSuggestions, setLocationSuggestions] = useState<string[]>([]);
+  const [loadingLocationSuggestions, setLoadingLocationSuggestions] = useState(false);
+  const [birthPlaceSuggestions, setBirthPlaceSuggestions] = useState<string[]>([]);
+  const [loadingBirthPlaceSuggestions, setLoadingBirthPlaceSuggestions] = useState(false);
+  const [exportingData, setExportingData] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const galleryInputRef = useRef<HTMLInputElement>(null);
   const galleryPreviewUrl = useMemo(
     () => (gallerySelectedFile ? URL.createObjectURL(gallerySelectedFile) : null),
@@ -182,11 +272,89 @@ export default function UserProfile() {
   }, [galleryPreviewUrl]);
 
   useEffect(() => {
+    const query = String(editData.location || '').trim();
+
+    if (!editing) {
+      setLocationSuggestions([]);
+      setLoadingLocationSuggestions(false);
+      return;
+    }
+
+    if (!query) {
+      setLocationSuggestions([]);
+      setLoadingLocationSuggestions(false);
+      return;
+    }
+
+    const timer = window.setTimeout(async () => {
+      setLoadingLocationSuggestions(true);
+      try {
+        const suggestions = await userService.searchBirthPlaces(query, 5);
+        setLocationSuggestions(suggestions);
+      } catch (lookupError) {
+        console.error('Location suggestion lookup failed:', lookupError);
+        setLocationSuggestions([]);
+      } finally {
+        setLoadingLocationSuggestions(false);
+      }
+    }, 300);
+
+    return () => window.clearTimeout(timer);
+  }, [editData.location, editing]);
+
+  useEffect(() => {
+    const query = String(editData.birthPlace || '').trim();
+
+    if (!editing) {
+      setBirthPlaceSuggestions([]);
+      setLoadingBirthPlaceSuggestions(false);
+      return;
+    }
+
+    if (query.length < 2) {
+      setBirthPlaceSuggestions(query ? [query] : []);
+      setLoadingBirthPlaceSuggestions(false);
+      return;
+    }
+
+    const timer = window.setTimeout(async () => {
+      setLoadingBirthPlaceSuggestions(true);
+      try {
+        const suggestions = await userService.searchBirthPlaces(query, 5);
+        setBirthPlaceSuggestions(Array.from(new Set([query, ...suggestions])));
+      } catch (lookupError) {
+        console.error('Birth place suggestion lookup failed:', lookupError);
+        setBirthPlaceSuggestions(query ? [query] : []);
+      } finally {
+        setLoadingBirthPlaceSuggestions(false);
+      }
+    }, 250);
+
+    return () => window.clearTimeout(timer);
+  }, [editData.birthPlace, editing]);
+
+  const mergeAuthFallbacks = (profile: any) => {
+    const next = { ...profile };
+    const currentEthnicity = next?.personalInfo?.ethnicity;
+    const fallbackEthnicity = user?.ethnicity || user?.personalInfo?.ethnicity || '';
+
+    if ((!currentEthnicity || String(currentEthnicity).trim() === '') && fallbackEthnicity) {
+      next.ethnicity = fallbackEthnicity;
+      next.personalInfo = {
+        ...(next.personalInfo || {}),
+        ethnicity: fallbackEthnicity,
+      };
+    }
+
+    return next;
+  };
+
+  useEffect(() => {
     const fetchProfile = async () => {
       setLoading(true);
       try {
         const response = await userService.getProfile();
-        const normalized = normalizeProfileData(response);
+        const normalized = mergeAuthFallbacks(normalizeProfileData(response));
         setProfileData(normalized);
         setEditData(normalized);
       } catch (err) {
@@ -378,9 +546,41 @@ export default function UserProfile() {
   };
 
   const handleSaveProfile = async () => {
+    if (isSaving) return;
+    setIsSaving(true);
     try {
+      const previousBirthDate = String(profileData?.birthDate || '').trim();
+      const previousBirthTime = String(profileData?.birthTime || '').trim();
+      const previousBirthPlace = String(profileData?.birthPlace || '').trim();
+
+      const nextBirthDate = String(editData?.birthDate || '').trim();
+      const nextBirthTime = String(editData?.birthTime || '').trim();
+      const nextBirthPlace = String(editData?.birthPlace || '').trim();
+
+      const birthDetailsChanged =
+        previousBirthDate !== nextBirthDate ||
+        previousBirthTime !== nextBirthTime ||
+        previousBirthPlace !== nextBirthPlace;
+
       const response = await userService.updateProfile(buildProfileUpdatePayload(editData));
-      const normalized = normalizeProfileData(response);
+      let latestProfile = response;
+
+      if (birthDetailsChanged && nextBirthDate && nextBirthPlace) {
+        try {
+          // Update horoscope source data first, then reload profile so astrology cards update immediately.
+          await horoscopeService.generateMyChart();
+          await dispatch(fetchMyChart({ force: true }));
+          latestProfile = await userService.getProfile();
+        } catch (horoscopeError) {
+          console.error('Horoscope refresh failed after birth-detail update:', horoscopeError);
+          dispatch(showToast({
+            type: 'error',
+            message: 'Birth details were saved, but horoscope refresh failed. Please try again.',
+          }));
+        }
+      }
+
+      const normalized = mergeAuthFallbacks(normalizeProfileData(latestProfile));
       setProfileData(normalized);
       setEditData(normalized);
       setEditing(false);
@@ -389,6 +589,8 @@ export default function UserProfile() {
     } catch (err) {
       console.error('Failed to update profile:', err);
       dispatch(showToast({ type: 'error', message: 'Failed to update profile. Please try again.' }));
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -421,7 +623,7 @@ export default function UserProfile() {
       formData.append('photo', file);
 
       const uploadResponse = await userService.uploadGalleryPhoto(formData);
-      const normalized = normalizeProfileData(uploadResponse);
+      const normalized = mergeAuthFallbacks(normalizeProfileData(uploadResponse));
       setProfileData(normalized);
       setEditData(normalized);
       dispatch(updateUser(normalized));
@@ -440,7 +642,7 @@ export default function UserProfile() {
     try {
       setRemovingGalleryPhotoId(photoId);
       const response = await userService.removeGalleryPhoto(photoId);
-      const normalized = normalizeProfileData(response);
+      const normalized = mergeAuthFallbacks(normalizeProfileData(response));
       setProfileData(normalized);
       setEditData(normalized);
       dispatch(updateUser(normalized));
@@ -449,6 +651,70 @@ export default function UserProfile() {
       dispatch(showToast({ type: 'error', message: error.response?.data?.message || 'Failed to remove photo.' }));
     } finally {
       setRemovingGalleryPhotoId(null);
+    }
+  };
+
+  const handleExportData = async () => {
+    if (exportingData) return;
+
+    try {
+      setExportingData(true);
+      const response = await userService.exportData();
+      const fileContent = JSON.stringify(response?.data || response, null, 2);
+      const blob = new Blob([fileContent], { type: 'application/json' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+
+      link.href = url;
+      link.download = `raashilink-data-export-${stamp}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      dispatch(showToast({ type: 'success', message: 'Your data export has been downloaded.' }));
+    } catch (error: any) {
+      dispatch(showToast({ type: 'error', message: error?.response?.data?.message || 'Failed to download your data export.' }));
+    } finally {
+      setExportingData(false);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (deletingAccount) return;
+    setDeleteDialogOpen(true);
+  };
+
+  const handlePersonalityAnswerChange = (index: number, value: number | number[]) => {
+    const nextValue = Array.isArray(value) ? value[0] : value;
+    const normalizedValue = Math.max(1, Math.min(5, Math.round(nextValue || 3)));
+    const existingAnswers = Array.isArray(editData.personalityAnswers)
+      ? [...editData.personalityAnswers]
+      : new Array(10).fill(3);
+
+    existingAnswers[index] = normalizedValue;
+
+    setEditData({
+      ...editData,
+      personalityAnswers: existingAnswers,
+      personality: buildPersonalityChartFromAnswers(existingAnswers, editData.personality || profileData.personality),
+    });
+  };
+
+  const handleConfirmDeleteAccount = async () => {
+    if (deletingAccount) return;
+
+    try {
+      setDeletingAccount(true);
+      await userService.deleteAccount();
+      setDeleteDialogOpen(false);
+      dispatch(logout());
+      dispatch(showToast({ type: 'success', message: 'Account deleted permanently.' }));
+      navigate('/login', { replace: true });
+    } catch (error: any) {
+      dispatch(showToast({ type: 'error', message: error?.response?.data?.message || 'Failed to delete account.' }));
+      setDeletingAccount(false);
     }
   };
 
@@ -470,7 +736,40 @@ export default function UserProfile() {
     );
   }
 
+  const personalityChartData = editing
+    ? buildPersonalityChartFromAnswers(editData.personalityAnswers, editData.personality || profileData.personality)
+    : profileData.personality;
+
   return (
+    <>
+      {/* Save overlay — blocks interaction with a blurred fade during DB write */}
+      <Backdrop
+        open={isSaving}
+        sx={{
+          zIndex: (theme) => theme.zIndex.modal + 10,
+          bgcolor: 'rgba(20, 10, 10, 0.45)',
+          backdropFilter: 'blur(4px)',
+          flexDirection: 'column',
+          gap: 2,
+        }}
+      >
+        <Fade in={isSaving}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+            <CircularProgress size={52} sx={{ color: '#C9A84C' }} thickness={3.5} />
+            <Typography
+              sx={{
+                color: '#FAF7F2',
+                fontWeight: 700,
+                fontSize: '1.05rem',
+                letterSpacing: '0.02em',
+              }}
+            >
+              Saving your profile…
+            </Typography>
+          </Box>
+        </Fade>
+      </Backdrop>
+
     <Container maxWidth="lg" sx={{ py: 4, pb: 10 }}>
       {/* Hero Section */}
       <MotionPaper
@@ -535,9 +834,6 @@ export default function UserProfile() {
                 >
                   {getProfileHeroTitle(profileData)}
                 </Typography>
-                <Typography variant="body1" sx={{ color: COLORS.textSecondary, mb: 1, display: 'flex', alignItems: 'center', justifyContent: { xs: 'center', md: 'flex-start' }, gap: 0.5 }}>
-                  <MapPin size={16} /> {profileData.location} 📍
-                </Typography>
                 <Typography variant="subtitle1" sx={{ fontStyle: 'italic', color: COLORS.textSecondary, fontWeight: 500 }}>
                   "{profileData.tagline}"
                 </Typography>
@@ -569,6 +865,7 @@ export default function UserProfile() {
                     <Button 
                       variant="outlined" 
                       onClick={handleCancelEdit}
+                      disabled={isSaving}
                       sx={{ borderRadius: '12px', fontWeight: 700, whiteSpace: 'nowrap', minWidth: 96 }}
                     >
                       Cancel
@@ -576,6 +873,8 @@ export default function UserProfile() {
                     <Button 
                       variant="contained" 
                       onClick={handleSaveProfile}
+                      disabled={isSaving}
+                      startIcon={isSaving ? <CircularProgress size={16} sx={{ color: 'inherit' }} /> : null}
                       sx={{ 
                         bgcolor: COLORS.primary, 
                         borderRadius: '12px', 
@@ -588,7 +887,7 @@ export default function UserProfile() {
                         '&:hover': { bgcolor: '#6B1424' }
                       }}
                     >
-                      Save Changes
+                      {isSaving ? 'Saving…' : 'Save Changes'}
                     </Button>
                   </>
                 ) : (
@@ -701,6 +1000,26 @@ export default function UserProfile() {
                           placeholder="A short line that describes you"
                           sx={{ mb: 2 }}
                         />
+                        <Autocomplete
+                          freeSolo
+                          options={locationSuggestions}
+                          loading={loadingLocationSuggestions}
+                          inputValue={editData.location || ''}
+                          onInputChange={(_, value) => setEditData({ ...editData, location: value })}
+                          onChange={(_, value) => setEditData({ ...editData, location: typeof value === 'string' ? value : value || '' })}
+                          filterOptions={(options) => options}
+                          noOptionsText={editData.location ? 'No nearby town or village found' : 'Type a nearby town or village'}
+                          renderInput={(params) => (
+                            <TextField
+                              {...params}
+                              fullWidth
+                              label="Location"
+                              placeholder="Enter nearest town or village"
+                              helperText="Use your nearest town or village only. Full address is not needed."
+                              sx={{ mb: 2 }}
+                            />
+                          )}
+                        />
                         <TextField
                           fullWidth
                           multiline
@@ -708,33 +1027,57 @@ export default function UserProfile() {
                           value={editData.bio || ''}
                           onChange={(e) => setEditData({ ...editData, bio: e.target.value })}
                           placeholder="Tell us about yourself..."
-                          sx={{ mb: 3 }}
+                          sx={{ mb: 2 }}
                         />
                       </>
                     ) : (
-                      <Typography variant="body1" sx={{ color: COLORS.textSecondary, lineHeight: 1.8, mb: 3 }}>
-                        {profileData.bio}
-                      </Typography>
+                      <>
+                        <Typography variant="body2" sx={{ color: COLORS.textSecondary, mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <MapPin size={16} /> {formatLocationDisplay(profileData.location)}
+                        </Typography>
+                        <Typography variant="body1" sx={{ color: COLORS.textSecondary, lineHeight: 1.8, mb: 3 }}>
+                          {profileData.bio}
+                        </Typography>
+                      </>
                     )}
                     
-                    <Divider sx={{ my: 4 }} />
+                    <Divider sx={{ my: editing ? 2 : 4 }} />
                     
                     <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 800, color: COLORS.textPrimary, display: 'flex', alignItems: 'center', gap: 1 }}>
                       <Languages size={18} /> Languages Spoken
                     </Typography>
                     {editing ? (
-                      <TextField
-                        fullWidth
-                        value={editData.personalInfo?.languages?.join(', ') || ''}
-                        onChange={(e) => setEditData({
-                          ...editData,
-                          personalInfo: {
-                            ...editData.personalInfo,
-                            languages: e.target.value.split(',').map((l: string) => l.trim())
-                          }
-                        })}
-                        placeholder="e.g., Sinhala, English, Tamil"
-                        sx={{ mb: 2 }}
+                      <Autocomplete
+                        multiple
+                        freeSolo
+                        options={LANGUAGE_OPTIONS}
+                        value={Array.isArray(editData.personalInfo?.languages) ? editData.personalInfo.languages : []}
+                        onChange={(_, newValue) => {
+                          const normalized = newValue
+                            .map((item) => String(item).trim())
+                            .filter(Boolean)
+                            .filter((item, idx, arr) => arr.findIndex((v) => v.toLowerCase() === item.toLowerCase()) === idx);
+
+                          setEditData({
+                            ...editData,
+                            personalInfo: {
+                              ...editData.personalInfo,
+                              languages: normalized,
+                            },
+                          });
+                        }}
+                        filterOptions={(options, { inputValue }) => {
+                          const needle = inputValue.trim().toLowerCase();
+                          if (!needle) return options.slice(0, 5);
+                          return options.filter((option) => option.toLowerCase().startsWith(needle)).slice(0, 5);
+                        }}
+                        renderInput={(params) => (
+                          <TextField
+                            {...params}
+                            placeholder="Type language (e.g., Sinhala, English, Tamil)"
+                          />
+                        )}
+                        sx={{ mb: 1 }}
                       />
                     ) : (
                       profileData.personalInfo.languages.length > 0 ? (
@@ -823,8 +1166,6 @@ export default function UserProfile() {
                                   <TextField
                                     fullWidth
                                     size="small"
-                                    multiline
-                                    minRows={2}
                                     value={editData.personalInfo?.occupation || ''}
                                     onChange={(e) => setEditData({
                                       ...editData,
@@ -839,20 +1180,42 @@ export default function UserProfile() {
                                   <TextField
                                     fullWidth
                                     size="small"
-                                    value={profileData.personalInfo?.religion || ''}
-                                    disabled
-                                    helperText="Uses your registration value"
+                                    select
+                                    value={editData.personalInfo?.religion || ''}
+                                    onChange={(e) => setEditData({
+                                      ...editData,
+                                      personalInfo: {
+                                        ...editData.personalInfo,
+                                        religion: e.target.value,
+                                      },
+                                    })}
                                     sx={{ mt: 0.5 }}
-                                  />
+                                  >
+                                    <MenuItem value="">Select religion</MenuItem>
+                                    {SRI_LANKAN_RELIGIONS.map((option) => (
+                                      <MenuItem key={option} value={option}>{option}</MenuItem>
+                                    ))}
+                                  </TextField>
                                 ) : (
                                   <TextField
                                     fullWidth
                                     size="small"
-                                    value={profileData.personalInfo?.ethnicity || ''}
-                                    disabled
-                                    helperText="Uses your registration value"
+                                    select
+                                    value={editData.personalInfo?.ethnicity || ''}
+                                    onChange={(e) => setEditData({
+                                      ...editData,
+                                      personalInfo: {
+                                        ...editData.personalInfo,
+                                        ethnicity: e.target.value,
+                                      },
+                                    })}
                                     sx={{ mt: 0.5 }}
-                                  />
+                                  >
+                                    <MenuItem value="">Select ethnicity</MenuItem>
+                                    {SRI_LANKAN_ETHNICITIES.map((option) => (
+                                      <MenuItem key={option} value={option}>{option}</MenuItem>
+                                    ))}
+                                  </TextField>
                                 )
                               ) : (
                                 <Typography variant="body2" sx={{ fontWeight: 800, color: COLORS.textPrimary }}>{formatProfileValue(item.value)}</Typography>
@@ -869,11 +1232,13 @@ export default function UserProfile() {
               <Grid size={{ xs: 12, md: 5 }}>
                 <Paper sx={{ p: 4, borderRadius: '24px', boxShadow: '0 2px 16px rgba(0,0,0,0.03)', height: '100%' }}>
                   <Typography variant="h6" sx={{ mb: 1, fontWeight: 800, color: COLORS.primary }}>Personality Traits</Typography>
-                  <Typography variant="caption" sx={{ color: COLORS.textSecondary, mb: 4, display: 'block' }}>Based on your Big Five personality quiz results</Typography>
+                  <Typography variant="caption" sx={{ color: COLORS.textSecondary, mb: 4, display: 'block' }}>
+                    {editing ? 'Retake the Big Five quiz to update your personality profile.' : 'Based on your Big Five personality quiz results'}
+                  </Typography>
                   
                   <Box sx={{ height: 300, width: '100%', mt: 2 }}>
                     <ResponsiveContainer width="100%" height="100%">
-                      <RadarChart cx="50%" cy="50%" outerRadius="80%" data={profileData.personality}>
+                      <RadarChart cx="50%" cy="50%" outerRadius="80%" data={personalityChartData}>
                         <PolarGrid stroke={alpha(COLORS.primary, 0.1)} />
                         <PolarAngleAxis dataKey="subject" tick={{ fill: COLORS.textSecondary, fontSize: 10, fontWeight: 700 }} />
                         <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
@@ -889,13 +1254,38 @@ export default function UserProfile() {
                   </Box>
 
                   <Stack spacing={2} sx={{ mt: 4 }}>
-                    {profileData.personality.map((trait: any) => (
+                    {personalityChartData.map((trait: any) => (
                       <Box key={trait.subject} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <Typography variant="body2" sx={{ fontWeight: 700, color: COLORS.textSecondary }}>{trait.subject}</Typography>
                         <Typography variant="body2" sx={{ fontWeight: 800, color: COLORS.primary }}>{(trait.A / 20).toFixed(1)}/5.0</Typography>
                       </Box>
                     ))}
                   </Stack>
+
+                  {editing && (
+                    <Stack spacing={3} sx={{ mt: 4, pt: 3, borderTop: `1px solid ${alpha(COLORS.primary, 0.12)}` }}>
+                      {PERSONALITY_QUIZ_QUESTIONS.map((question, index) => (
+                        <Box key={question}>
+                          <Typography variant="body2" sx={{ fontWeight: 700, color: COLORS.textPrimary, mb: 1 }}>
+                            {index + 1}. {question}
+                          </Typography>
+                          <Stack direction="row" spacing={2} alignItems="center">
+                            <Typography variant="caption" sx={{ minWidth: 50, color: COLORS.textSecondary }}>Disagree</Typography>
+                            <Slider
+                              value={Array.isArray(editData.personalityAnswers) ? editData.personalityAnswers[index] ?? 3 : 3}
+                              onChange={(_, value) => handlePersonalityAnswerChange(index, value)}
+                              min={1}
+                              max={5}
+                              step={1}
+                              marks
+                              sx={{ color: COLORS.primary }}
+                            />
+                            <Typography variant="caption" sx={{ minWidth: 34, color: COLORS.textSecondary }}>Agree</Typography>
+                          </Stack>
+                        </Box>
+                      ))}
+                    </Stack>
+                  )}
                 </Paper>
               </Grid>
             </Grid>
@@ -907,12 +1297,13 @@ export default function UserProfile() {
                 <Paper sx={{ p: 4, borderRadius: '24px', boxShadow: '0 2px 16px rgba(0,0,0,0.03)' }}>
                   <Typography variant="h6" sx={{ mb: 3, fontWeight: 800, color: COLORS.primary }}>Birth Details</Typography>
                   <Stack spacing={3}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
                       <Calendar size={20} color={COLORS.secondary} />
-                      <Box>
+                      <Box sx={{ flex: 1, minWidth: 0 }}>
                         <Typography variant="caption" sx={{ color: COLORS.textSecondary, fontWeight: 700 }}>Date of Birth</Typography>
                         {editing ? (
                           <TextField
+                            fullWidth
                             type="date"
                             size="small"
                             value={editData.birthDate || ''}
@@ -925,12 +1316,13 @@ export default function UserProfile() {
                         )}
                       </Box>
                     </Box>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
                       <Clock size={20} color={COLORS.secondary} />
-                      <Box>
+                      <Box sx={{ flex: 1, minWidth: 0 }}>
                         <Typography variant="caption" sx={{ color: COLORS.textSecondary, fontWeight: 700 }}>Time of Birth</Typography>
                         {editing ? (
                           <TextField
+                            fullWidth
                             type="time"
                             size="small"
                             value={editData.birthTime || ''}
@@ -943,16 +1335,29 @@ export default function UserProfile() {
                         )}
                       </Box>
                     </Box>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
                       <MapPin size={20} color={COLORS.secondary} />
-                      <Box>
+                      <Box sx={{ flex: 1, minWidth: 0 }}>
                         <Typography variant="caption" sx={{ color: COLORS.textSecondary, fontWeight: 700 }}>Place of Birth</Typography>
                         {editing ? (
-                          <TextField
-                            size="small"
-                            value={editData.birthPlace || ''}
-                            onChange={(e) => setEditData({ ...editData, birthPlace: e.target.value })}
-                            sx={{ mt: 0.5 }}
+                          <Autocomplete
+                            freeSolo
+                            options={birthPlaceSuggestions}
+                            loading={loadingBirthPlaceSuggestions}
+                            inputValue={editData.birthPlace || ''}
+                            onInputChange={(_, value) => setEditData({ ...editData, birthPlace: value })}
+                            onChange={(_, value) => setEditData({ ...editData, birthPlace: typeof value === 'string' ? value : value || '' })}
+                            filterOptions={(options) => options}
+                            noOptionsText={editData.birthPlace ? 'No matching places found' : 'Type at least 2 letters'}
+                            renderInput={(params) => (
+                              <TextField
+                                {...params}
+                                fullWidth
+                                size="small"
+                                placeholder="Nearest town or village"
+                                sx={{ mt: 0.5 }}
+                              />
+                            )}
                           />
                         ) : (
                           <Typography variant="body1" sx={{ fontWeight: 800 }}>{profileData.astrology.birthPlace}</Typography>
@@ -983,30 +1388,10 @@ export default function UserProfile() {
               </Grid>
 
               <Grid size={{ xs: 12, md: 6 }}>
-                <Paper sx={{ p: 4, borderRadius: '24px', boxShadow: '0 2px 16px rgba(0,0,0,0.03)', textAlign: 'center' }}>
-                  <Typography variant="h6" sx={{ mb: 4, fontWeight: 800, color: COLORS.primary }}>Birth Chart Wheel</Typography>
-                  <Box sx={{ position: 'relative', width: '100%', maxWidth: 300, mx: 'auto', mb: 4 }}>
-                    {/* Placeholder for SVG Birth Chart */}
-                    <Box 
-                      component="svg" 
-                      viewBox="0 0 100 100" 
-                      sx={{ width: '100%', height: 'auto', filter: 'drop-shadow(0 4px 12px rgba(139,26,46,0.1))' }}
-                    >
-                      <circle cx="50" cy="50" r="48" fill="none" stroke={COLORS.primary} strokeWidth="0.5" />
-                      <circle cx="50" cy="50" r="35" fill="none" stroke={COLORS.secondary} strokeWidth="0.3" strokeDasharray="1 1" />
-                      {[...Array(12)].map((_, i) => {
-                        const angle = i * 30;
-                        const x1 = 50 + 35 * Math.cos((angle * Math.PI) / 180);
-                        const y1 = 50 + 35 * Math.sin((angle * Math.PI) / 180);
-                        const x2 = 50 + 48 * Math.cos((angle * Math.PI) / 180);
-                        const y2 = 50 + 48 * Math.sin((angle * Math.PI) / 180);
-                        return <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke={COLORS.primary} strokeWidth="0.2" />;
-                      })}
-                      <text x="50" y="50" textAnchor="middle" dy=".3em" fontSize="5" fontWeight="bold" fill={COLORS.primary}>KUNDLI</text>
-                    </Box>
-                  </Box>
+                <Paper sx={{ p: 4, borderRadius: '24px', boxShadow: '0 2px 16px rgba(0,0,0,0.03)' }}>
+                  <Typography variant="h6" sx={{ mb: 3, fontWeight: 800, color: COLORS.primary }}>Horoscope Highlights</Typography>
 
-                  <Stack spacing={3} sx={{ textAlign: 'left' }}>
+                  <Stack spacing={3}>
                     <Box>
                       <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 1.5, color: COLORS.textPrimary }}>Lucky Colors</Typography>
                       {profileData.astrology.luckyColors.length > 0 ? (
@@ -1032,12 +1417,28 @@ export default function UserProfile() {
                       )}
                     </Box>
                     <Box>
-                      <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 1.5, color: COLORS.textPrimary }}>Favorable Partners</Typography>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 1.5, color: COLORS.textPrimary }}>Favorable Signs</Typography>
                       <Typography variant="body2" sx={{ color: COLORS.textSecondary, fontWeight: 600 }}>
                         {profileData.astrology.favorablePartners.length > 0
                           ? <>Compatible with <span style={{ color: COLORS.primary, fontWeight: 800 }}>{profileData.astrology.favorablePartners.join(', ')}</span></>
                           : 'No partner guidance available yet.'}
                       </Typography>
+                    </Box>
+                    <Box>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 1.5, color: COLORS.textPrimary }}>Personal Horoscope Facts</Typography>
+                      {profileData.astrology.profileFacts?.length > 0 ? (
+                        <Stack spacing={1.2}>
+                          {profileData.astrology.profileFacts.map((fact: string, index: number) => (
+                            <Typography key={`${fact}-${index}`} variant="body2" sx={{ color: COLORS.textSecondary, lineHeight: 1.6 }}>
+                              • {fact}
+                            </Typography>
+                          ))}
+                        </Stack>
+                      ) : (
+                        <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
+                          Update your birth details and save to generate personalized horoscope facts.
+                        </Typography>
+                      )}
                     </Box>
                   </Stack>
                 </Paper>
@@ -1453,9 +1854,11 @@ export default function UserProfile() {
                       fullWidth 
                       variant="outlined" 
                       startIcon={<Download size={18} />}
+                      onClick={handleExportData}
+                      disabled={exportingData || deletingAccount}
                       sx={{ borderRadius: '12px', color: COLORS.accent, borderColor: COLORS.accent, fontWeight: 700 }}
                     >
-                      Download My Data (JSON)
+                      {exportingData ? 'Preparing Download…' : 'Download My Data (JSON)'}
                     </Button>
                   </Paper>
 
@@ -1469,9 +1872,11 @@ export default function UserProfile() {
                       variant="contained" 
                       color="error"
                       startIcon={<Trash2 size={18} />}
+                      onClick={handleDeleteAccount}
+                      disabled={deletingAccount || exportingData}
                       sx={{ borderRadius: '12px', fontWeight: 800, boxShadow: '0 4px 12px rgba(211,47,47,0.2)' }}
                     >
-                      Delete My Account
+                      {deletingAccount ? 'Deleting Account…' : 'Delete My Account'}
                     </Button>
                   </Paper>
                 </Stack>
@@ -1481,6 +1886,49 @@ export default function UserProfile() {
         </MotionBox>
       </AnimatePresence>
     </Container>
+
+    <Dialog
+      open={deleteDialogOpen}
+      onClose={() => !deletingAccount && setDeleteDialogOpen(false)}
+      fullWidth
+      maxWidth="xs"
+      PaperProps={{
+        sx: {
+          borderRadius: '20px',
+          border: `1px solid ${alpha('#D32F2F', 0.25)}`,
+          boxShadow: '0 18px 42px rgba(139,26,46,0.2)',
+        },
+      }}
+    >
+      <DialogTitle sx={{ fontWeight: 900, color: 'error.main', pb: 1 }}>
+        Confirm Account Deletion
+      </DialogTitle>
+      <DialogContent>
+        <Typography variant="body2" sx={{ color: COLORS.textSecondary, lineHeight: 1.7 }}>
+          This action is permanent. Your profile, matches, messages, and horoscope data will be erased from the database and cannot be restored.
+        </Typography>
+      </DialogContent>
+      <DialogActions sx={{ px: 3, pb: 3, pt: 1, gap: 1 }}>
+        <Button
+          variant="outlined"
+          onClick={() => setDeleteDialogOpen(false)}
+          disabled={deletingAccount}
+          sx={{ borderRadius: '10px', fontWeight: 700 }}
+        >
+          Cancel
+        </Button>
+        <Button
+          variant="contained"
+          color="error"
+          onClick={handleConfirmDeleteAccount}
+          disabled={deletingAccount}
+          sx={{ borderRadius: '10px', fontWeight: 800, minWidth: 160 }}
+        >
+          {deletingAccount ? 'Deleting Account…' : 'Yes, Delete Permanently'}
+        </Button>
+      </DialogActions>
+    </Dialog>
+    </>
   );
 }
 

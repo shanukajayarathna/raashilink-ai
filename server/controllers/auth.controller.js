@@ -74,6 +74,15 @@ function mapPersonality(answers = []) {
   };
 }
 
+function normalizePersonalityAnswers(answers = []) {
+  const safe = Array.isArray(answers) && answers.length >= 10 ? answers.slice(0, 10) : new Array(10).fill(3);
+  return safe.map((value) => {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return 3;
+    return Math.max(1, Math.min(5, Math.round(parsed)));
+  });
+}
+
 function sanitizeImageReference(value, { allowDataUri = false } = {}) {
   if (!value) return null;
 
@@ -526,6 +535,8 @@ export const register = asyncHandler(async (req, res) => {
     }
   }
 
+  const normalizedPersonalityAnswers = normalizePersonalityAnswers(personality);
+
   const user = await User.create({
     email: email.toLowerCase(),
     passwordHash,
@@ -533,7 +544,8 @@ export const register = asyncHandler(async (req, res) => {
     personalInfo: buildPersonalInfo(req.body),
     birthData,
     horoscopeData,
-    personality: mapPersonality(personality),
+    personalityAnswers: normalizedPersonalityAnswers,
+    personality: mapPersonality(normalizedPersonalityAnswers),
     lifestyle: {
       religion,
       preferredLocation: pob || 'Sri Lanka',

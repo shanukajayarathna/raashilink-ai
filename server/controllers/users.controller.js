@@ -1,8 +1,15 @@
 import User from '../models/User.js';
+import AuthOtp from '../models/AuthOtp.js';
+import Conversation from '../models/Conversation.js';
+import Horoscope from '../models/Horoscope.js';
+import Match from '../models/Match.js';
+import MatchInterest from '../models/MatchInterest.js';
+import Message from '../models/Message.js';
+import Vendor from '../models/Vendor.js';
+import WeddingProject from '../models/WeddingProject.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import ApiError from '../utils/ApiError.js';
 import bcrypt from 'bcrypt';
-import AuthOtp from '../models/AuthOtp.js';
 import logger from '../utils/logger.js';
 import { resolveBirthPlace } from '../utils/birthLocation.js';
 
@@ -182,7 +189,27 @@ function parseOptionalNumber(value) {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
+function normalizePersonalityValue(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return undefined;
+  return Math.max(0, Math.min(1, parsed));
+}
+
+function normalizePersonalityAnswers(answers) {
+  const safe = Array.isArray(answers) && answers.length >= 10 ? answers.slice(0, 10) : null;
+  if (!safe) return null;
+
+  return safe.map((value) => {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return 3;
+    return Math.max(1, Math.min(5, Math.round(parsed)));
+  });
+}
+
 function mapProfile(user, { includeMedia = true } = {}) {
+  const firstName = user.personalInfo?.firstName || '';
+  const lastName = user.personalInfo?.lastName || '';
+  const fullName = [firstName, lastName].filter(Boolean).join(' ').trim();
   const mainPhoto = sanitizeImageReference(
     user.photos?.find((photo) => photo.isMain)?.url || user.personalInfo?.profilePic,
     { allowDataUri: includeMedia }
@@ -199,15 +226,15 @@ function mapProfile(user, { includeMedia = true } = {}) {
     _id: user._id,
     id: user._id,
     profileType: user.profileType,
-    name: user.name,
-    age: user.age || null,
+    name: user.name || fullName || 'User',
+    age: user.age ?? user.personalInfo?.age ?? null,
     profilePic: mainPhoto || null,
     coverPhoto: coverPhoto || null,
-    tagline: user.tagline || 'Building a meaningful future through shared values.',
-    location: user.location || 'Sri Lanka',
+    tagline: user.tagline || user.personalInfo?.tagline || 'Building a meaningful future through shared values.',
+    location: user.location || user.personalInfo?.location || 'Sri Lanka',
     completion: getProfileCompletion(user),
     status: 'Online Now',
-    bio: user.bio || '',
+    bio: user.bio || user.personalInfo?.bio || '',
     birthDate: user.birthData?.dateOfBirth ? new Date(user.birthData.dateOfBirth).toISOString().split('T')[0] : '',
     birthTime: user.birthData?.knownBirthTime === false ? '' : user.birthData?.timeOfBirth || '',
     birthPlace: user.birthData?.placeOfBirth?.city || '',
@@ -229,8 +256,8 @@ function mapProfile(user, { includeMedia = true } = {}) {
     education: user.lifestyle?.educationLevel || '',
     occupation: user.lifestyle?.professionType || '',
     religion: user.lifestyle?.religion || '',
-    ethnicity: user.ethnicity || '',
-    height: user.height || '',
+    ethnicity: user.ethnicity || user.personalInfo?.ethnicity || '',
+    height: user.height || user.personalInfo?.height || '',
     hobbies: user.lifestyle?.hobbies || [],
     diet: user.lifestyle?.diet || 'Non-veg',
     smoking: user.lifestyle?.smoking || 'Never',
@@ -238,14 +265,14 @@ function mapProfile(user, { includeMedia = true } = {}) {
     personalInfo: {
       firstName: user.personalInfo?.firstName || 'Not provided',
       lastName: user.personalInfo?.lastName || 'Not provided',
-      phone: user.phone || 'Not provided',
-      age: user.age || 'Not provided',
-      gender: user.gender || 'Not provided',
-      height: user.height || 'Not provided',
+      phone: user.phone || user.personalInfo?.phone || 'Not provided',
+      age: user.age ?? user.personalInfo?.age ?? 'Not provided',
+      gender: user.gender || user.personalInfo?.gender || 'Not provided',
+      height: user.height || user.personalInfo?.height || 'Not provided',
       education: user.lifestyle?.educationLevel || 'Not provided',
       occupation: user.lifestyle?.professionType || 'Not provided',
       religion: user.lifestyle?.religion || 'Not provided',
-      ethnicity: user.ethnicity || 'Not provided',
+      ethnicity: user.ethnicity || user.personalInfo?.ethnicity || 'Not provided',
       languages,
     },
     personality: [
@@ -271,6 +298,9 @@ function mapProfile(user, { includeMedia = true } = {}) {
         fullMark: 100,
       },
     ],
+    personalityAnswers: Array.isArray(user.personalityAnswers) && user.personalityAnswers.length === 10
+      ? user.personalityAnswers
+      : new Array(10).fill(3),
     astrology: {
       birthDate: formatDate(user.birthData?.dateOfBirth) || 'Not provided',
       birthTime: user.birthData?.knownBirthTime === false ? 'Unknown' : user.birthData?.timeOfBirth || 'Not provided',
@@ -279,9 +309,10 @@ function mapProfile(user, { includeMedia = true } = {}) {
       nakshatra: user.horoscopeData?.nakshatra || 'Not provided',
       ascendant: user.horoscopeData?.ascendant || 'Not provided',
       sunSign: user.horoscopeData?.zodiacSign || 'Not provided',
-      luckyColors: [],
-      auspiciousDays: [],
-      favorablePartners: [],
+      luckyColors: Array.isArray(user.horoscopeData?.luckyColors) ? user.horoscopeData.luckyColors : [],
+      auspiciousDays: Array.isArray(user.horoscopeData?.auspiciousDays) ? user.horoscopeData.auspiciousDays : [],
+      favorablePartners: Array.isArray(user.horoscopeData?.favorablePartners) ? user.horoscopeData.favorablePartners : [],
+      profileFacts: Array.isArray(user.horoscopeData?.profileFacts) ? user.horoscopeData.profileFacts : [],
     },
     lifestyle: {
       hobbies,
@@ -415,6 +446,25 @@ export const updateProfile = asyncHandler(async (req, res) => {
     updates['lifestyle.hobbies'] = normalizeStringArray(incomingHobbies);
   }
 
+  const personalityBody = body.personality && typeof body.personality === 'object' ? body.personality : null;
+  if (personalityBody) {
+    const personalityKeys = ['openness', 'conscientiousness', 'extraversion', 'agreeableness', 'neuroticism'];
+
+    for (const key of personalityKeys) {
+      if (personalityBody[key] !== undefined) {
+        const normalized = normalizePersonalityValue(personalityBody[key]);
+        if (normalized !== undefined) {
+          updates[`personality.${key}`] = normalized;
+        }
+      }
+    }
+  }
+
+  const incomingPersonalityAnswers = normalizePersonalityAnswers(body.personalityAnswers);
+  if (incomingPersonalityAnswers) {
+    updates.personalityAnswers = incomingPersonalityAnswers;
+  }
+
   if (Object.keys(privacyBody).length > 0) {
     const privacyMap = {
       showLastSeen: 'privacySettings.showLastSeen',
@@ -431,9 +481,11 @@ export const updateProfile = asyncHandler(async (req, res) => {
     }
   }
 
-  const birthFieldsProvided = ['birthDate', 'birthTime', 'birthPlace', 'knownBirthTime'].some((key) =>
-    pickDefined(body[key], astrologyBody[key]) !== undefined
-  );
+  // Only enter birth-update branch when a birth date is explicitly and non-emptily supplied.
+  // Sending knownBirthTime=true or birthTime='' (which the profile payload always does) must
+  // NOT trigger this path; only an intentional birthDate edit should.
+  const explicitBirthDate = String(pickDefined(body.birthDate, astrologyBody.birthDate) || '').trim();
+  const birthFieldsProvided = explicitBirthDate !== '';
 
   if (birthFieldsProvided) {
     const birthDate = String(
@@ -756,19 +808,76 @@ export const removeGalleryPhoto = asyncHandler(async (req, res) => {
 
 export const deleteAccount = asyncHandler(async (req, res) => {
   const userId = req.user._id;
+  const user = await User.findById(userId).lean({ virtuals: true });
 
-  // Delete the user and all associated data
+  if (!user) {
+    throw new ApiError(404, 'User profile not found');
+  }
+
+  const userIdString = String(userId);
+  const participantConversations = await Conversation.find({ participants: userId }).select('_id').lean();
+  const conversationIds = participantConversations.map((conversation) => conversation._id);
+
+  // Remove user-owned/linked records from all first-party collections.
+  await Promise.all([
+    conversationIds.length
+      ? Message.deleteMany({ conversationId: { $in: conversationIds } })
+      : Promise.resolve(),
+    Message.deleteMany({ $or: [{ senderId: userId }, { receiverId: userId }] }),
+    Conversation.deleteMany({ participants: userId }),
+    Match.deleteMany({ $or: [{ userAId: userId }, { userBId: userId }] }),
+    MatchInterest.deleteMany({ $or: [{ fromUser: userId }, { toUser: userId }] }),
+    Horoscope.deleteMany({ userId }),
+    WeddingProject.updateMany({ coupleUserIds: userId }, { $pull: { coupleUserIds: userId } }),
+    WeddingProject.deleteMany({ coupleUserIds: { $size: 0 } }),
+    Vendor.deleteMany({ userId }),
+    AuthOtp.deleteMany({
+      $or: [{ identifier: user.email }, { identifier: normalizePhone(user.phone || '') }, { identifier: userIdString }],
+    }),
+  ]);
+
+  // Finally delete the account record itself.
   await User.findByIdAndDelete(userId);
-
-  // Note: In a production app, you might want to:
-  // - Soft delete instead of hard delete
-  // - Delete related data (messages, matches, etc.)
-  // - Send confirmation email
-  // - Log the deletion for compliance
 
   res.status(200).json({
     success: true,
     message: 'Account deleted successfully',
+  });
+});
+
+export const exportUserData = asyncHandler(async (req, res) => {
+  const userId = req.user._id;
+
+  const user = await User.findById(userId).lean({ virtuals: true });
+  if (!user) {
+    throw new ApiError(404, 'User profile not found');
+  }
+
+  const conversations = await Conversation.find({ participants: userId }).lean();
+  const conversationIds = conversations.map((conversation) => conversation._id);
+
+  const [messages, matches, matchInterests, horoscope, vendor, weddingProjects] = await Promise.all([
+    conversationIds.length ? Message.find({ conversationId: { $in: conversationIds } }).lean() : [],
+    Match.find({ $or: [{ userAId: userId }, { userBId: userId }] }).lean(),
+    MatchInterest.find({ $or: [{ fromUser: userId }, { toUser: userId }] }).lean(),
+    Horoscope.findOne({ userId }).lean(),
+    Vendor.findOne({ userId }).lean(),
+    WeddingProject.find({ coupleUserIds: userId }).lean(),
+  ]);
+
+  res.status(200).json({
+    success: true,
+    exportedAt: new Date().toISOString(),
+    data: {
+      user,
+      conversations,
+      messages,
+      matches,
+      matchInterests,
+      horoscope,
+      vendor,
+      weddingProjects,
+    },
   });
 });
 
@@ -783,5 +892,6 @@ export default {
   removeGalleryPhoto,
   requestContactVerification,
   confirmContactVerification,
+  exportUserData,
   deleteAccount,
 };

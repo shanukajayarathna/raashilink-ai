@@ -112,6 +112,36 @@ const DAY_LORDS = {
 const HORA_SEQUENCE = ['Sun', 'Venus', 'Mercury', 'Moon', 'Saturn', 'Jupiter', 'Mars'];
 const BENEFIC_PLANETS = new Set(['Jupiter', 'Venus', 'Mercury', 'Moon']);
 
+const LUCKY_COLORS_BY_SIGN = {
+  Aries: ['#E53935', '#FF7043'],
+  Taurus: ['#43A047', '#8D6E63'],
+  Gemini: ['#FDD835', '#29B6F6'],
+  Cancer: ['#90CAF9', '#F8BBD0'],
+  Leo: ['#FB8C00', '#FDD835'],
+  Virgo: ['#66BB6A', '#26A69A'],
+  Libra: ['#EC407A', '#AB47BC'],
+  Scorpio: ['#8E24AA', '#D32F2F'],
+  Sagittarius: ['#1E88E5', '#FFA726'],
+  Capricorn: ['#546E7A', '#8D6E63'],
+  Aquarius: ['#26C6DA', '#5C6BC0'],
+  Pisces: ['#42A5F5', '#7E57C2'],
+};
+
+const FAVORABLE_PARTNERS_BY_SIGN = {
+  Aries: ['Leo', 'Sagittarius', 'Gemini'],
+  Taurus: ['Virgo', 'Capricorn', 'Cancer'],
+  Gemini: ['Libra', 'Aquarius', 'Aries'],
+  Cancer: ['Scorpio', 'Pisces', 'Taurus'],
+  Leo: ['Aries', 'Sagittarius', 'Libra'],
+  Virgo: ['Taurus', 'Capricorn', 'Cancer'],
+  Libra: ['Gemini', 'Aquarius', 'Leo'],
+  Scorpio: ['Cancer', 'Pisces', 'Virgo'],
+  Sagittarius: ['Aries', 'Leo', 'Aquarius'],
+  Capricorn: ['Taurus', 'Virgo', 'Scorpio'],
+  Aquarius: ['Gemini', 'Libra', 'Sagittarius'],
+  Pisces: ['Cancer', 'Scorpio', 'Capricorn'],
+};
+
 function formatDegree(value = 0) {
   const numeric = Number(value || 0);
   if (!Number.isFinite(numeric)) {
@@ -380,6 +410,12 @@ function buildChartData(user) {
     })),
     houses: buildHouseDetails(horoscopeData.ascendant, positionsSource),
     insights: buildReadingHighlights(horoscopeData, positionsSource, accuracyMeta),
+    highlights: {
+      luckyColors: Array.isArray(horoscopeData.luckyColors) ? horoscopeData.luckyColors : [],
+      auspiciousDays: Array.isArray(horoscopeData.auspiciousDays) ? horoscopeData.auspiciousDays : [],
+      favorablePartners: Array.isArray(horoscopeData.favorablePartners) ? horoscopeData.favorablePartners : [],
+      profileFacts: Array.isArray(horoscopeData.profileFacts) ? horoscopeData.profileFacts : [],
+    },
     meta: {
       ...accuracyMeta,
       userId: user?._id ? String(user._id) : null,
@@ -394,6 +430,31 @@ function buildChartData(user) {
       calculationVersion: Number(horoscopeData.calculationVersion || 1),
       generatedAt: horoscopeData.generatedAt || null,
     },
+  };
+}
+
+function deriveProfileAstrologyDetails(horoscopeData = {}) {
+  const sign = horoscopeData.moonSign || horoscopeData.rashi || horoscopeData.zodiacSign || '';
+  const luckyColors = LUCKY_COLORS_BY_SIGN[sign] || ['#8B1A2E', '#C9A84C'];
+  const auspiciousDays = [horoscopeData.vedicDay || 'Thursday', 'Monday'].filter(Boolean).slice(0, 2);
+  const favorablePartners = FAVORABLE_PARTNERS_BY_SIGN[sign] || [];
+
+  const profileFacts = [
+    sign ? `Moon influence in ${sign} points to ${MOON_TRAITS[sign] || 'a sensitive and adaptive emotional nature'}.` : '',
+    horoscopeData.nakshatra
+      ? `${horoscopeData.nakshatra}${horoscopeData.nakshatraPada ? ` (Pada ${horoscopeData.nakshatraPada})` : ''} shapes your instinctive decision-making style.`
+      : '',
+    horoscopeData.ascendant
+      ? `Ascendant in ${horoscopeData.ascendant} suggests ${ASCENDANT_TRAITS[horoscopeData.ascendant] || 'a distinctive life approach'}.`
+      : '',
+    horoscopeData.tithi ? `Birth tithi ${horoscopeData.tithi} highlights your personal rhythm and timing.` : '',
+  ].filter(Boolean).slice(0, 4);
+
+  return {
+    luckyColors,
+    auspiciousDays,
+    favorablePartners,
+    profileFacts,
   };
 }
 
@@ -421,7 +482,7 @@ function buildBirthPayload(user) {
   };
 }
 
-async function generateAndPersistHoroscope(user, { force = false } = {}) {
+export async function generateAndPersistHoroscope(user, { force = false } = {}) {
   if (!user) {
     throw new ApiError(404, 'User not found');
   }
@@ -496,6 +557,8 @@ async function generateAndPersistHoroscope(user, { force = false } = {}) {
     });
   });
 
+  const profileDetails = deriveProfileAstrologyDetails(result);
+
   const horoscopeData = {
     zodiacSign: result.zodiacSign,
     moonSign: result.moonSign || result.rashi,
@@ -514,6 +577,10 @@ async function generateAndPersistHoroscope(user, { force = false } = {}) {
     timezone: payload.timezone || 'Asia/Colombo',
     calculationVersion: 3,
     gunaScore: 0,
+    luckyColors: profileDetails.luckyColors,
+    auspiciousDays: profileDetails.auspiciousDays,
+    favorablePartners: profileDetails.favorablePartners,
+    profileFacts: profileDetails.profileFacts,
     generatedAt: new Date(),
   };
 

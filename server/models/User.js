@@ -118,6 +118,10 @@ const horoscopeDataSchema = new Schema(
     calculationVersion: { type: Number, default: 3 },
     gunaScore: { type: Number, min: 0, max: 36, default: 0 },
     planetaryPositions: { type: [planetaryPositionSchema], default: [] },
+    luckyColors: { type: [String], default: [] },
+    auspiciousDays: { type: [String], default: [] },
+    favorablePartners: { type: [String], default: [] },
+    profileFacts: { type: [String], default: [] },
     generatedAt: { type: Date },
   },
   { _id: false }
@@ -235,6 +239,17 @@ const userSchema = new Schema(
     birthData: { type: birthDataSchema },
     horoscopeData: { type: horoscopeDataSchema, default: () => ({}) },
     personality: { type: bigFiveSchema, default: () => ({}) },
+    personalityAnswers: {
+      type: [Number],
+      default: () => new Array(10).fill(3),
+      validate: {
+        validator: (value) =>
+          Array.isArray(value) &&
+          value.length === 10 &&
+          value.every((item) => Number.isInteger(item) && item >= 1 && item <= 5),
+        message: 'Personality answers must include exactly 10 values between 1 and 5',
+      },
+    },
     lifestyle: { type: lifestyleSchema, default: () => ({}) },
     preferences: { type: preferencesSchema, default: () => ({}) },
     privacySettings: { type: privacySettingsSchema, default: () => ({}) },
