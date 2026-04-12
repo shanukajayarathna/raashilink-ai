@@ -5,7 +5,7 @@ import { Avatar, useMediaQuery, useTheme } from '@mui/material';
 import { RootState } from '@/app/store/store';
 import { logout } from '@/features/auth/store/authSlice';
 import { 
-  Menu, X, Bell, User, LogOut, Settings, 
+  Menu, X, Bell, User, LogOut, 
   Heart, Calendar, Calculator, MessageSquare, 
   LayoutDashboard, Star, MapPin, Search
 } from 'lucide-react';
@@ -137,9 +137,6 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
                     </div>
                     <Link to="/profile" onClick={() => setIsUserMenuOpen(false)} className="flex items-center gap-3 px-4 py-2 text-sm text-textSecondary hover:bg-primary/5 hover:text-primary transition-colors">
                       <User className="w-4 h-4" /> Profile
-                    </Link>
-                    <Link to="/settings" onClick={() => setIsUserMenuOpen(false)} className="flex items-center gap-3 px-4 py-2 text-sm text-textSecondary hover:bg-primary/5 hover:text-primary transition-colors">
-                      <Settings className="w-4 h-4" /> Settings
                     </Link>
                     <button 
                       onClick={handleLogout}

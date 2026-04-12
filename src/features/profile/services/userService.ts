@@ -57,6 +57,15 @@ const userService = {
     return response.data;
   },
 
+  uploadGalleryPhoto: async (photoData: FormData) => {
+    const response = await axiosInstance.post('/users/profile/photos', photoData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  },
+
   /**
    * Upload cover photo for the current user.
    * @param {File} coverPhoto - The cover photo file to upload.
@@ -75,6 +84,11 @@ const userService = {
 
   removePhoto: async () => {
     const response = await axiosInstance.delete('/users/profile/photo');
+    return response.data;
+  },
+
+  removeGalleryPhoto: async (photoId: number) => {
+    const response = await axiosInstance.delete(`/users/profile/photos/${photoId}`);
     return response.data;
   },
 

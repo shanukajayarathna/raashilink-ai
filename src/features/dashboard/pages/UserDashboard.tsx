@@ -35,7 +35,6 @@ import {
   CalendarToday as CalendarMonth, 
   LocationOn, 
   TrendingUp, 
-  ChatBubbleOutline as MessageSquare, 
   Store as Storefront, 
   AccessTime, 
   InfoOutlined,
@@ -646,61 +645,6 @@ const WeddingProjectStatus = ({ status }: { status: any }) => {
   );
 };
 
-const ChatbotQuickAccess = ({ chatbot }: { chatbot: any }) => {
-  return (
-    <MotionPaper
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5, delay: 0.4 }}
-      sx={{ p: 3, borderRadius: '24px', height: '100%', bgcolor: COLORS.primary, color: 'white', position: 'relative', overflow: 'hidden' }}
-    >
-      <Box sx={{ position: 'relative', zIndex: 1 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-          <Badge 
-            overlap="circular" 
-            anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-            variant="dot"
-            sx={{ '& .MuiBadge-badge': { bgcolor: '#4CAF50', border: '2px solid #8B1A2E' } }}
-          >
-            <Avatar sx={{ bgcolor: COLORS.secondary, color: COLORS.primary }}>
-              <MessageSquare />
-            </Avatar>
-          </Badge>
-          <Box>
-            <Typography variant="subtitle1" sx={{ fontWeight: 700, lineHeight: 1.2 }}>RaashiBot</Typography>
-            <Typography variant="caption" sx={{ opacity: 0.7 }}>Online</Typography>
-          </Box>
-        </Box>
-        
-        <Typography variant="body2" sx={{ opacity: 0.9, mb: 3, fontStyle: 'italic' }}>
-          "{chatbot.lastMessage}"
-        </Typography>
-        
-        <motion.div
-          animate={{ scale: [1, 1.05, 1] }}
-          transition={{ duration: 2, repeat: Infinity }}
-        >
-          <Button 
-            fullWidth 
-            variant="contained" 
-            sx={{ 
-              bgcolor: COLORS.secondary, 
-              color: COLORS.primary, 
-              fontWeight: 800,
-              borderRadius: '12px',
-              '&:hover': { bgcolor: '#B89740' }
-            }}
-          >
-            Chat with RaashiBot
-          </Button>
-        </motion.div>
-      </Box>
-      
-      <MessageSquare sx={{ position: 'absolute', right: -20, bottom: -20, fontSize: 120, opacity: 0.05 }} />
-    </MotionPaper>
-  );
-};
-
 const VendorRecommendations = ({ vendors, loading }: { vendors: any[]; loading?: boolean }) => {
   if (loading) {
     return (
@@ -1188,11 +1132,6 @@ export default function UserDashboard() {
         </Grid>
         <Grid size={{ xs: 12, md: 4 }}>
           <VendorRecommendations vendors={data.vendors} loading={widgetLoading} />
-        </Grid>
-
-        {/* Row 3 */}
-        <Grid size={{ xs: 12, md: 4 }}>
-          <ChatbotQuickAccess chatbot={data.chatbot} />
         </Grid>
       </Grid>
 

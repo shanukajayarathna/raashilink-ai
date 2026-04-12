@@ -138,8 +138,12 @@ const lifestyleSchema = new Schema(
   {
     religion: { type: String, trim: true, maxlength: 80 },
     diet: { type: String, trim: true, maxlength: 60 },
+    exercise: { type: String, trim: true, maxlength: 60 },
     smoking: { type: String, trim: true, maxlength: 60 },
     drinking: { type: String, trim: true, maxlength: 60 },
+    careerAmbitions: { type: String, trim: true, maxlength: 500 },
+    familyPlans: { type: String, trim: true, maxlength: 500 },
+    socialPreference: { type: Number, min: 0, max: 100 },
     preferredLocation: { type: String, trim: true, maxlength: 120 },
     familyValues: { type: Number, min: 0, max: 1, default: 0.5 },
     educationLevel: { type: String, trim: true, maxlength: 120 },

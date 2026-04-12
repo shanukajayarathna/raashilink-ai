@@ -89,9 +89,24 @@ async function verifyOtp({ identifier, purpose, otp }) {
 function getProfileCompletion(user) {
   const checks = [
     Boolean(user.personalInfo?.profilePic),
+    Boolean(user.personalInfo?.firstName),
+    Boolean(user.personalInfo?.lastName),
+    Boolean(user.personalInfo?.location),
     Boolean(user.personalInfo?.bio),
+    Boolean(user.personalInfo?.tagline),
+    Boolean(user.personalInfo?.height),
+    Boolean(user.personalInfo?.ethnicity),
     Boolean(user.birthData?.dateOfBirth),
+    Boolean(user.birthData?.placeOfBirth?.city),
     Boolean(user.horoscopeData?.nakshatra || user.horoscopeData?.rashi || user.horoscopeData?.moonSign),
+    Boolean(user.lifestyle?.educationLevel),
+    Boolean(user.lifestyle?.professionType),
+    Boolean(user.lifestyle?.religion),
+    Boolean(user.lifestyle?.diet),
+    Boolean(user.lifestyle?.smoking),
+    Boolean(user.lifestyle?.drinking),
+    Array.isArray(user.lifestyle?.languages) && user.lifestyle.languages.length > 0,
+    Array.isArray(user.lifestyle?.hobbies) && user.lifestyle.hobbies.length > 0,
     Boolean(user.verification?.emailVerified),
     Boolean(user.verification?.phoneVerified),
   ];
@@ -144,6 +159,29 @@ function sanitizeImageReference(value, { allowDataUri = true } = {}) {
   return normalized;
 }
 
+function normalizeStringArray(value) {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .map((item) => {
+      if (typeof item === 'string') return item.trim();
+      if (item && typeof item === 'object' && typeof item.label === 'string') return item.label.trim();
+      return '';
+    })
+    .filter(Boolean);
+}
+
+function pickDefined(...values) {
+  return values.find((value) => value !== undefined);
+}
+
+function parseOptionalNumber(value) {
+  if (value === undefined || value === null || value === '') return undefined;
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
 function mapProfile(user, { includeMedia = true } = {}) {
   const mainPhoto = sanitizeImageReference(
     user.photos?.find((photo) => photo.isMain)?.url || user.personalInfo?.profilePic,
@@ -153,6 +191,9 @@ function mapProfile(user, { includeMedia = true } = {}) {
     allowDataUri: includeMedia,
   });
   const personality = user.personality || {};
+  const languages = normalizeStringArray(user.lifestyle?.languages);
+  const hobbies = normalizeStringArray(user.lifestyle?.hobbies);
+  const privacy = user.privacySettings || user.privacy || {};
 
   return {
     _id: user._id,
@@ -205,7 +246,7 @@ function mapProfile(user, { includeMedia = true } = {}) {
       occupation: user.lifestyle?.professionType || 'Not provided',
       religion: user.lifestyle?.religion || 'Not provided',
       ethnicity: user.ethnicity || 'Not provided',
-      languages: user.lifestyle?.languages || ['Not provided'],
+      languages,
     },
     personality: [
       { subject: 'Openness', A: Math.round((personality.openness ?? 0.5) * 100), fullMark: 100 },
@@ -232,25 +273,25 @@ function mapProfile(user, { includeMedia = true } = {}) {
     ],
     astrology: {
       birthDate: formatDate(user.birthData?.dateOfBirth) || 'Not provided',
-      birthTime: user.birthData?.timeOfBirth || 'Not provided',
+      birthTime: user.birthData?.knownBirthTime === false ? 'Unknown' : user.birthData?.timeOfBirth || 'Not provided',
       birthPlace: user.birthData?.placeOfBirth?.city || user.location || 'Not provided',
       rashi: user.horoscopeData?.rashi || user.horoscopeData?.moonSign || 'Not provided',
       nakshatra: user.horoscopeData?.nakshatra || 'Not provided',
       ascendant: user.horoscopeData?.ascendant || 'Not provided',
       sunSign: user.horoscopeData?.zodiacSign || 'Not provided',
-      luckyColors: ['#8B1A2E', '#C9A84C'],
-      auspiciousDays: ['Tuesday', 'Thursday'],
-      favorablePartners: ['Aries', 'Leo', 'Cancer'],
+      luckyColors: [],
+      auspiciousDays: [],
+      favorablePartners: [],
     },
     lifestyle: {
-      hobbies: user.lifestyle?.hobbies || ['Not provided'],
-      exercise: 'Regularly',
+      hobbies,
+      exercise: user.lifestyle?.exercise || 'Not provided',
       diet: user.lifestyle?.diet || 'Not provided',
       smoking: user.lifestyle?.smoking || 'Not provided',
       drinking: user.lifestyle?.drinking || 'Not provided',
-      careerAmbitions: user.lifestyle?.professionType || 'Not provided',
-      familyPlans: 'Looking for a serious long-term relationship',
-      socialPreference: Math.round((user.personality?.extraversion ?? 0.5) * 100),
+      careerAmbitions: user.lifestyle?.careerAmbitions || user.lifestyle?.professionType || 'Not provided',
+      familyPlans: user.lifestyle?.familyPlans || 'Not provided',
+      socialPreference: user.lifestyle?.socialPreference ?? Math.round((user.personality?.extraversion ?? 0.5) * 100),
     },
     photos: includeMedia
       ? user.photos?.length > 0
@@ -268,11 +309,11 @@ function mapProfile(user, { includeMedia = true } = {}) {
         ? [{ id: 1, url: mainPhoto, isMain: true }]
         : [],
     privacy: {
-      showLastSeen: user.privacy?.showLastSeen ?? true,
-      showHoroscope: user.privacy?.showHoroscope ?? true,
-      showPhone: user.privacy?.showPhone ?? false,
-      whoCanMessage: user.privacy?.whoCanMessage || 'Matches Only',
-      whoCanSeePhotos: user.privacy?.whoCanSeePhotos || 'Matches Only',
+      showLastSeen: privacy.showLastSeen ?? true,
+      showHoroscope: privacy.showHoroscope ?? true,
+      showPhone: privacy.showPhone ?? false,
+      whoCanMessage: privacy.whoCanMessage || 'Matches Only',
+      whoCanSeePhotos: privacy.whoCanSeePhotos || 'Matches Only',
     },
     verification: {
       email: user.email,
@@ -318,9 +359,14 @@ export const updateProfile = asyncHandler(async (req, res) => {
 
   const updates = {};
   const body = req.body ?? {};
+  const personalInfoBody = body.personalInfo && typeof body.personalInfo === 'object' ? body.personalInfo : {};
+  const lifestyleBody = body.lifestyle && typeof body.lifestyle === 'object' ? body.lifestyle : {};
+  const privacyBody = body.privacy && typeof body.privacy === 'object' ? body.privacy : {};
+  const astrologyBody = body.astrology && typeof body.astrology === 'object' ? body.astrology : {};
 
-  if (body.name) {
-    const [firstName, ...rest] = String(body.name).trim().split(/\s+/);
+  const incomingName = pickDefined(body.name, personalInfoBody.name);
+  if (incomingName) {
+    const [firstName, ...rest] = String(incomingName).trim().split(/\s+/);
     updates['personalInfo.firstName'] = firstName || currentUser.personalInfo?.firstName || '';
     updates['personalInfo.lastName'] = rest.join(' ') || currentUser.personalInfo?.lastName || '';
   }
@@ -329,6 +375,7 @@ export const updateProfile = asyncHandler(async (req, res) => {
     tagline: 'personalInfo.tagline',
     bio: 'personalInfo.bio',
     location: 'personalInfo.location',
+    age: 'personalInfo.age',
     ethnicity: 'personalInfo.ethnicity',
     height: 'personalInfo.height',
     coverPhoto: 'personalInfo.coverPhoto',
@@ -336,21 +383,39 @@ export const updateProfile = asyncHandler(async (req, res) => {
     occupation: 'lifestyle.professionType',
     religion: 'lifestyle.religion',
     diet: 'lifestyle.diet',
+    exercise: 'lifestyle.exercise',
     smoking: 'lifestyle.smoking',
     drinking: 'lifestyle.drinking',
+    careerAmbitions: 'lifestyle.careerAmbitions',
+    familyPlans: 'lifestyle.familyPlans',
+    socialPreference: 'lifestyle.socialPreference',
   };
 
   for (const [incomingKey, targetPath] of Object.entries(fieldMap)) {
-    if (body[incomingKey] !== undefined) {
-      updates[targetPath] = body[incomingKey];
+    const incomingValue = pickDefined(
+      body[incomingKey],
+      personalInfoBody[incomingKey],
+      lifestyleBody[incomingKey]
+    );
+
+    if (incomingValue !== undefined) {
+      updates[targetPath] = incomingKey === 'age' || incomingKey === 'socialPreference'
+        ? parseOptionalNumber(incomingValue)
+        : incomingValue;
     }
   }
 
-  if (Array.isArray(body.hobbies)) {
-    updates['lifestyle.hobbies'] = body.hobbies.filter(Boolean);
+  const incomingLanguages = pickDefined(body.languages, personalInfoBody.languages, lifestyleBody.languages);
+  if (incomingLanguages !== undefined) {
+    updates['lifestyle.languages'] = normalizeStringArray(incomingLanguages);
   }
 
-  if (body.privacy && typeof body.privacy === 'object') {
+  const incomingHobbies = pickDefined(body.hobbies, lifestyleBody.hobbies);
+  if (incomingHobbies !== undefined) {
+    updates['lifestyle.hobbies'] = normalizeStringArray(incomingHobbies);
+  }
+
+  if (Object.keys(privacyBody).length > 0) {
     const privacyMap = {
       showLastSeen: 'privacySettings.showLastSeen',
       showHoroscope: 'privacySettings.showHoroscope',
@@ -360,36 +425,39 @@ export const updateProfile = asyncHandler(async (req, res) => {
     };
 
     for (const [incomingKey, targetPath] of Object.entries(privacyMap)) {
-      if (body.privacy[incomingKey] !== undefined) {
-        updates[targetPath] = body.privacy[incomingKey];
+      if (privacyBody[incomingKey] !== undefined) {
+        updates[targetPath] = privacyBody[incomingKey];
       }
     }
   }
 
-  const birthFieldsProvided = ['birthDate', 'birthTime', 'birthPlace', 'knownBirthTime'].some(
-    (key) => body[key] !== undefined
+  const birthFieldsProvided = ['birthDate', 'birthTime', 'birthPlace', 'knownBirthTime'].some((key) =>
+    pickDefined(body[key], astrologyBody[key]) !== undefined
   );
 
   if (birthFieldsProvided) {
     const birthDate = String(
-      body.birthDate !== undefined
-        ? body.birthDate
+      pickDefined(body.birthDate, astrologyBody.birthDate) !== undefined
+        ? pickDefined(body.birthDate, astrologyBody.birthDate)
         : currentUser.birthData?.dateOfBirth
           ? new Date(currentUser.birthData.dateOfBirth).toISOString().split('T')[0]
           : ''
     ).trim();
     const birthPlace = String(
-      body.birthPlace !== undefined ? body.birthPlace : currentUser.birthData?.placeOfBirth?.city || ''
+      pickDefined(body.birthPlace, astrologyBody.birthPlace) !== undefined
+        ? pickDefined(body.birthPlace, astrologyBody.birthPlace)
+        : currentUser.birthData?.placeOfBirth?.city || ''
     ).trim();
     const knowsBirthTime =
-      body.knownBirthTime !== undefined
-        ? body.knownBirthTime === true || body.knownBirthTime === 'true'
-        : body.birthTime !== undefined
-          ? Boolean(String(body.birthTime || '').trim())
+      pickDefined(body.knownBirthTime, astrologyBody.knownBirthTime) !== undefined
+        ? pickDefined(body.knownBirthTime, astrologyBody.knownBirthTime) === true ||
+          pickDefined(body.knownBirthTime, astrologyBody.knownBirthTime) === 'true'
+        : pickDefined(body.birthTime, astrologyBody.birthTime) !== undefined
+          ? Boolean(String(pickDefined(body.birthTime, astrologyBody.birthTime) || '').trim())
           : currentUser.birthData?.knownBirthTime !== false;
     const providedBirthTime =
-      body.birthTime !== undefined
-        ? String(body.birthTime || '').trim()
+      pickDefined(body.birthTime, astrologyBody.birthTime) !== undefined
+        ? String(pickDefined(body.birthTime, astrologyBody.birthTime) || '').trim()
         : currentUser.birthData?.knownBirthTime === false
           ? ''
           : currentUser.birthData?.timeOfBirth || '';
@@ -608,6 +676,84 @@ export const removeProfilePhoto = asyncHandler(async (req, res) => {
   });
 });
 
+export const uploadGalleryPhoto = asyncHandler(async (req, res) => {
+  if (!req.file) {
+    throw new ApiError(400, 'No gallery photo file provided');
+  }
+
+  const user = await User.findById(req.user._id);
+  if (!user) {
+    throw new ApiError(404, 'User profile not found');
+  }
+
+  const photoUrl = fileToDataUri(req.file);
+  const photos = (user.personalInfo?.photos || []).filter((photo) => photo?.url);
+
+  const hasMain = photos.some((photo) => photo.isMain);
+  const normalizedPhotos = [
+    ...photos,
+    { url: photoUrl, isMain: !hasMain },
+  ].slice(0, 6);
+
+  const mainPhoto = normalizedPhotos.find((photo) => photo.isMain) || normalizedPhotos[0] || null;
+  const finalPhotos = normalizedPhotos.map((photo, index) => ({
+    url: photo.url,
+    isMain: index === 0 ? photo.url === mainPhoto?.url : photo.isMain,
+  }));
+
+  user.set('personalInfo.photos', finalPhotos);
+  user.set('personalInfo.profilePic', mainPhoto?.url || undefined);
+  await user.save({ validateModifiedOnly: true });
+
+  const updated = await User.findById(req.user._id).lean({ virtuals: true });
+
+  res.status(200).json({
+    success: true,
+    ...(mapProfile(updated) || {}),
+    message: 'Gallery photo uploaded successfully',
+  });
+});
+
+export const removeGalleryPhoto = asyncHandler(async (req, res) => {
+  const photoId = Number(req.params.photoId);
+  if (!Number.isInteger(photoId) || photoId < 1) {
+    throw new ApiError(400, 'Invalid photo id');
+  }
+
+  const user = await User.findById(req.user._id);
+  if (!user) {
+    throw new ApiError(404, 'User profile not found');
+  }
+
+  const photos = (user.personalInfo?.photos || []).filter((photo) => photo?.url);
+  if (!photos.length || photoId > photos.length) {
+    throw new ApiError(404, 'Photo not found');
+  }
+
+  const targetPhoto = photos[photoId - 1];
+  const remaining = photos.filter((_photo, index) => index !== photoId - 1);
+  let normalizedPhotos = remaining;
+
+  if (targetPhoto?.isMain && remaining.length) {
+    normalizedPhotos = [
+      { url: remaining[0].url, isMain: true },
+      ...remaining.slice(1).map((photo) => ({ url: photo.url, isMain: false })),
+    ];
+  }
+
+  user.set('personalInfo.photos', normalizedPhotos);
+  user.set('personalInfo.profilePic', normalizedPhotos.find((photo) => photo.isMain)?.url || undefined);
+  await user.save({ validateModifiedOnly: true });
+
+  const updated = await User.findById(req.user._id).lean({ virtuals: true });
+
+  res.status(200).json({
+    success: true,
+    ...(mapProfile(updated) || {}),
+    message: 'Gallery photo removed successfully',
+  });
+});
+
 export const deleteAccount = asyncHandler(async (req, res) => {
   const userId = req.user._id;
 
@@ -633,6 +779,8 @@ export default {
   removeCoverPhoto,
   uploadProfilePhoto,
   removeProfilePhoto,
+  uploadGalleryPhoto,
+  removeGalleryPhoto,
   requestContactVerification,
   confirmContactVerification,
   deleteAccount,

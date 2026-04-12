@@ -43,9 +43,10 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
 import { RootState } from '@/app/store/store';
-import { logout } from '@/features/auth/store/authSlice';
+import { logout, updateUser } from '@/features/auth/store/authSlice';
 import { motion } from 'motion/react';
 import userService from '../services/userService';
+import { buildEditProfileFormData, buildProfileUpdatePayload } from '../utils/profileData';
 
 const COLORS = {
   primary: '#8B1A2E',
@@ -118,11 +119,10 @@ export default function EditProfile() {
       setLoading(true);
       try {
         const response = await userService.getProfile();
-        setFormData({
-          ...formData,
-          ...response,
-          privacy: { ...formData.privacy, ...response.privacy }
-        });
+        setFormData((prev) => ({
+          ...prev,
+          ...buildEditProfileFormData(response),
+        }));
       } catch (err) {
         console.error('Failed to fetch profile:', err);
         setError('Failed to load profile data. Please try again.');
@@ -176,7 +176,12 @@ export default function EditProfile() {
     setSaving(true);
     setError(null);
     try {
-      await userService.updateProfile(formData);
+      const response = await userService.updateProfile(buildProfileUpdatePayload(formData));
+      setFormData((prev) => ({
+        ...prev,
+        ...buildEditProfileFormData(response),
+      }));
+      dispatch(updateUser(response));
       setSuccess(true);
       setHasUnsavedChanges(false);
       setTimeout(() => navigate('/profile'), 1500);

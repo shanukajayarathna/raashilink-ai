@@ -8,6 +8,8 @@ import {
   removeCoverPhoto,
   uploadProfilePhoto,
   removeProfilePhoto,
+  uploadGalleryPhoto,
+  removeGalleryPhoto,
   requestContactVerification,
   confirmContactVerification,
   deleteAccount,
@@ -38,6 +40,8 @@ router.post('/profile/cover-photo', upload.single('coverPhoto'), uploadCoverPhot
 router.delete('/profile/cover-photo', removeCoverPhoto);
 router.post('/profile/photo', upload.single('photo'), uploadProfilePhoto);
 router.delete('/profile/photo', removeProfilePhoto);
+router.post('/profile/photos', upload.single('photo'), uploadGalleryPhoto);
+router.delete('/profile/photos/:photoId', removeGalleryPhoto);
 router.delete('/account', deleteAccount);
 router.post('/verification/request', requestContactVerification);
 router.post('/verification/confirm', confirmContactVerification);
