@@ -254,6 +254,7 @@ export function buildProfileUpdatePayload(source: any) {
     tagline: normalized.tagline,
     location: normalized.location,
     age: Number.isFinite(age) ? age : undefined,
+    gender: normalized.personalInfo.gender || undefined,
     ...birthPayload,
     height: normalized.personalInfo.height,
     education: normalized.personalInfo.education,
@@ -300,6 +301,7 @@ export function buildEditProfileFormData(profile: any) {
     familyPlans: normalized.lifestyle.familyPlans,
     socialPreference: normalized.lifestyle.socialPreference,
     privacy: normalized.privacy,
+    gender: normalized.personalInfo.gender,
   };
 }
 

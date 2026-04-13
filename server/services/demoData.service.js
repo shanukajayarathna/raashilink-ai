@@ -50,9 +50,10 @@ function mapHoroscopeFields(horoscopeValue) {
   };
 }
 
-const demoUsers = [
+const baseUsers = [
   {
     email: 'admin@raashilink.ai',
+    password: 'password123',
     role: 'admin',
     personalInfo: {
       firstName: 'Admin',
@@ -64,6 +65,7 @@ const demoUsers = [
   },
   {
     email: 'vendor@raashilink.ai',
+    password: 'password123',
     role: 'vendor',
     personalInfo: {
       firstName: 'Vendor',
@@ -81,20 +83,22 @@ const demoUsers = [
     },
   },
   {
-    email: 'user@raashilink.ai',
+    email: 'shanuka@gmail.com',
+    password: '11111111',
+    forcePasswordSync: true,
     role: 'user',
     personalInfo: {
       firstName: 'Shanuka',
-      lastName: 'Jayarathna',
+      lastName: 'Jayasinghe',
       phone: '+94770000003',
       age: 28,
       location: 'Colombo',
       gender: 'male',
-      tagline: 'Building the future with tradition and purpose.',
-      bio: 'Software engineer who values family, spiritual compatibility, and long-term commitment.',
+      tagline: 'Grounded values, modern mindset.',
+      bio: 'Product engineer looking for a serious relationship leading to marriage.',
       ethnicity: 'Sinhalese',
       height: "5'10\"",
-      photos: [{ url: 'https://picsum.photos/seed/shanuka/800/800', isMain: true }],
+      photos: [],
     },
     horoscope: horoscope('Colombo', new Date('1997-11-15'), '08:30', {
       nakshatra: 'Jyeshtha',
@@ -116,142 +120,227 @@ const demoUsers = [
       preferredLocation: 'Colombo',
       familyValues: 0.9,
       educationLevel: 'BSc Computer Science',
-      professionType: 'Technology',
-    },
-  },
-  {
-    email: 'anjali@raashilink.ai',
-    role: 'user',
-    personalInfo: {
-      firstName: 'Anjali',
-      lastName: 'Perera',
-      phone: '+94770000004',
-      age: 26,
-      location: 'Kandy',
-      gender: 'female',
-      tagline: 'Grounded, curious, and family-oriented.',
-      bio: 'Doctor who enjoys deep conversation, cultural traditions, and meaningful relationships.',
-      ethnicity: 'Sinhalese',
-      height: "5'5\"",
-      photos: [{ url: 'https://picsum.photos/seed/anjali/800/800', isMain: true }],
-    },
-    horoscope: horoscope('Kandy', new Date('1999-07-04'), '06:20', {
-      nakshatra: 'Pushya',
-      rashi: 'Cancer',
-      moonSign: 'Cancer',
-    }),
-    personality: {
-      openness: 0.76,
-      conscientiousness: 0.86,
-      extraversion: 0.58,
-      agreeableness: 0.88,
-      neuroticism: 0.28,
-    },
-    lifestyle: {
-      religion: 'Buddhist',
-      diet: 'Non-veg',
-      smoking: 'Never',
-      drinking: 'Never',
-      preferredLocation: 'Colombo',
-      familyValues: 0.93,
-      educationLevel: 'MBBS',
-      professionType: 'Healthcare',
-    },
-  },
-  {
-    email: 'dilshan@raashilink.ai',
-    role: 'user',
-    personalInfo: {
-      firstName: 'Dilshan',
-      lastName: 'Silva',
-      phone: '+94770000005',
-      age: 29,
-      location: 'Galle',
-      gender: 'male',
-      tagline: 'Creative, steady, and future-focused.',
-      bio: 'Architect with a balanced outlook and strong cultural values.',
-      ethnicity: 'Sinhalese',
-      height: "5'11\"",
-      photos: [{ url: 'https://picsum.photos/seed/dilshan/800/800', isMain: true }],
-    },
-    horoscope: horoscope('Galle', new Date('1996-03-12'), '10:10', {
-      nakshatra: 'Revati',
-      rashi: 'Pisces',
-      moonSign: 'Pisces',
-    }),
-    personality: {
-      openness: 0.81,
-      conscientiousness: 0.71,
-      extraversion: 0.62,
-      agreeableness: 0.72,
-      neuroticism: 0.31,
-    },
-    lifestyle: {
-      religion: 'Buddhist',
-      diet: 'Non-veg',
-      smoking: 'Never',
-      drinking: 'Socially',
-      preferredLocation: 'Galle',
-      familyValues: 0.78,
-      educationLevel: 'BArch',
-      professionType: 'Architecture',
-    },
-  },
-  {
-    email: 'kavindi@raashilink.ai',
-    role: 'user',
-    personalInfo: {
-      firstName: 'Kavindi',
-      lastName: 'Fernando',
-      phone: '+94770000006',
-      age: 25,
-      location: 'Negombo',
-      gender: 'female',
-      tagline: 'Warm-hearted with a modern Sri Lankan outlook.',
-      bio: 'Designer who values emotional maturity, creativity, and a close-knit family life.',
-      ethnicity: 'Sinhalese',
-      height: "5'4\"",
-      photos: [{ url: 'https://picsum.photos/seed/kavindi/800/800', isMain: true }],
-    },
-    horoscope: horoscope('Negombo', new Date('2000-05-19'), '13:45', {
-      nakshatra: 'Rohini',
-      rashi: 'Taurus',
-      moonSign: 'Taurus',
-    }),
-    personality: {
-      openness: 0.88,
-      conscientiousness: 0.73,
-      extraversion: 0.71,
-      agreeableness: 0.82,
-      neuroticism: 0.26,
-    },
-    lifestyle: {
-      religion: 'Catholic',
-      diet: 'Non-veg',
-      smoking: 'Never',
-      drinking: 'Never',
-      preferredLocation: 'Colombo',
-      familyValues: 0.89,
-      educationLevel: 'BFA',
-      professionType: 'Design',
+      professionType: 'Product Engineering',
+      familyPlans: 'Looking to settle down in the next 2-3 years',
+      hobbies: ['Reading', 'Badminton', 'Travel'],
+      languages: ['Sinhala', 'English'],
     },
   },
 ];
 
+function buildCandidateUsers() {
+  const profiles = [
+    {
+      firstName: 'Nadeesha',
+      lastName: 'Perera',
+      email: 'nadeesha.perera@raashilink.ai',
+      phone: '+94770001001',
+      age: 26,
+      location: 'Colombo',
+      religion: 'Buddhist',
+      professionType: 'Software Engineering',
+      educationLevel: 'BSc Information Technology',
+      familyValues: 0.91,
+      openness: 0.82,
+      conscientiousness: 0.81,
+      extraversion: 0.63,
+      agreeableness: 0.86,
+      neuroticism: 0.24,
+      city: 'Colombo',
+      dob: '1999-06-03',
+      tob: '07:10',
+      nakshatra: 'Pushya',
+      rashi: 'Cancer',
+      moonSign: 'Cancer',
+      bio: 'Engineer with strong family values and a calm, optimistic outlook.',
+    },
+    {
+      firstName: 'Ishari',
+      lastName: 'Ranasinghe',
+      email: 'ishari.ranasinghe@raashilink.ai',
+      phone: '+94770001002',
+      age: 27,
+      location: 'Kandy',
+      religion: 'Buddhist',
+      professionType: 'Medical Officer',
+      educationLevel: 'MBBS',
+      familyValues: 0.94,
+      openness: 0.75,
+      conscientiousness: 0.87,
+      extraversion: 0.57,
+      agreeableness: 0.9,
+      neuroticism: 0.25,
+      city: 'Kandy',
+      dob: '1998-11-09',
+      tob: '05:50',
+      nakshatra: 'Rohini',
+      rashi: 'Taurus',
+      moonSign: 'Taurus',
+      bio: 'Doctor who values trust, stability, and shared long-term goals.',
+    },
+    {
+      firstName: 'Chathuri',
+      lastName: 'Fernando',
+      email: 'chathuri.fernando@raashilink.ai',
+      phone: '+94770001003',
+      age: 25,
+      location: 'Gampaha',
+      religion: 'Catholic',
+      professionType: 'UX Designer',
+      educationLevel: 'BDes',
+      familyValues: 0.84,
+      openness: 0.9,
+      conscientiousness: 0.69,
+      extraversion: 0.71,
+      agreeableness: 0.8,
+      neuroticism: 0.3,
+      city: 'Negombo',
+      dob: '2000-03-20',
+      tob: '13:15',
+      nakshatra: 'Swati',
+      rashi: 'Libra',
+      moonSign: 'Libra',
+      bio: 'Creative and warm-hearted, hoping to build a grounded partnership.',
+    },
+    {
+      firstName: 'Umasha',
+      lastName: 'Jayawardena',
+      email: 'umasha.jayawardena@raashilink.ai',
+      phone: '+94770001004',
+      age: 29,
+      location: 'Matara',
+      religion: 'Buddhist',
+      professionType: 'Chartered Accountant',
+      educationLevel: 'CIMA',
+      familyValues: 0.88,
+      openness: 0.72,
+      conscientiousness: 0.9,
+      extraversion: 0.52,
+      agreeableness: 0.79,
+      neuroticism: 0.28,
+      city: 'Galle',
+      dob: '1997-02-12',
+      tob: '09:40',
+      nakshatra: 'Anuradha',
+      rashi: 'Scorpio',
+      moonSign: 'Scorpio',
+      bio: 'Finance professional with a practical mindset and deep commitment to family.',
+    },
+    {
+      firstName: 'Kavini',
+      lastName: 'Bandara',
+      email: 'kavini.bandara@raashilink.ai',
+      phone: '+94770001005',
+      age: 24,
+      location: 'Kurunegala',
+      religion: 'Buddhist',
+      professionType: 'Teacher',
+      educationLevel: 'BA Education',
+      familyValues: 0.92,
+      openness: 0.7,
+      conscientiousness: 0.82,
+      extraversion: 0.6,
+      agreeableness: 0.88,
+      neuroticism: 0.22,
+      city: 'Kurunegala',
+      dob: '2001-08-01',
+      tob: '11:05',
+      nakshatra: 'Hasta',
+      rashi: 'Virgo',
+      moonSign: 'Virgo',
+      bio: 'Teacher who values patience, kindness, and a peaceful home life.',
+    },
+    {
+      firstName: 'Tharushi',
+      lastName: 'Gunawardena',
+      email: 'tharushi.gunawardena@raashilink.ai',
+      phone: '+94770001006',
+      age: 28,
+      location: 'Colombo',
+      religion: 'Buddhist',
+      professionType: 'Data Analyst',
+      educationLevel: 'BSc Statistics',
+      familyValues: 0.86,
+      openness: 0.81,
+      conscientiousness: 0.84,
+      extraversion: 0.55,
+      agreeableness: 0.83,
+      neuroticism: 0.27,
+      city: 'Colombo',
+      dob: '1998-05-17',
+      tob: '10:20',
+      nakshatra: 'Revati',
+      rashi: 'Pisces',
+      moonSign: 'Pisces',
+      bio: 'Analytical and empathetic, looking for a mature and respectful partner.',
+    },
+  ];
+
+  return profiles.map((profile, index) => ({
+    email: profile.email,
+    password: 'password123',
+    role: 'user',
+    personalInfo: {
+      firstName: profile.firstName,
+      lastName: profile.lastName,
+      phone: profile.phone,
+      age: profile.age,
+      location: profile.location,
+      gender: 'female',
+      bio: profile.bio,
+      ethnicity: 'Sinhalese',
+      height: `${5 + ((index + 2) % 2)}'${3 + (index % 5)}\"`,
+      photos: [],
+    },
+    horoscope: horoscope(profile.city, new Date(profile.dob), profile.tob, {
+      nakshatra: profile.nakshatra,
+      rashi: profile.rashi,
+      moonSign: profile.moonSign,
+    }),
+    personality: {
+      openness: profile.openness,
+      conscientiousness: profile.conscientiousness,
+      extraversion: profile.extraversion,
+      agreeableness: profile.agreeableness,
+      neuroticism: profile.neuroticism,
+    },
+    lifestyle: {
+      religion: profile.religion,
+      diet: 'Non-veg',
+      smoking: 'Never',
+      drinking: 'Never',
+      preferredLocation: 'Colombo',
+      familyValues: profile.familyValues,
+      educationLevel: profile.educationLevel,
+      professionType: profile.professionType,
+      familyPlans: 'Looking for a stable relationship with long-term commitment.',
+      hobbies: ['Reading', 'Travel', 'Music'],
+      languages: ['Sinhala', 'English'],
+    },
+  }));
+}
+
+const demoUsers = [...baseUsers, ...buildCandidateUsers()];
+const LEGACY_DEMO_EMAILS = [
+  'user@raashilink.ai',
+  'anjali@raashilink.ai',
+  'dilshan@raashilink.ai',
+  'kavindi@raashilink.ai',
+];
+
 export const DEMO_USER_EMAILS = demoUsers.map((entry) => entry.email);
 
-let seededPasswordHashPromise;
+const passwordHashCache = new Map();
 
-function getSeedPasswordHash() {
-  if (!seededPasswordHashPromise) {
-    seededPasswordHashPromise = bcrypt.hash('password123', 10);
+async function getSeedPasswordHash(password = 'password123') {
+  if (!passwordHashCache.has(password)) {
+    passwordHashCache.set(password, bcrypt.hash(password, 10));
   }
 
-  return seededPasswordHashPromise;
+  return passwordHashCache.get(password);
 }
 
 export async function seedDemoUsers() {
-  const passwordHash = await getSeedPasswordHash();
   const verification = {
     emailVerified: true,
     phoneVerified: true,
@@ -261,6 +350,7 @@ export async function seedDemoUsers() {
 
   await Promise.all(
     demoUsers.map(async (entry) => {
+      const passwordHash = await getSeedPasswordHash(entry.password);
       await User.updateOne(
         { email: entry.email },
         {
@@ -285,8 +375,19 @@ export async function seedDemoUsers() {
           $set: updates,
         }
       );
+
+      if (entry.forcePasswordSync) {
+        await User.updateOne(
+          { email: entry.email },
+          {
+            $set: { passwordHash },
+          }
+        );
+      }
     })
   );
+
+  await User.deleteMany({ email: { $in: LEGACY_DEMO_EMAILS } });
 
   const vendorOwner = await User.findOne({ email: 'vendor@raashilink.ai' }).select('_id');
   if (vendorOwner) {
@@ -377,7 +478,7 @@ export async function seedDemoUsers() {
     { upsert: true, new: true }
   );
 
-  logger.info('Demo users ensured for development flow', { count: demoUsers.length });
+  logger.info('Match scenario users ensured for development flow', { count: demoUsers.length });
 }
 
 export default {

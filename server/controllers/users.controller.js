@@ -407,6 +407,7 @@ export const updateProfile = asyncHandler(async (req, res) => {
     bio: 'personalInfo.bio',
     location: 'personalInfo.location',
     age: 'personalInfo.age',
+    gender: 'personalInfo.gender',
     ethnicity: 'personalInfo.ethnicity',
     height: 'personalInfo.height',
     coverPhoto: 'personalInfo.coverPhoto',

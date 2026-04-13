@@ -73,6 +73,11 @@ export default function MatchDetailPanel({
 
   if (!matchId) return null;
 
+  const availablePhotos = detail?.photos?.length ? detail.photos : detail?.profileImage ? [detail.profileImage] : [];
+  const hasPhoto = availablePhotos.length > 0;
+  const hobbies = detail?.lifestyle?.hobbies || [];
+  const displayAge = typeof detail?.age === 'number' ? `, ${detail.age}` : '';
+
   return (
     <Drawer
       anchor="right"
@@ -121,41 +126,61 @@ export default function MatchDetailPanel({
             <>
               <Box sx={{ position: 'relative', borderRadius: 6, overflow: 'hidden', mb: 4 }}>
                 <Box sx={{ position: 'relative', pt: '100%' }}>
-                  <AnimatePresence mode="wait">
-                    <motion.img
-                      key={activePhoto}
-                      src={detail.photos[activePhoto]}
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      className="absolute inset-0 w-full h-full object-cover"
-                      referrerPolicy="no-referrer"
-                    />
-                  </AnimatePresence>
-                </Box>
-                <Box sx={{ position: 'absolute', bottom: 16, left: 0, right: 0, display: 'flex', justifyContent: 'center', gap: 1 }}>
-                  {detail.photos.map((_: string, index: number) => (
+                  {hasPhoto ? (
+                    <AnimatePresence mode="wait">
+                      <motion.img
+                        key={activePhoto}
+                        src={availablePhotos[activePhoto]}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="absolute inset-0 w-full h-full object-cover"
+                        referrerPolicy="no-referrer"
+                      />
+                    </AnimatePresence>
+                  ) : (
                     <Box
-                      key={index}
-                      onClick={() => setActivePhoto(index)}
                       sx={{
-                        width: 8,
-                        height: 8,
-                        borderRadius: '50%',
-                        bgcolor: activePhoto === index ? 'secondary.main' : 'white',
-                        cursor: 'pointer',
-                        boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                        position: 'absolute',
+                        inset: 0,
+                        bgcolor: 'primary.main',
+                        color: 'white',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
                       }}
-                    />
-                  ))}
+                    >
+                      <Typography variant="h2" sx={{ fontWeight: 800 }}>
+                        {detail.initials || 'RL'}
+                      </Typography>
+                    </Box>
+                  )}
                 </Box>
+                {hasPhoto && (
+                  <Box sx={{ position: 'absolute', bottom: 16, left: 0, right: 0, display: 'flex', justifyContent: 'center', gap: 1 }}>
+                    {availablePhotos.map((_: string, index: number) => (
+                      <Box
+                        key={index}
+                        onClick={() => setActivePhoto(index)}
+                        sx={{
+                          width: 8,
+                          height: 8,
+                          borderRadius: '50%',
+                          bgcolor: activePhoto === index ? 'secondary.main' : 'white',
+                          cursor: 'pointer',
+                          boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                        }}
+                      />
+                    ))}
+                  </Box>
+                )}
               </Box>
 
               <Box sx={{ mb: 4 }}>
                 <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
                   <Box>
                     <Typography variant="h4" sx={{ fontFamily: 'FONTS.heading', fontWeight: 'bold', color: 'primary.main' }}>
-                      {detail.name}, {detail.age}
+                      {detail.name}{displayAge}
                     </Typography>
                     <Stack direction="row" spacing={1} alignItems="center" sx={{ color: 'text.secondary', mt: 0.5 }}>
                       <MapPin size={14} />
@@ -255,9 +280,9 @@ export default function MatchDetailPanel({
                       Hobbies & Interests
                     </Typography>
                     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                      {detail.lifestyle.hobbies.map((hobby: string) => (
+                      {hobbies.length > 0 ? hobbies.map((hobby: string) => (
                         <Chip key={hobby} label={hobby} size="small" variant="outlined" />
-                      ))}
+                      )) : <Typography variant="body2" sx={{ color: 'text.secondary' }}>No hobbies provided.</Typography>}
                     </Box>
                   </Box>
                   <Box>

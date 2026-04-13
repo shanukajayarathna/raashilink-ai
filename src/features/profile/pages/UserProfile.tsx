@@ -133,6 +133,12 @@ const SRI_LANKAN_ETHNICITIES = [
   'Vedda',
   'Other',
 ];
+const GENDER_OPTIONS = [
+  { value: 'male', label: 'Male' },
+  { value: 'female', label: 'Female' },
+  { value: 'non-binary', label: 'Non-binary' },
+  { value: 'prefer_not_to_say', label: 'Prefer not to say' },
+];
 const LANGUAGE_OPTIONS = [
   'Sinhala',
   'Tamil',
@@ -375,7 +381,7 @@ export default function UserProfile() {
             lastName: user?.personalInfo?.lastName || 'Not provided',
             phone: user?.phone || 'Not provided',
             age: user?.age || 'Not provided',
-            gender: user?.gender || 'Not provided',
+            gender: user?.personalInfo?.gender || user?.gender || 'Not provided',
             height: user?.height || 'Not provided',
             education: user?.lifestyle?.educationLevel || 'Not provided',
             occupation: user?.lifestyle?.professionType || 'Not provided',
@@ -1099,6 +1105,7 @@ export default function UserProfile() {
                     <Grid container spacing={3}>
                       {[
                         { label: 'Age', value: profileData.age, key: 'age', icon: <Calendar size={18} /> },
+                        { label: 'Gender', value: profileData.personalInfo.gender, key: 'personalInfo.gender', icon: <User size={18} /> },
                         { label: 'Height', value: profileData.personalInfo.height, key: 'personalInfo.height', icon: <Activity size={18} /> },
                         { label: 'Education', value: profileData.personalInfo.education, key: 'personalInfo.education', icon: <GraduationCap size={18} /> },
                         { label: 'Occupation', value: profileData.personalInfo.occupation, key: 'personalInfo.occupation', icon: <Briefcase size={18} /> },
@@ -1123,6 +1130,26 @@ export default function UserProfile() {
                                     <MenuItem value="">Select age</MenuItem>
                                     {AGE_OPTIONS.map((age) => (
                                       <MenuItem key={age} value={age}>{age}</MenuItem>
+                                    ))}
+                                  </TextField>
+                                ) : item.key === 'personalInfo.gender' ? (
+                                  <TextField
+                                    fullWidth
+                                    size="small"
+                                    select
+                                    value={editData.personalInfo?.gender || ''}
+                                    onChange={(e) => setEditData({
+                                      ...editData,
+                                      personalInfo: {
+                                        ...editData.personalInfo,
+                                        gender: e.target.value,
+                                      },
+                                    })}
+                                    sx={{ mt: 0.5 }}
+                                  >
+                                    <MenuItem value="">Select gender</MenuItem>
+                                    {GENDER_OPTIONS.map((option) => (
+                                      <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>
                                     ))}
                                   </TextField>
                                 ) : item.key === 'personalInfo.height' ? (

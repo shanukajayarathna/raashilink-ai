@@ -31,6 +31,9 @@ export default function MatchCard({ match, onViewProfile, onExpressInterest, onS
   };
 
   const bandColor = getBandColor(match.band);
+  const hasImage = Boolean(match.img);
+  const displayAge = typeof match.age === 'number' ? `, ${match.age}` : '';
+  const displayBio = match.bio || 'No bio available yet.';
 
   return (
     <motion.div
@@ -41,12 +44,30 @@ export default function MatchCard({ match, onViewProfile, onExpressInterest, onS
     >
       {/* Profile Image Section */}
       <Box sx={{ position: 'relative', pt: '100%', overflow: 'hidden' }}>
-        <img 
-          src={match.img} 
-          alt={match.name} 
-          className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
-          referrerPolicy="no-referrer"
-        />
+        {hasImage ? (
+          <img 
+            src={match.img} 
+            alt={match.name} 
+            className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
+            referrerPolicy="no-referrer"
+          />
+        ) : (
+          <Box
+            sx={{
+              position: 'absolute',
+              inset: 0,
+              bgcolor: 'primary.main',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'white',
+            }}
+          >
+            <Typography variant="h2" sx={{ fontWeight: 800, letterSpacing: 1.5 }}>
+              {match.initials || 'RL'}
+            </Typography>
+          </Box>
+        )}
         <Box sx={{ 
           position: 'absolute', 
           inset: 0, 
@@ -91,7 +112,13 @@ export default function MatchCard({ match, onViewProfile, onExpressInterest, onS
                 bgcolor: 'white'
               }}
             >
-              <img src={match.img} alt={match.name} className="w-full h-full rounded-full object-cover" />
+              {hasImage ? (
+                <img src={match.img} alt={match.name} className="w-full h-full rounded-full object-cover" />
+              ) : (
+                <Typography variant="subtitle1" sx={{ fontWeight: 700, color: 'primary.main' }}>
+                  {match.initials || 'RL'}
+                </Typography>
+              )}
             </Avatar>
           </Badge>
         </Box>
@@ -115,7 +142,7 @@ export default function MatchCard({ match, onViewProfile, onExpressInterest, onS
         {/* Name & Basic Info Overlay */}
         <Box sx={{ position: 'absolute', bottom: 16, left: 16, right: 16, color: 'white' }}>
           <Typography variant="h6" sx={{ fontFamily: 'FONTS.heading', fontWeight: 'bold', mb: 0.5 }}>
-            {match.name}, {match.age}
+            {match.name}{displayAge}
           </Typography>
           <Stack direction="row" spacing={1} alignItems="center">
             <MapPin size={12} />
@@ -210,7 +237,7 @@ export default function MatchCard({ match, onViewProfile, onExpressInterest, onS
         >
           <Typography variant="h5" sx={{ fontFamily: 'FONTS.heading', fontWeight: 'bold', mb: 2 }}>Quick View</Typography>
           <Typography variant="body2" sx={{ textAlign: 'center', mb: 4, opacity: 0.9 }}>
-            {match.bio || "Looking for someone who values tradition and modern growth equally."}
+            {displayBio}
           </Typography>
           <Stack spacing={2} sx={{ width: '100%' }}>
             <Button 

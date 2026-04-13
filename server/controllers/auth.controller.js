@@ -11,6 +11,7 @@ import { COMMON_SRI_LANKAN_LOCATIONS, resolveBirthPlace, suggestBirthPlaces } fr
 const REGISTRATION_ROLES = ['partner', 'couple', 'vendor'];
 const OTP_EXPIRY_MINUTES = 10;
 const SRI_LANKA_MOBILE_REGEX = /^7\d{8}$/;
+const GENDER_OPTIONS = ['male', 'female', 'non-binary', 'prefer_not_to_say'];
 
 function buildToken(user) {
   return jwt.sign(
@@ -165,12 +166,16 @@ function splitHoroscopeData(horoscope) {
 
 function buildPersonalInfo(input) {
   const defaultLocation = input.pob || 'Sri Lanka';
+  const normalizedGender = GENDER_OPTIONS.includes(String(input.gender || '').trim())
+    ? String(input.gender).trim()
+    : undefined;
   
   return {
     firstName: input.firstName?.trim() || '',
     lastName: input.lastName?.trim() || '',
     phone: normalizePhone(input.phone),
     profilePic: input.profilePic || undefined,
+    gender: normalizedGender,
     location: defaultLocation,
     ethnicity: input.ethnicity?.trim() || '',
     bio:
@@ -224,6 +229,9 @@ function validateRegistrationInput(input) {
 
   if (input.role === 'partner') {
     const partnerMissing = [];
+    if (!input.gender || !GENDER_OPTIONS.includes(String(input.gender).trim())) {
+      partnerMissing.push('Select your gender');
+    }
     if (!input.dob || !input.pob) {
       if (!input.dob) partnerMissing.push('Enter your date of birth');
       if (!input.pob) partnerMissing.push('Enter your town, village, or city of birth');

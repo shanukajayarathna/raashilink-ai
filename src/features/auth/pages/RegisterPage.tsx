@@ -140,6 +140,7 @@ const RegisterPage = () => {
       // Step 2
       firstName: '',
       lastName: '',
+      gender: '',
       email: '',
       phone: '',
       password: '',
@@ -383,6 +384,10 @@ const RegisterPage = () => {
         newFieldErrors.password = 'Must be at least 8 characters';
         return 'Password must be at least 8 characters.';
       }
+      if (formData.role === 'partner' && !formData.gender) {
+        newFieldErrors.gender = 'Required for matchmaking';
+        return 'Please select your gender.';
+      }
       if (formData.password !== formData.confirmPassword) {
         newFieldErrors.confirmPassword = 'Passwords do not match';
         return 'Passwords do not match.';
@@ -488,6 +493,7 @@ const RegisterPage = () => {
         role: formData.role,
         firstName: formData.firstName.trim(),
         lastName: formData.lastName.trim(),
+        gender: formData.gender || undefined,
         email: formData.email.toLowerCase().trim(),
         phone: `+94${normalizedPhoneInput}`,
         password: formData.password,
@@ -663,6 +669,23 @@ const RegisterPage = () => {
         <Grid size={{ xs: 12, sm: 6 }}>
           <TextField fullWidth label="Last Name" value={formData.lastName} onChange={(e) => setFormData({ ...formData, lastName: e.target.value })} sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} error={!!fieldErrors.lastName} helperText={fieldErrors.lastName} />
         </Grid>
+        {formData.role === 'partner' && (
+          <Grid size={{ xs: 12, sm: 6 }}>
+            <FormControl fullWidth sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} error={!!fieldErrors.gender}>
+              <InputLabel>Gender</InputLabel>
+              <Select
+                value={formData.gender}
+                label="Gender"
+                onChange={(e) => setFormData({ ...formData, gender: e.target.value })}
+              >
+                <MenuItem value="male">Male</MenuItem>
+                <MenuItem value="female">Female</MenuItem>
+                <MenuItem value="non-binary">Non-binary</MenuItem>
+                <MenuItem value="prefer_not_to_say">Prefer not to say</MenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+        )}
         <Grid size={{ xs: 12 }}>
           <TextField 
             fullWidth 

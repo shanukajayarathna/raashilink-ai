@@ -26,6 +26,7 @@ export default function MatchRecommendations() {
   const [matches, setMatches] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [didYouMean, setDidYouMean] = useState<string[]>([]);
   const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
   const [detailPanelOpen, setDetailPanelOpen] = useState(false);
   const [messageModalOpen, setMessageModalOpen] = useState(false);
@@ -35,22 +36,28 @@ export default function MatchRecommendations() {
   });
 
   const [filters, setFilters] = useState({
-    ageRange: [18, 50],
+    ageRange: [18, 90],
     religions: [],
     district: '',
+    gender: '',
     heightRange: [140, 200],
     sortBy: 'compatibility',
+    search: '',
   });
+
+  const bestMatch = matches.length > 0 ? matches[0] : null;
 
   const fetchMatches = useCallback(async () => {
     setLoading(true);
     setError(null);
 
     try {
-      const response = await matchService.getRecommendations(filters);
+      const response = await matchService.getRecommendations({ ...filters, refresh: true });
       setMatches(response.data.items || []);
+      setDidYouMean(response.data.didYouMean || []);
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to load recommendations. Please try again.');
+      setDidYouMean([]);
     } finally {
       setLoading(false);
     }
@@ -62,11 +69,13 @@ export default function MatchRecommendations() {
 
   const handleResetFilters = () => {
     setFilters({
-      ageRange: [18, 50],
+      ageRange: [18, 90],
       religions: [],
       district: '',
+      gender: '',
       heightRange: [140, 200],
       sortBy: 'compatibility',
+      search: '',
     });
   };
 
@@ -150,6 +159,11 @@ export default function MatchRecommendations() {
       <Typography variant="body1" sx={{ color: 'text.secondary', maxWidth: 500, mx: 'auto', mb: 4 }}>
         We could not find any matches with your current filters. Try adjusting your preferences.
       </Typography>
+      {filters.search.trim().length > 0 && didYouMean.length > 0 && (
+        <Typography variant="body2" sx={{ color: 'primary.main', fontWeight: 700, mb: 2 }}>
+          Did you mean: {didYouMean.join(', ')}?
+        </Typography>
+      )}
       <Button variant="contained" onClick={handleResetFilters} sx={{ bgcolor: 'primary.main', color: 'white', borderRadius: 3, px: 4, fontWeight: 'bold' }}>
         Reset All Filters
       </Button>
@@ -190,6 +204,37 @@ export default function MatchRecommendations() {
           renderEmptyState()
         ) : (
           <>
+            {bestMatch && (
+              <Box
+                sx={{
+                  mb: 4,
+                  p: { xs: 2.5, md: 3 },
+                  borderRadius: 5,
+                  background: 'linear-gradient(120deg, rgba(139,26,46,0.1), rgba(201,168,76,0.18))',
+                  border: '1px solid',
+                  borderColor: 'secondary.main',
+                }}
+              >
+                <Typography variant="overline" sx={{ color: 'primary.main', fontWeight: 800, letterSpacing: 1.2 }}>
+                  Best Match Right Now
+                </Typography>
+                <Typography variant="h5" sx={{ color: 'primary.main', fontWeight: 800, mt: 0.5 }}>
+                  {bestMatch.name}{bestMatch.age ? `, ${bestMatch.age}` : ''}
+                </Typography>
+                <Typography variant="body2" sx={{ color: 'text.secondary', mt: 0.5 }}>
+                  {bestMatch.score}% compatibility based on astrology, personality, lifestyle, and family values.
+                </Typography>
+                <Stack direction="row" spacing={1.5} sx={{ mt: 2 }}>
+                  <Button variant="contained" onClick={() => handleViewProfile(bestMatch.id)}>
+                    View Best Match
+                  </Button>
+                  <Button variant="outlined" onClick={() => handleExpressInterest(bestMatch.id)}>
+                    Express Interest
+                  </Button>
+                </Stack>
+              </Box>
+            )}
+
             <Grid container spacing={4}>
               {matches.map((match) => (
                 <Grid size={{ xs: 12, sm: 6, lg: 4 }} key={match.id}>
