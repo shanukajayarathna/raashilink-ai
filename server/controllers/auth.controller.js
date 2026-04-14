@@ -105,6 +105,7 @@ function sanitizeUser(user) {
       null,
     { allowDataUri: true }
   );
+  const knownBirthTime = user.birthData?.knownBirthTime !== false;
 
   return {
     id: user._id,
@@ -116,6 +117,19 @@ function sanitizeUser(user) {
     role: user.role,
     profileType: user.profileType,
     location: user.location,
+    gender: user.gender || user.personalInfo?.gender || null,
+    birthDate: user.birthData?.dateOfBirth ? new Date(user.birthData.dateOfBirth).toISOString().split('T')[0] : '',
+    birthTime: knownBirthTime ? user.birthData?.timeOfBirth || '' : '',
+    birthPlace: user.birthData?.placeOfBirth?.city || '',
+    knownBirthTime,
+    birthData: user.birthData
+      ? {
+          dateOfBirth: user.birthData.dateOfBirth,
+          timeOfBirth: knownBirthTime ? user.birthData.timeOfBirth || '' : '',
+          knownBirthTime,
+          placeOfBirth: user.birthData.placeOfBirth || null,
+        }
+      : undefined,
     profilePic,
     photos: profilePic ? [{ url: profilePic, isMain: true }] : [],
     verification: {
@@ -276,9 +290,14 @@ const AUTH_USER_SELECT = [
   'personalInfo.firstName',
   'personalInfo.lastName',
   'personalInfo.phone',
+  'personalInfo.gender',
   'personalInfo.location',
   'personalInfo.profilePic',
   'personalInfo.photos',
+  'birthData.dateOfBirth',
+  'birthData.timeOfBirth',
+  'birthData.placeOfBirth',
+  'birthData.knownBirthTime',
   'verification.emailVerified',
   'verification.phoneVerified',
 ].join(' ');

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Box,
   Typography,
@@ -138,6 +138,7 @@ const HoroscopeView = () => {
     birthPlace: '',
     knowsBirthTime: true,
   });
+  const lastAutoFetchKeyRef = useRef('');
 
   const chartSummary = myChart?.summary;
   const chartDetails = myChart?.details;
@@ -176,9 +177,20 @@ const HoroscopeView = () => {
 
   const accuracyNotice = formatAccuracyMessage(missingBirthFields, language);
   const hasCriticalBirthDetailsMissing = missingBirthFields.some((field) => field !== 'exact birth time');
+  const needsProfileRefresh = !user?.birthData?.dateOfBirth || !user?.birthData?.placeOfBirth?.city;
+  const waitingForStructuredBirthData = Boolean(
+    needsProfileRefresh && (toSafeDateInputValue(user?.birthDate) || String(user?.birthPlace || '').trim())
+  );
   const generatedFrom = chartMeta?.generatedFrom;
   const normalizedStoredBirthPlace = String(storedBirthPlace || '').trim().toLowerCase();
   const normalizedGeneratedBirthPlace = String(generatedFrom?.birthPlace || '').trim().toLowerCase();
+  const chartProfileSignature = [
+    String(user?._id || ''),
+    String(storedBirthDate || ''),
+    normalizedStoredBirthPlace,
+    storedKnownBirthTime ? 'known' : 'unknown',
+    storedKnownBirthTime ? String(storedBirthTime || '') : '',
+  ].join('|');
   const chartNeedsRefresh = Boolean(
     myChart && (
       !generatedFrom ||
@@ -190,19 +202,37 @@ const HoroscopeView = () => {
       (storedKnownBirthTime && (generatedFrom.birthTime || '') !== (storedBirthTime || ''))
     )
   );
+  const isChartDataSettling = Boolean(
+    waitingForStructuredBirthData ||
+    (!hasCriticalBirthDetailsMissing && !myChart && !error)
+  );
 
   useEffect(() => {
-    const needsProfileRefresh = !user?.birthData?.dateOfBirth || !user?.birthData?.placeOfBirth?.city;
     if (needsProfileRefresh) {
       dispatch(fetchProfile());
     }
   }, [dispatch, user?.birthData?.dateOfBirth, user?.birthData?.placeOfBirth?.city]);
 
   useEffect(() => {
-    if (!hasCriticalBirthDetailsMissing && (!myChart || chartNeedsRefresh)) {
-      dispatch(fetchMyChart({ force: chartNeedsRefresh }));
+    if (waitingForStructuredBirthData || hasCriticalBirthDetailsMissing) {
+      return;
     }
-  }, [dispatch, myChart, hasCriticalBirthDetailsMissing, chartNeedsRefresh]);
+
+    const shouldForceRefresh = Boolean(myChart && chartNeedsRefresh);
+    const shouldFetch = !myChart || shouldForceRefresh;
+
+    if (!shouldFetch) {
+      return;
+    }
+
+    const autoFetchKey = `${chartProfileSignature}|${shouldForceRefresh ? 'force' : 'normal'}`;
+    if (lastAutoFetchKeyRef.current === autoFetchKey) {
+      return;
+    }
+
+    lastAutoFetchKeyRef.current = autoFetchKey;
+    dispatch(fetchMyChart({ force: shouldForceRefresh }));
+  }, [dispatch, myChart, hasCriticalBirthDetailsMissing, chartNeedsRefresh, waitingForStructuredBirthData, chartProfileSignature]);
 
   useEffect(() => {
     setBirthForm({
@@ -304,21 +334,7 @@ const HoroscopeView = () => {
         knownBirthTime: birthForm.knowsBirthTime,
       });
 
-      dispatch(
-        updateUser({
-          ...updatedProfile,
-          birthData: {
-            ...(user?.birthData || {}),
-            dateOfBirth: birthForm.birthDate,
-            timeOfBirth: birthForm.knowsBirthTime ? birthForm.birthTime : '',
-            knownBirthTime: birthForm.knowsBirthTime,
-            placeOfBirth: {
-              ...(user?.birthData?.placeOfBirth || {}),
-              city: trimmedBirthPlace,
-            },
-          },
-        })
-      );
+      dispatch(updateUser(updatedProfile));
       await dispatch(fetchMyChart({ force: true })).unwrap();
 
       setBirthFeedback({
@@ -510,7 +526,7 @@ const HoroscopeView = () => {
         </Stack>
       </Paper>
 
-      {!isLoading && !chartSummary && (
+      {!isLoading && !isChartDataSettling && !chartSummary && (
         <Paper sx={{ p: 4, mb: 4, borderRadius: '24px', textAlign: 'center', bgcolor: 'white' }}>
           <Typography variant="h6" sx={{ fontWeight: 800, color: COLORS.primary, mb: 1, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>
             {texts.horoscopeNeedsDetails}

@@ -162,9 +162,46 @@ function fallbackInitials(name = '') {
 function mainPhoto(user) {
   return (
     user.photos?.find((photo) => photo.isMain)?.url ||
+    user.personalInfo?.photos?.find((photo) => photo.isMain)?.url ||
     user.profilePic ||
+    user.personalInfo?.profilePic ||
     null
   );
+}
+
+function normalizeDisplayValue(value, fallback = 'Not provided') {
+  if (value === undefined || value === null) return fallback;
+
+  if (typeof value === 'string') {
+    const normalized = value.trim();
+    return normalized || fallback;
+  }
+
+  return value;
+}
+
+function buildSearchableText(candidate) {
+  const fullName = [profileField(candidate, 'firstName'), profileField(candidate, 'lastName')]
+    .filter(Boolean)
+    .join(' ');
+
+  return [
+    fullName,
+    candidate.name,
+    candidate.email,
+    profileField(candidate, 'location'),
+    candidate.lifestyle?.professionType,
+    candidate.lifestyle?.educationLevel,
+    candidate.lifestyle?.religion,
+    candidate.lifestyle?.careerAmbitions,
+    candidate.lifestyle?.familyPlans,
+    profileField(candidate, 'bio'),
+    ...(Array.isArray(candidate.lifestyle?.hobbies) ? candidate.lifestyle.hobbies : []),
+    ...(Array.isArray(candidate.lifestyle?.languages) ? candidate.lifestyle.languages : []),
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
 }
 
 function ensureObjectId(id, field) {
@@ -207,14 +244,14 @@ function buildCard(user, compatibility, mutualMatch) {
     name: fullName,
     initials: fallbackInitials(fullName),
     age: user.age ?? profileField(user, 'age'),
-    location: user.location || profileField(user, 'location') || 'Not provided',
-    job: user.lifestyle?.professionType || 'Not provided',
-    education: user.lifestyle?.educationLevel || 'Not provided',
+    location: normalizeDisplayValue(user.location || profileField(user, 'location')),
+    job: normalizeDisplayValue(user.lifestyle?.professionType || user.lifestyle?.careerAmbitions),
+    education: normalizeDisplayValue(user.lifestyle?.educationLevel),
     score: compatibility.overallScore,
     band: compatibility.bandLabel,
     img: mainPhoto(user),
     isOnline: true,
-    bio: user.bio || profileField(user, 'bio') || '',
+    bio: normalizeDisplayValue(user.bio || profileField(user, 'bio'), 'Not provided'),
     compatibility,
     mutualMatch,
     moonSign: user.horoscopeData?.moonSign || user.horoscopeData?.rashi || user.horoscope?.moonSign || user.horoscope?.rashi || 'Pending',
@@ -231,12 +268,12 @@ function buildDetail(user, compatibility, mutualMatch) {
     name: fullName,
     initials: fallbackInitials(fullName),
     age: user.age ?? profileField(user, 'age'),
-    location: user.location || profileField(user, 'location') || 'Not provided',
-    job: user.lifestyle?.professionType || 'Not provided',
-    education: user.lifestyle?.educationLevel || 'Not provided',
+    location: normalizeDisplayValue(user.location || profileField(user, 'location')),
+    job: normalizeDisplayValue(user.lifestyle?.professionType || user.lifestyle?.careerAmbitions),
+    education: normalizeDisplayValue(user.lifestyle?.educationLevel),
     score: compatibility.overallScore,
     band: compatibility.bandLabel,
-    bio: user.bio || profileField(user, 'bio') || 'Bio not provided yet.',
+    bio: normalizeDisplayValue(user.bio || profileField(user, 'bio')),
     dimensions: [
       { label: 'Astrological', value: compatibility.astroScore },
       { label: 'Personality', value: compatibility.personalityScore },
@@ -258,8 +295,8 @@ function buildDetail(user, compatibility, mutualMatch) {
     lifestyle: {
       hobbies,
       interests: Array.isArray(user.lifestyle?.languages) ? user.lifestyle.languages.filter(Boolean) : [],
-      career: user.lifestyle?.professionType || 'Not provided',
-      familyPlans: user.lifestyle?.familyPlans || 'Not provided',
+      career: normalizeDisplayValue(user.lifestyle?.professionType || user.lifestyle?.careerAmbitions),
+      familyPlans: normalizeDisplayValue(user.lifestyle?.familyPlans),
     },
     photos: user.photos?.length > 0 ? user.photos.map((photo) => photo.url) : [],
     profileImage: mainPhoto(user),
@@ -279,24 +316,36 @@ export const getRecommendations = asyncHandler(async (req, res) => {
     : 'compatibility';
 
   const [ageMin, ageMax] = parseRange(req.query.ageRange, 18, 90);
+  const isAgeFilterActive = !(ageMin === 18 && ageMax === 90);
   const [heightMin, heightMax] = parseRange(req.query.heightRange, 140, 200);
   const isHeightFilterActive = !(heightMin === 140 && heightMax === 200);
   const selectedReligions = parseStringList(req.query.religions);
   const selectedDistrict = String(req.query.district || '').trim();
   const selectedGender = String(req.query.gender || '').trim().toLowerCase();
   const searchTerm = String(req.query.search || '').trim();
+  const hasExplicitDiscoveryFilters = Boolean(
+    searchTerm ||
+    selectedReligions.length > 0 ||
+    selectedDistrict ||
+    selectedGender ||
+    isAgeFilterActive ||
+    isHeightFilterActive
+  );
   const skip = (page - 1) * pageSize;
   const currentUserGender = String(req.user.personalInfo?.gender || req.user.gender || '').toLowerCase();
 
   const candidateQuery = {
     _id: { $ne: req.user._id },
     role: 'user',
-    birthData: { $exists: true, $ne: null },
     // Keep matches page strictly for "Looking for a Partner" registrations.
     'weddingProject.partnerName': { $in: [null, ''] },
   };
 
-  if (Number.isFinite(ageMin) && Number.isFinite(ageMax)) {
+  if (!hasExplicitDiscoveryFilters) {
+    candidateQuery.birthData = { $exists: true, $ne: null };
+  }
+
+  if (isAgeFilterActive && Number.isFinite(ageMin) && Number.isFinite(ageMax)) {
     candidateQuery['personalInfo.age'] = { $gte: ageMin, $lte: ageMax };
   }
 
@@ -305,7 +354,7 @@ export const getRecommendations = asyncHandler(async (req, res) => {
   }
 
   if (selectedDistrict) {
-    candidateQuery['personalInfo.location'] = { $regex: new RegExp(`^${escapeRegex(selectedDistrict)}$`, 'i') };
+    candidateQuery['personalInfo.location'] = { $regex: new RegExp(escapeRegex(selectedDistrict), 'i') };
   }
 
   if (selectedGender && ['male', 'female', 'non-binary', 'prefer_not_to_say'].includes(selectedGender)) {
@@ -340,13 +389,18 @@ export const getRecommendations = asyncHandler(async (req, res) => {
   const users = await User.find(candidateQuery)
     .select([
       '_id',
+      'email',
       'personalInfo.firstName',
       'personalInfo.lastName',
       'personalInfo.age',
+      'personalInfo.gender',
       'personalInfo.location',
       'personalInfo.bio',
       'personalInfo.height',
+      'personalInfo.profilePic',
+      'personalInfo.photos',
       'lifestyle.professionType',
+      'lifestyle.careerAmbitions',
       'lifestyle.educationLevel',
       'lifestyle.familyValues',
       'lifestyle.religion',
@@ -379,16 +433,7 @@ export const getRecommendations = asyncHandler(async (req, res) => {
   if (searchTerm) {
     const normalizedSearch = searchTerm.toLowerCase();
     filteredUsers = filteredUsers.filter((candidate) => {
-      const searchableText = [
-        profileField(candidate, 'firstName'),
-        profileField(candidate, 'lastName'),
-        profileField(candidate, 'location'),
-        candidate.lifestyle?.professionType,
-        profileField(candidate, 'bio'),
-      ]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
+      const searchableText = buildSearchableText(candidate);
 
       return searchableText.includes(normalizedSearch) || isFuzzyNameMatch(candidate, normalizedSearch);
     });

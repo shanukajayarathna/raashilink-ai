@@ -47,7 +47,11 @@ export const fetchMyChart = createAsyncThunk(
     }
   },
   {
-    condition: (_, { getState }) => {
+    condition: (options, { getState }) => {
+      if (options?.force) {
+        return true;
+      }
+
       const state = getState() as { horoscope?: HoroscopeState };
       return !state.horoscope?.isLoading;
     },

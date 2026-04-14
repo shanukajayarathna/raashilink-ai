@@ -87,12 +87,29 @@ export async function startServer() {
   const mongoUri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/raashilink';
   const port = Number(process.env.PORT || 5000);
 
-  // Add MongoDB connection monitoring
+  // Keep API readiness in sync with actual MongoDB connection state.
+  mongoose.connection.on('connected', () => {
+    app.locals.isReady = true;
+    if (app.locals.startupPhase !== 'warming-services') {
+      app.locals.startupPhase = 'ready';
+    }
+    logger.info('MongoDB connected');
+  });
+
+  mongoose.connection.on('reconnected', () => {
+    app.locals.isReady = true;
+    app.locals.startupPhase = 'ready';
+    logger.info('MongoDB reconnected');
+  });
+
   mongoose.connection.on('disconnected', () => {
+    app.locals.isReady = false;
+    app.locals.startupPhase = 'degraded';
     logger.warn('MongoDB connection lost');
   });
 
   mongoose.connection.on('error', (error) => {
+    app.locals.startupPhase = 'degraded';
     logger.error('MongoDB connection error', { message: error.message });
   });
 
@@ -111,8 +128,10 @@ export async function startServer() {
 
   try {
     app.locals.startupPhase = 'connecting-database';
-    await mongoose.connect(mongoUri);
-    logger.info('MongoDB connected');
+    await mongoose.connect(mongoUri, {
+      serverSelectionTimeoutMS: 10000,
+      socketTimeoutMS: 45000,
+    });
 
     app.locals.isReady = true;
     app.locals.startupPhase = 'ready';
@@ -122,7 +141,12 @@ export async function startServer() {
       try {
         app.locals.startupPhase = 'warming-services';
         await Promise.allSettled([seedDemoUsers(), connectRedis()]);
-        app.locals.startupPhase = 'ready';
+        if (mongoose.connection.readyState === 1) {
+          app.locals.startupPhase = 'ready';
+        } else {
+          app.locals.isReady = false;
+          app.locals.startupPhase = 'degraded';
+        }
         logger.info('Background startup tasks completed');
       } catch (backgroundError) {
         app.locals.startupPhase = 'degraded';

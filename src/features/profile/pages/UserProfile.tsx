@@ -139,6 +139,19 @@ const GENDER_OPTIONS = [
   { value: 'non-binary', label: 'Non-binary' },
   { value: 'prefer_not_to_say', label: 'Prefer not to say' },
 ];
+
+function formatGenderDisplay(value: any) {
+  if (value === undefined || value === null) return 'Not provided';
+
+  const normalized = String(value).trim();
+  if (!normalized) return 'Not provided';
+
+  const knownOption = GENDER_OPTIONS.find((option) => option.value === normalized.toLowerCase());
+  if (knownOption) return knownOption.label;
+
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+}
+
 const LANGUAGE_OPTIONS = [
   'Sinhala',
   'Tamil',
@@ -1105,7 +1118,7 @@ export default function UserProfile() {
                     <Grid container spacing={3}>
                       {[
                         { label: 'Age', value: profileData.age, key: 'age', icon: <Calendar size={18} /> },
-                        { label: 'Gender', value: profileData.personalInfo.gender, key: 'personalInfo.gender', icon: <User size={18} /> },
+                        { label: 'Gender', value: formatGenderDisplay(profileData.personalInfo.gender), key: 'personalInfo.gender', icon: <User size={18} /> },
                         { label: 'Height', value: profileData.personalInfo.height, key: 'personalInfo.height', icon: <Activity size={18} /> },
                         { label: 'Education', value: profileData.personalInfo.education, key: 'personalInfo.education', icon: <GraduationCap size={18} /> },
                         { label: 'Occupation', value: profileData.personalInfo.occupation, key: 'personalInfo.occupation', icon: <Briefcase size={18} /> },

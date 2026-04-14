@@ -8,6 +8,9 @@ const SERVER_WATCH_EXTENSIONS = new Set(['.js', '.json']);
 const API_HEALTH_URL = process.env.DEV_API_HEALTH_URL || 'http://127.0.0.1:5000/api/v1/health';
 const API_READY_TIMEOUT_MS = 30000;
 const API_READY_POLL_MS = 500;
+const CRASH_RESTART_DELAY_MS = 1200;
+
+let isShuttingDown = false;
 
 function shouldRestartServer(filename = '') {
   const normalized = String(filename).replaceAll('\\', '/');
@@ -67,6 +70,7 @@ function stopChildProcess(child, onDone = () => {}) {
 function run(name, scriptName, color) {
   let child;
   let isRestarting = false;
+  let restartAfterCrashTimer;
 
   function spawnChild() {
     const { command, args } = createCommand(scriptName);
@@ -87,8 +91,22 @@ function run(name, scriptName, color) {
 
     child.on('exit', (code) => {
       if (isRestarting) return;
-      if (code && code !== 0) {
+
+      // code === null means the process was killed by a signal (e.g. taskkill/SIGTERM from us).
+      // code === 0 is a clean exit. Neither should trigger auto-restart.
+      const isCrash = code !== null && code !== 0;
+
+      if (isCrash) {
         process.stderr.write(`${color}[${name}] Process exited with code ${code}\x1b[0m\n`);
+      }
+
+      // Only restart on actual crashes (non-zero exit code), not on clean or signal-killed exits.
+      if (!isShuttingDown && isCrash) {
+        clearTimeout(restartAfterCrashTimer);
+        restartAfterCrashTimer = setTimeout(() => {
+          process.stdout.write(`${color}[${name}] Restarting after crash...\x1b[0m\n`);
+          spawnChild();
+        }, CRASH_RESTART_DELAY_MS);
       }
     });
 
@@ -185,6 +203,7 @@ const serverWatcher = watch('server', { recursive: true }, (_eventType, filename
 });
 
 function shutdown() {
+  isShuttingDown = true;
   clearTimeout(restartTimer);
   serverWatcher.close();
 

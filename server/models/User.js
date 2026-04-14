@@ -122,6 +122,14 @@ const horoscopeDataSchema = new Schema(
     auspiciousDays: { type: [String], default: [] },
     favorablePartners: { type: [String], default: [] },
     profileFacts: { type: [String], default: [] },
+    generatedFrom: {
+      birthDate: { type: String, trim: true },
+      birthTime: { type: String, trim: true },
+      lat: { type: Number, min: -90, max: 90 },
+      lon: { type: Number, min: -180, max: 180 },
+      timezone: { type: String, trim: true, default: 'Asia/Colombo' },
+      knownBirthTime: { type: Boolean, default: true },
+    },
     generatedAt: { type: Date },
   },
   { _id: false }

@@ -351,6 +351,8 @@ export async function seedDemoUsers() {
   await Promise.all(
     demoUsers.map(async (entry) => {
       const passwordHash = await getSeedPasswordHash(entry.password);
+      const existingUser = await User.findOne({ email: entry.email }).select('_id').lean();
+
       await User.updateOne(
         { email: entry.email },
         {
@@ -366,7 +368,8 @@ export async function seedDemoUsers() {
 
       const updates = {
         verification,
-        ...(entry.horoscope ? mapHoroscopeFields(entry.horoscope) : {}),
+        // Preserve real user edits on restart. Seed horoscope/birth only for first-time inserts.
+        ...(!existingUser && entry.horoscope ? mapHoroscopeFields(entry.horoscope) : {}),
       };
 
       await User.updateOne(

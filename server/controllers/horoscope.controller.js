@@ -468,6 +468,50 @@ function hasGeneratedChart(user) {
   );
 }
 
+function normalizeBirthDateForComparison(value) {
+  if (!value) return '';
+  const parsed = value instanceof Date ? value : new Date(String(value));
+  return Number.isNaN(parsed.getTime()) ? '' : parsed.toISOString().split('T')[0];
+}
+
+function normalizeBirthTimeForComparison(value, knownBirthTime = true) {
+  if (knownBirthTime === false) {
+    return '12:00';
+  }
+
+  const normalized = String(value || '').trim();
+  return normalized || '12:00';
+}
+
+function hasBirthPayloadChanged(user) {
+  if (!user?.birthData) return false;
+
+  const knownBirthTime = user.birthData.knownBirthTime !== false;
+  const currentBirthDate = normalizeBirthDateForComparison(user.birthData.dateOfBirth);
+  const currentBirthTime = normalizeBirthTimeForComparison(user.birthData.timeOfBirth, knownBirthTime);
+  const currentLat = Number(user.birthData.placeOfBirth?.latitude || 6.9271);
+  const currentLon = Number(user.birthData.placeOfBirth?.longitude || 79.8612);
+  const currentTimezone = String(user.birthData.placeOfBirth?.timezone || 'Asia/Colombo').trim();
+
+  const generatedFrom = user?.horoscopeData?.generatedFrom || {};
+  const generatedBirthDate = normalizeBirthDateForComparison(generatedFrom.birthDate);
+  const generatedBirthTime = normalizeBirthTimeForComparison(generatedFrom.birthTime, generatedFrom.knownBirthTime !== false);
+  const generatedLat = Number(generatedFrom.lat || 6.9271);
+  const generatedLon = Number(generatedFrom.lon || 79.8612);
+  const generatedTimezone = String(generatedFrom.timezone || 'Asia/Colombo').trim();
+
+  const latChanged = Math.abs(currentLat - generatedLat) > 0.0001;
+  const lonChanged = Math.abs(currentLon - generatedLon) > 0.0001;
+
+  return (
+    currentBirthDate !== generatedBirthDate ||
+    currentBirthTime !== generatedBirthTime ||
+    currentTimezone !== generatedTimezone ||
+    latChanged ||
+    lonChanged
+  );
+}
+
 function buildBirthPayload(user) {
   if (!user?.birthData?.dateOfBirth || !user?.birthData?.placeOfBirth) {
     return null;
@@ -487,7 +531,12 @@ export async function generateAndPersistHoroscope(user, { force = false } = {}) 
     throw new ApiError(404, 'User not found');
   }
 
-  if (!force && hasGeneratedChart(user) && Number(user?.horoscopeData?.calculationVersion || 1) >= 3) {
+  if (
+    !force &&
+    hasGeneratedChart(user) &&
+    Number(user?.horoscopeData?.calculationVersion || 1) >= 3 &&
+    !hasBirthPayloadChanged(user)
+  ) {
     return user;
   }
 
@@ -581,6 +630,14 @@ export async function generateAndPersistHoroscope(user, { force = false } = {}) 
     auspiciousDays: profileDetails.auspiciousDays,
     favorablePartners: profileDetails.favorablePartners,
     profileFacts: profileDetails.profileFacts,
+    generatedFrom: {
+      birthDate: payload.birthDate,
+      birthTime: payload.birthTime,
+      lat: payload.lat,
+      lon: payload.lon,
+      timezone: payload.timezone,
+      knownBirthTime: user?.birthData?.knownBirthTime !== false,
+    },
     generatedAt: new Date(),
   };
 

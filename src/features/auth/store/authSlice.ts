@@ -199,7 +199,7 @@ const authSlice = createSlice({
      * Set user credentials and session.
      */
     setCredentials: (state, action: PayloadAction<{ user: any; token: string; role: any }>) => {
-      const sanitizedUser = persistCachedUser(action.payload.user);
+      const sanitizedUser = persistCachedUser({ ...(state.user || {}), ...(action.payload.user || {}) });
       state.user = sanitizedUser;
       state.token = action.payload.token;
       state.role = action.payload.role || sanitizedUser?.role || null;
@@ -240,7 +240,7 @@ const authSlice = createSlice({
       .addCase(loginUser.fulfilled, (state, action) => {
         state.loading = false;
         state.isAuthenticated = true;
-        state.user = persistCachedUser(action.payload.user);
+        state.user = persistCachedUser({ ...(state.user || {}), ...(action.payload.user || {}) });
         state.token = action.payload.token;
         state.role = action.payload.role || action.payload.user?.role || null;
       })
