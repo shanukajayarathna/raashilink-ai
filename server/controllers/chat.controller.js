@@ -220,13 +220,18 @@ export const getConversations = asyncHandler(async (req, res) => {
         .map((participantId) => userNameMap.get(String(participantId)) || 'Conversation')
         .join(', ') || 'Recent conversation';
 
+      const otherUserId = (conversation.participants || [])
+        .find((participantId) => String(participantId) !== String(req.user._id));
+
       return {
         id: String(conversation._id),
         title,
+        otherUserId: otherUserId ? String(otherUserId) : null,
         date: conversation.lastMessageAt
           ? new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(new Date(conversation.lastMessageAt))
           : 'Recently',
         preview: lastMessage?.content || 'No messages yet',
+        lastSenderId: lastMessage ? String(lastMessage.senderId) : null,
       };
     })
   );

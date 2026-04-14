@@ -1,0 +1,47 @@
+import Notification from '../models/Notification.js';
+import asyncHandler from '../utils/asyncHandler.js';
+
+
+export const getNotifications = asyncHandler(async (req, res) => {
+  const notifications = await Notification.find({ userId: req.user._id })
+    .sort({ createdAt: -1 })
+    .limit(30)
+    .lean();
+
+  const unreadCount = await Notification.countDocuments({
+    userId: req.user._id,
+    read: false,
+  });
+
+  res.status(200).json({
+    success: true,
+    data: {
+      notifications: notifications.map((n) => ({
+        id: String(n._id),
+        type: n.type,
+        fromUserId: String(n.fromUserId),
+        fromUserName: n.fromUserName,
+        fromUserProfilePic: n.fromUserProfilePic || null,
+        conversationId: n.conversationId ? String(n.conversationId) : null,
+        read: n.read,
+        createdAt: n.createdAt,
+      })),
+      unreadCount,
+    },
+  });
+});
+
+export const markRead = asyncHandler(async (req, res) => {
+  await Notification.findOneAndUpdate(
+    { _id: req.params.id, userId: req.user._id },
+    { read: true }
+  );
+  res.status(200).json({ success: true });
+});
+
+export const markAllRead = asyncHandler(async (req, res) => {
+  await Notification.updateMany({ userId: req.user._id, read: false }, { read: true });
+  res.status(200).json({ success: true });
+});
+
+export default { getNotifications, markRead, markAllRead };

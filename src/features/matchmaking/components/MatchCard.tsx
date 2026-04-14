@@ -7,7 +7,7 @@ import {
   Heart, MessageCircle, MapPin, Briefcase, 
   GraduationCap, Star, Sparkles, Brain, Leaf
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion } from 'motion/react';
 import { cn } from '@/shared/lib/utils';
 
 interface MatchCardProps {
@@ -227,38 +227,6 @@ export default function MatchCard({ match, onViewProfile, onExpressInterest, onS
           </Button>
         </Stack>
       </Box>
-
-      {/* Quick View Overlay (Hover) */}
-      <AnimatePresence>
-        <motion.div
-          className="absolute inset-0 bg-primary/90 backdrop-blur-sm flex flex-col items-center justify-center p-8 text-white opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none group-hover:pointer-events-auto"
-          initial={{ opacity: 0 }}
-          whileHover={{ opacity: 1 }}
-        >
-          <Typography variant="h5" sx={{ fontFamily: 'FONTS.heading', fontWeight: 'bold', mb: 2 }}>Quick View</Typography>
-          <Typography variant="body2" sx={{ textAlign: 'center', mb: 4, opacity: 0.9 }}>
-            {displayBio}
-          </Typography>
-          <Stack spacing={2} sx={{ width: '100%' }}>
-            <Button 
-              variant="contained" 
-              fullWidth
-              onClick={() => onSendMessage(match.id)}
-              sx={{ bgcolor: 'white', color: 'primary.main', fontWeight: 'bold', borderRadius: 3, '&:hover': { bgcolor: 'cream' } }}
-            >
-              Send Message
-            </Button>
-            <Button 
-              variant="outlined" 
-              fullWidth
-              onClick={() => onViewProfile(match.id)}
-              sx={{ color: 'white', borderColor: 'white', fontWeight: 'bold', borderRadius: 3, '&:hover': { borderColor: 'cream', color: 'cream' } }}
-            >
-              Full Profile
-            </Button>
-          </Stack>
-        </motion.div>
-      </AnimatePresence>
     </motion.div>
   );
 }

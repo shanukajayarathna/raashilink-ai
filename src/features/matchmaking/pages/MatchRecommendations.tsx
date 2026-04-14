@@ -20,9 +20,11 @@ import matchService from '../services/matchService';
 import chatService from '@/features/chat/services/chatService';
 import { useDispatch } from 'react-redux';
 import { showToast } from '@/app/store/uiSlice';
+import { useSearchParams } from 'react-router-dom';
 
 export default function MatchRecommendations() {
   const dispatch = useDispatch();
+  const [searchParams] = useSearchParams();
   const [matches, setMatches] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -47,12 +49,14 @@ export default function MatchRecommendations() {
 
   const bestMatch = matches.length > 0 ? matches[0] : null;
 
-  const fetchMatches = useCallback(async () => {
+  const fetchMatches = useCallback(async (forceRefresh = false) => {
     setLoading(true);
     setError(null);
 
     try {
-      const response = await matchService.getRecommendations({ ...filters, refresh: true });
+      const response = await matchService.getRecommendations(
+        forceRefresh ? { ...filters, refresh: true } : filters
+      );
       setMatches(response.data.items || []);
       setDidYouMean(response.data.didYouMean || []);
     } catch (err: any) {
@@ -66,6 +70,15 @@ export default function MatchRecommendations() {
   useEffect(() => {
     fetchMatches();
   }, [fetchMatches]);
+
+  // Auto-open detail panel when navigated from a notification (?user=<id>)
+  useEffect(() => {
+    const userId = searchParams.get('user');
+    if (userId && matches.length > 0) {
+      setSelectedMatchId(userId);
+      setDetailPanelOpen(true);
+    }
+  }, [matches, searchParams]);
 
   const handleResetFilters = () => {
     setFilters({
@@ -188,7 +201,7 @@ export default function MatchRecommendations() {
           severity="error"
           sx={{ mb: 4, borderRadius: 4 }}
           action={
-            <Button color="inherit" size="small" onClick={fetchMatches} startIcon={<RefreshCw size={16} />}>
+            <Button color="inherit" size="small" onClick={() => fetchMatches(true)} startIcon={<RefreshCw size={16} />}>
               Retry
             </Button>
           }
@@ -254,7 +267,7 @@ export default function MatchRecommendations() {
               </Typography>
               <Button
                 variant="outlined"
-                onClick={fetchMatches}
+                onClick={() => fetchMatches(true)}
                 disabled={loading}
                 endIcon={loading ? <CircularProgress size={16} /> : <ChevronRight size={18} />}
                 sx={{

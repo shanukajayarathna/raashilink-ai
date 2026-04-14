@@ -366,6 +366,32 @@ export async function calculateCompatibility({ userAId, userBId, fastMode = fals
   return result;
 }
 
+/**
+ * Zero-DB fast path — computes compatibility from already-loaded user objects.
+ * Used by the recommendations list to avoid N×2 extra database round-trips.
+ * Only available in fastMode (no Python scorer).
+ */
+export function calculateCompatibilityFromData(userA, userB) {
+  const personalityScore = calculatePersonalityScore(userA, userB);
+  const lifestyleScore = calculateLifestyleScore(userA, userB);
+  const familyScore = calculateFamilyScore(userA, userB);
+  const astroScore = 50; // baseline — full engine only runs on detail view
+  const overallScore = Number(
+    (astroScore * 0.4 + personalityScore * 0.25 + lifestyleScore * 0.2 + familyScore * 0.15).toFixed(2)
+  );
+  const bandLabel = determineBandLabel(overallScore);
+  return {
+    overallScore,
+    astroScore,
+    personalityScore,
+    lifestyleScore,
+    familyScore,
+    bandLabel,
+    explanation: buildExplanation({ astroScore, personalityScore, lifestyleScore, familyScore, bandLabel }),
+    astroBreakdown: {},
+  };
+}
+
 async function runScorerEngine(payload) {
   return new Promise((resolve, reject) => {
     const pythonBinary = process.platform === 'win32' ? 'python' : 'python3';

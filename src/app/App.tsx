@@ -13,6 +13,7 @@ const HoroscopeView = lazy(() => import('@/features/horoscope/pages/HoroscopeVie
 const MatchRecommendations = lazy(() => import('@/features/matchmaking/pages/MatchRecommendations'));
 const WeddingDashboard = lazy(() => import('@/features/wedding/pages/WeddingDashboard'));
 const AIChatbot = lazy(() => import('@/features/chat/pages/AIChatbot'));
+const MessagesPage = lazy(() => import('@/features/chat/pages/MessagesPage'));
 const BudgetPlanner = lazy(() => import('@/features/budget/pages/BudgetPlanner'));
 const HoneymoonDestinations = lazy(() => import('@/features/honeymoon/pages/HoneymoonDestinations'));
 const DestinationDetail = lazy(() => import('@/features/honeymoon/pages/DestinationDetailPage'));
@@ -96,6 +97,7 @@ function AppShell() {
               <Route path="/matches" element={<ProtectedRoute><MatchRecommendations /></ProtectedRoute>} />
               <Route path="/wedding" element={<ProtectedRoute><WeddingDashboard /></ProtectedRoute>} />
               <Route path="/chat" element={<ProtectedRoute><AIChatbot /></ProtectedRoute>} />
+              <Route path="/messages" element={<ProtectedRoute><MessagesPage /></ProtectedRoute>} />
               <Route path="/budget" element={<ProtectedRoute><BudgetPlanner /></ProtectedRoute>} />
               <Route path="/honeymoon" element={<ProtectedRoute><HoneymoonDestinations /></ProtectedRoute>} />
               <Route path="/honeymoon/:id" element={<ProtectedRoute><DestinationDetail /></ProtectedRoute>} />
