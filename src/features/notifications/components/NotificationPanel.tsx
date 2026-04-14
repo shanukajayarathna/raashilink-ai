@@ -3,7 +3,7 @@ import {
   Box, Typography, Avatar, IconButton, Divider,
   CircularProgress, Tooltip,
 } from '@mui/material';
-import { Heart, Sparkles, CheckCheck, X, MessageCircle } from 'lucide-react';
+import { Heart, Sparkles, CheckCheck, X, MessageCircle, HeartOff, HeartHandshake } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 import type { AppNotification } from '../services/notificationService';
@@ -44,6 +44,8 @@ export default function NotificationPanel({
     onClose();
     if (n.type === 'mutual_match' || n.type === 'message_received') {
       navigate('/messages', { state: { conversationId: n.conversationId } });
+    } else if (n.type === 'interest_declined') {
+      // No navigation needed — just dismiss
     } else {
       navigate(`/matches?user=${n.fromUserId}`);
     }
@@ -168,13 +170,17 @@ export default function NotificationPanel({
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          bgcolor: n.type === 'mutual_match' ? '#f59e0b' : n.type === 'message_received' ? '#2563eb' : '#8B1A2E',
+                          bgcolor: n.type === 'mutual_match' ? '#f59e0b' : n.type === 'message_received' ? '#2563eb' : n.type === 'interest_accepted' ? '#16a34a' : n.type === 'interest_declined' ? '#6b7280' : '#8B1A2E',
                           border: '2px solid white',
                         }}>
                           {n.type === 'mutual_match'
                             ? <Sparkles size={10} color="white" />
                             : n.type === 'message_received'
                             ? <MessageCircle size={10} color="white" />
+                            : n.type === 'interest_accepted'
+                            ? <HeartHandshake size={10} color="white" />
+                            : n.type === 'interest_declined'
+                            ? <HeartOff size={10} color="white" />
                             : <Heart size={10} color="white" fill="white" />
                           }
                         </Box>
@@ -193,6 +199,17 @@ export default function NotificationPanel({
                             <>
                               <span style={{ color: '#2563eb' }}>{n.fromUserName}</span>
                               {' '}sent you a message
+                            </>
+                          ) : n.type === 'interest_accepted' ? (
+                            <>
+                              <span style={{ color: '#16a34a' }}>{n.fromUserName}</span>
+                              {' '}accepted your interest!{' '}
+                              <span style={{ color: '#16a34a' }}>🎉</span>
+                            </>
+                          ) : n.type === 'interest_declined' ? (
+                            <>
+                              <span style={{ color: '#6b7280' }}>{n.fromUserName}</span>
+                              {' '}declined your interest
                             </>
                           ) : (
                             <>
@@ -223,6 +240,20 @@ export default function NotificationPanel({
                               <MessageCircle size={11} />
                               <Typography variant="caption" sx={{ color: '#2563eb', fontWeight: 600 }}>
                                 Tap to reply
+                              </Typography>
+                            </Box>
+                          ) : n.type === 'interest_accepted' ? (
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: '#16a34a' }}>
+                              <HeartHandshake size={11} />
+                              <Typography variant="caption" sx={{ color: '#16a34a', fontWeight: 600 }}>
+                                View profile
+                              </Typography>
+                            </Box>
+                          ) : n.type === 'interest_declined' ? (
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: '#6b7280' }}>
+                              <HeartOff size={11} />
+                              <Typography variant="caption" sx={{ color: '#6b7280', fontWeight: 600 }}>
+                                Tap to dismiss
                               </Typography>
                             </Box>
                           ) : (

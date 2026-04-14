@@ -23,6 +23,7 @@ import {
   DialogContent,
   DialogActions,
   CircularProgress,
+  InputAdornment,
   alpha
 } from '@mui/material';
 import { 
@@ -38,7 +39,12 @@ import {
   Shield,
   User,
   Trash2,
-  Download
+  Download,
+  Mail,
+  Phone,
+  Lock,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
@@ -85,6 +91,25 @@ export default function EditProfile() {
   const [birthPlaceSuggestions, setBirthPlaceSuggestions] = useState<string[]>([]);
   const [loadingBirthPlaceSuggestions, setLoadingBirthPlaceSuggestions] = useState(false);
 
+  // Contact & security state
+  const [contactInfo, setContactInfo] = useState({ email: '', phone: '' });
+  const [showEmailDialog, setShowEmailDialog] = useState(false);
+  const [showPhoneDialog, setShowPhoneDialog] = useState(false);
+  const [showPasswordDialog, setShowPasswordDialog] = useState(false);
+  const [emailForm, setEmailForm] = useState({ newEmail: '', currentPassword: '' });
+  const [emailDialogError, setEmailDialogError] = useState('');
+  const [emailDialogSaving, setEmailDialogSaving] = useState(false);
+  const [phoneForm, setPhoneForm] = useState({ newPhone: '' });
+  const [phoneDialogError, setPhoneDialogError] = useState('');
+  const [phoneDialogSaving, setPhoneDialogSaving] = useState(false);
+  const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
+  const [passwordDialogError, setPasswordDialogError] = useState('');
+  const [passwordDialogSaving, setPasswordDialogSaving] = useState(false);
+  const [showCurrentPw, setShowCurrentPw] = useState(false);
+  const [showNewPw, setShowNewPw] = useState(false);
+  const [showConfirmPw, setShowConfirmPw] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
+
   const [formData, setFormData] = useState({
     name: '',
     bio: '',
@@ -123,6 +148,10 @@ export default function EditProfile() {
           ...prev,
           ...buildEditProfileFormData(response),
         }));
+        setContactInfo({
+          email: response.verification?.email || user?.email || '',
+          phone: response.verification?.phone || response.personalInfo?.phone || '',
+        });
       } catch (err) {
         console.error('Failed to fetch profile:', err);
         setError('Failed to load profile data. Please try again.');
@@ -172,6 +201,84 @@ export default function EditProfile() {
     setHasUnsavedChanges(true);
   };
 
+  const handleUpdateEmail = async () => {
+    setEmailDialogError('');
+    if (!emailForm.newEmail || !emailForm.currentPassword) {
+      setEmailDialogError('All fields are required');
+      return;
+    }
+    setEmailDialogSaving(true);
+    try {
+      const res = await userService.updateContactEmail(emailForm);
+      setContactInfo(prev => ({ ...prev, email: res.email }));
+      dispatch(updateUser({ email: res.email }));
+      setShowEmailDialog(false);
+      setEmailForm({ newEmail: '', currentPassword: '' });
+      setSuccessMessage('Email updated. Please verify your new email address.');
+      setSuccess(true);
+    } catch (err: any) {
+      setEmailDialogError(err.response?.data?.message || 'Failed to update email');
+    } finally {
+      setEmailDialogSaving(false);
+    }
+  };
+
+  const handleUpdatePhone = async () => {
+    setPhoneDialogError('');
+    if (!phoneForm.newPhone) {
+      setPhoneDialogError('Phone number is required');
+      return;
+    }
+    setPhoneDialogSaving(true);
+    try {
+      const res = await userService.updateContactPhone(phoneForm);
+      setContactInfo(prev => ({ ...prev, phone: res.phone }));
+      dispatch(updateUser({ phone: res.phone }));
+      setShowPhoneDialog(false);
+      setPhoneForm({ newPhone: '' });
+      setSuccessMessage('Phone number updated. Please verify your new number.');
+      setSuccess(true);
+    } catch (err: any) {
+      setPhoneDialogError(err.response?.data?.message || 'Failed to update phone number');
+    } finally {
+      setPhoneDialogSaving(false);
+    }
+  };
+
+  const handleChangePassword = async () => {
+    setPasswordDialogError('');
+    if (!passwordForm.currentPassword || !passwordForm.newPassword || !passwordForm.confirmPassword) {
+      setPasswordDialogError('All fields are required');
+      return;
+    }
+    if (passwordForm.newPassword.length < 8) {
+      setPasswordDialogError('New password must be at least 8 characters');
+      return;
+    }
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      setPasswordDialogError('New passwords do not match');
+      return;
+    }
+    setPasswordDialogSaving(true);
+    try {
+      await userService.changePassword({
+        currentPassword: passwordForm.currentPassword,
+        newPassword: passwordForm.newPassword,
+      });
+      setShowPasswordDialog(false);
+      setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+      setShowCurrentPw(false);
+      setShowNewPw(false);
+      setShowConfirmPw(false);
+      setSuccessMessage('Password changed successfully.');
+      setSuccess(true);
+    } catch (err: any) {
+      setPasswordDialogError(err.response?.data?.message || 'Failed to change password');
+    } finally {
+      setPasswordDialogSaving(false);
+    }
+  };
+
   const handleSave = async () => {
     setSaving(true);
     setError(null);
@@ -183,6 +290,7 @@ export default function EditProfile() {
       }));
       dispatch(updateUser(response));
       setSuccess(true);
+      setSuccessMessage('Profile updated successfully!');
       setHasUnsavedChanges(false);
       setTimeout(() => navigate('/profile'), 1500);
     } catch (err) {
@@ -473,6 +581,54 @@ export default function EditProfile() {
         {/* Sidebar Sections */}
         <Grid size={{ xs: 12, md: 4 }}>
           <Stack spacing={4}>
+
+            {/* Contact & Security Section — moved to top for easy access */}
+            <MotionPaper
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.05 }}
+              sx={{ p: 4, borderRadius: '24px', boxShadow: '0 2px 16px rgba(139,26,46,0.05)' }}
+            >
+              <Typography variant="h6" sx={{ mb: 3, fontWeight: 800, color: COLORS.primary, display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Lock size={20} /> Contact & Security
+              </Typography>
+              <Stack spacing={2}>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1.5, borderRadius: 2, bgcolor: alpha(COLORS.primary, 0.04) }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, minWidth: 0 }}>
+                    <Mail size={16} color={COLORS.primary} style={{ flexShrink: 0 }} />
+                    <Box sx={{ minWidth: 0 }}>
+                      <Typography variant="caption" sx={{ color: COLORS.textSecondary, display: 'block' }}>Email</Typography>
+                      <Typography variant="body2" sx={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {contactInfo.email || 'Not set'}
+                      </Typography>
+                    </Box>
+                  </Box>
+                  <Button size="small" variant="outlined" onClick={() => { setEmailForm({ newEmail: '', currentPassword: '' }); setEmailDialogError(''); setShowEmailDialog(true); }} sx={{ ml: 1, flexShrink: 0, borderColor: COLORS.primary, color: COLORS.primary, borderRadius: 2, fontSize: '0.72rem' }}>
+                    Change
+                  </Button>
+                </Box>
+
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1.5, borderRadius: 2, bgcolor: alpha(COLORS.primary, 0.04) }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, minWidth: 0 }}>
+                    <Phone size={16} color={COLORS.primary} style={{ flexShrink: 0 }} />
+                    <Box sx={{ minWidth: 0 }}>
+                      <Typography variant="caption" sx={{ color: COLORS.textSecondary, display: 'block' }}>Phone</Typography>
+                      <Typography variant="body2" sx={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {contactInfo.phone || 'Not set'}
+                      </Typography>
+                    </Box>
+                  </Box>
+                  <Button size="small" variant="outlined" onClick={() => { setPhoneForm({ newPhone: '' }); setPhoneDialogError(''); setShowPhoneDialog(true); }} sx={{ ml: 1, flexShrink: 0, borderColor: COLORS.primary, color: COLORS.primary, borderRadius: 2, fontSize: '0.72rem' }}>
+                    Change
+                  </Button>
+                </Box>
+
+                <Button fullWidth variant="outlined" startIcon={<Lock size={16} />} onClick={() => { setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' }); setPasswordDialogError(''); setShowCurrentPw(false); setShowNewPw(false); setShowConfirmPw(false); setShowPasswordDialog(true); }} sx={{ borderRadius: 2, mt: 1, borderColor: COLORS.accent, color: COLORS.accent }}>
+                  Change Password
+                </Button>
+              </Stack>
+            </MotionPaper>
+
             <MotionPaper
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
@@ -621,6 +777,140 @@ export default function EditProfile() {
       </Grid>
 
       {/* Dialogs & Snackbars */}
+      {/* Change Email Dialog */}
+      <Dialog open={showEmailDialog} onClose={() => setShowEmailDialog(false)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontWeight: 800, color: COLORS.primary }}>Change Email Address</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <Typography variant="body2" color="text.secondary">
+              Enter your new email address and confirm with your current password. You will need to verify the new email.
+            </Typography>
+            <TextField
+              fullWidth
+              label="New Email Address"
+              type="email"
+              value={emailForm.newEmail}
+              onChange={(e) => setEmailForm(prev => ({ ...prev, newEmail: e.target.value }))}
+              InputProps={{ startAdornment: <InputAdornment position="start"><Mail size={16} /></InputAdornment> }}
+            />
+            <TextField
+              fullWidth
+              label="Current Password"
+              type="password"
+              value={emailForm.currentPassword}
+              onChange={(e) => setEmailForm(prev => ({ ...prev, currentPassword: e.target.value }))}
+              InputProps={{ startAdornment: <InputAdornment position="start"><Lock size={16} /></InputAdornment> }}
+            />
+            {emailDialogError && <Alert severity="error" sx={{ borderRadius: 2 }}>{emailDialogError}</Alert>}
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ p: 3, pt: 1 }}>
+          <Button onClick={() => setShowEmailDialog(false)} sx={{ color: COLORS.textSecondary }}>Cancel</Button>
+          <Button variant="contained" onClick={handleUpdateEmail} disabled={emailDialogSaving} sx={{ bgcolor: COLORS.primary, '&:hover': { bgcolor: '#6B1424' } }}>
+            {emailDialogSaving ? <CircularProgress size={20} color="inherit" /> : 'Update Email'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Change Phone Dialog */}
+      <Dialog open={showPhoneDialog} onClose={() => setShowPhoneDialog(false)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontWeight: 800, color: COLORS.primary }}>Change Phone Number</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <Typography variant="body2" color="text.secondary">
+              Enter your new Sri Lankan mobile number (e.g. 0771234567). You will need to verify it after updating.
+            </Typography>
+            <TextField
+              fullWidth
+              label="New Phone Number"
+              type="tel"
+              placeholder="07XXXXXXXX"
+              value={phoneForm.newPhone}
+              onChange={(e) => setPhoneForm({ newPhone: e.target.value })}
+              InputProps={{ startAdornment: <InputAdornment position="start"><Phone size={16} /></InputAdornment> }}
+            />
+            {phoneDialogError && <Alert severity="error" sx={{ borderRadius: 2 }}>{phoneDialogError}</Alert>}
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ p: 3, pt: 1 }}>
+          <Button onClick={() => setShowPhoneDialog(false)} sx={{ color: COLORS.textSecondary }}>Cancel</Button>
+          <Button variant="contained" onClick={handleUpdatePhone} disabled={phoneDialogSaving} sx={{ bgcolor: COLORS.primary, '&:hover': { bgcolor: '#6B1424' } }}>
+            {phoneDialogSaving ? <CircularProgress size={20} color="inherit" /> : 'Update Phone'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Change Password Dialog */}
+      <Dialog open={showPasswordDialog} onClose={() => setShowPasswordDialog(false)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontWeight: 800, color: COLORS.primary }}>Change Password</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <Typography variant="body2" color="text.secondary">
+              Choose a strong password of at least 8 characters.
+            </Typography>
+            <TextField
+              fullWidth
+              label="Current Password"
+              type={showCurrentPw ? 'text' : 'password'}
+              value={passwordForm.currentPassword}
+              onChange={(e) => setPasswordForm(prev => ({ ...prev, currentPassword: e.target.value }))}
+              InputProps={{
+                startAdornment: <InputAdornment position="start"><Lock size={16} /></InputAdornment>,
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <IconButton size="small" onClick={() => setShowCurrentPw(v => !v)}>
+                      {showCurrentPw ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </IconButton>
+                  </InputAdornment>
+                ),
+              }}
+            />
+            <TextField
+              fullWidth
+              label="New Password"
+              type={showNewPw ? 'text' : 'password'}
+              value={passwordForm.newPassword}
+              onChange={(e) => setPasswordForm(prev => ({ ...prev, newPassword: e.target.value }))}
+              helperText="Min. 8 characters"
+              InputProps={{
+                startAdornment: <InputAdornment position="start"><Lock size={16} /></InputAdornment>,
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <IconButton size="small" onClick={() => setShowNewPw(v => !v)}>
+                      {showNewPw ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </IconButton>
+                  </InputAdornment>
+                ),
+              }}
+            />
+            <TextField
+              fullWidth
+              label="Confirm New Password"
+              type={showConfirmPw ? 'text' : 'password'}
+              value={passwordForm.confirmPassword}
+              onChange={(e) => setPasswordForm(prev => ({ ...prev, confirmPassword: e.target.value }))}
+              InputProps={{
+                startAdornment: <InputAdornment position="start"><Lock size={16} /></InputAdornment>,
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <IconButton size="small" onClick={() => setShowConfirmPw(v => !v)}>
+                      {showConfirmPw ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </IconButton>
+                  </InputAdornment>
+                ),
+              }}
+            />
+            {passwordDialogError && <Alert severity="error" sx={{ borderRadius: 2 }}>{passwordDialogError}</Alert>}
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ p: 3, pt: 1 }}>
+          <Button onClick={() => setShowPasswordDialog(false)} sx={{ color: COLORS.textSecondary }}>Cancel</Button>
+          <Button variant="contained" onClick={handleChangePassword} disabled={passwordDialogSaving} sx={{ bgcolor: COLORS.primary, '&:hover': { bgcolor: '#6B1424' } }}>
+            {passwordDialogSaving ? <CircularProgress size={20} color="inherit" /> : 'Change Password'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       <Dialog open={showExitDialog} onClose={() => setShowExitDialog(false)}>
         <DialogTitle sx={{ fontWeight: 800 }}>Unsaved Changes</DialogTitle>
         <DialogContent>
@@ -650,9 +940,9 @@ export default function EditProfile() {
         </DialogActions>
       </Dialog>
 
-      <Snackbar open={success} autoHideDuration={3000} onClose={() => setSuccess(false)}>
+      <Snackbar open={success} autoHideDuration={4000} onClose={() => setSuccess(false)}>
         <Alert severity="success" variant="filled" sx={{ width: '100%', borderRadius: 2 }}>
-          Profile updated successfully!
+          {successMessage || 'Profile updated successfully!'}
         </Alert>
       </Snackbar>
 

@@ -5,6 +5,7 @@ import {
   getMatchDetail,
   expressInterest,
   undoInterest,
+  declineInterest,
   getPendingInterests,
   getMutualMatches,
   getTodayMatches,
@@ -20,5 +21,6 @@ router.get('/recommendations', getRecommendations);
 router.get('/:id', getMatchDetail);
 router.post('/:id/interest', expressInterest);
 router.delete('/:id/interest', undoInterest);
+router.post('/:id/interest/decline', declineInterest);
 
 export default router;

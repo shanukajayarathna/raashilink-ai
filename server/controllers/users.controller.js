@@ -807,6 +807,124 @@ export const removeGalleryPhoto = asyncHandler(async (req, res) => {
   });
 });
 
+export const updateContactEmail = asyncHandler(async (req, res) => {
+  const { currentPassword, newEmail } = req.body ?? {};
+
+  if (!currentPassword || !newEmail) {
+    throw new ApiError(400, 'Current password and new email are required');
+  }
+
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(String(newEmail).trim())) {
+    throw new ApiError(400, 'Invalid email address');
+  }
+
+  const user = await User.findById(req.user._id);
+  if (!user) {
+    throw new ApiError(404, 'User not found');
+  }
+
+  const passwordValid = await bcrypt.compare(String(currentPassword), user.passwordHash);
+  if (!passwordValid) {
+    throw new ApiError(401, 'Current password is incorrect');
+  }
+
+  const normalizedEmail = String(newEmail).trim().toLowerCase();
+  if (normalizedEmail === user.email) {
+    throw new ApiError(400, 'New email is the same as your current email');
+  }
+
+  const existing = await User.findOne({ email: normalizedEmail, _id: { $ne: req.user._id } }).lean();
+  if (existing) {
+    throw new ApiError(409, 'This email address is already in use');
+  }
+
+  user.email = normalizedEmail;
+  user.verification = {
+    ...(user.verification?.toObject?.() || user.verification || {}),
+    emailVerified: false,
+    emailVerifiedAt: undefined,
+  };
+  await user.save({ validateModifiedOnly: true });
+
+  res.status(200).json({
+    success: true,
+    message: 'Email updated successfully. Please verify your new email address.',
+    email: normalizedEmail,
+  });
+});
+
+export const updateContactPhone = asyncHandler(async (req, res) => {
+  const { newPhone } = req.body ?? {};
+
+  if (!newPhone) {
+    throw new ApiError(400, 'New phone number is required');
+  }
+
+  const normalized = normalizePhone(String(newPhone));
+  if (!normalized) {
+    throw new ApiError(400, 'Invalid Sri Lankan mobile number. Use format: 07XXXXXXXX or +947XXXXXXXX');
+  }
+
+  const user = await User.findById(req.user._id);
+  if (!user) {
+    throw new ApiError(404, 'User not found');
+  }
+
+  const currentPhone = user.personalInfo?.phone || '';
+  if (normalized === currentPhone) {
+    throw new ApiError(400, 'New phone number is the same as your current phone number');
+  }
+
+  user.personalInfo.phone = normalized;
+  user.verification = {
+    ...(user.verification?.toObject?.() || user.verification || {}),
+    phoneVerified: false,
+    phoneVerifiedAt: undefined,
+  };
+  await user.save({ validateModifiedOnly: true });
+
+  res.status(200).json({
+    success: true,
+    message: 'Phone number updated. Please verify your new phone number.',
+    phone: normalized,
+  });
+});
+
+export const changePassword = asyncHandler(async (req, res) => {
+  const { currentPassword, newPassword } = req.body ?? {};
+
+  if (!currentPassword || !newPassword) {
+    throw new ApiError(400, 'Current and new passwords are required');
+  }
+
+  if (typeof newPassword !== 'string' || newPassword.length < 8) {
+    throw new ApiError(400, 'New password must be at least 8 characters long');
+  }
+
+  const user = await User.findById(req.user._id);
+  if (!user) {
+    throw new ApiError(404, 'User not found');
+  }
+
+  const passwordValid = await bcrypt.compare(String(currentPassword), user.passwordHash);
+  if (!passwordValid) {
+    throw new ApiError(401, 'Current password is incorrect');
+  }
+
+  if (String(currentPassword) === String(newPassword)) {
+    throw new ApiError(400, 'New password must be different from your current password');
+  }
+
+  user.passwordHash = await bcrypt.hash(newPassword, 12);
+  await user.save({ validateModifiedOnly: true });
+
+  res.status(200).json({
+    success: true,
+    message: 'Password changed successfully.',
+  });
+});
+
 export const deleteAccount = asyncHandler(async (req, res) => {
   const userId = req.user._id;
   const user = await User.findById(userId).lean({ virtuals: true });
@@ -893,6 +1011,9 @@ export default {
   removeGalleryPhoto,
   requestContactVerification,
   confirmContactVerification,
+  updateContactEmail,
+  updateContactPhone,
+  changePassword,
   exportUserData,
   deleteAccount,
 };

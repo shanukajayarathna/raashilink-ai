@@ -2,7 +2,7 @@ import api from '@/shared/config/axiosConfig';
 
 export interface AppNotification {
   id: string;
-  type: 'interest_received' | 'mutual_match' | 'message_received';
+  type: 'interest_received' | 'mutual_match' | 'message_received' | 'interest_accepted' | 'interest_declined';
   fromUserId: string;
   fromUserName: string;
   fromUserProfilePic: string | null;

@@ -12,6 +12,9 @@ import {
   removeGalleryPhoto,
   requestContactVerification,
   confirmContactVerification,
+  updateContactEmail,
+  updateContactPhone,
+  changePassword,
   exportUserData,
   deleteAccount,
 } from '../../controllers/users.controller.js';
@@ -47,5 +50,8 @@ router.get('/export', exportUserData);
 router.delete('/account', deleteAccount);
 router.post('/verification/request', requestContactVerification);
 router.post('/verification/confirm', confirmContactVerification);
+router.put('/contact/email', updateContactEmail);
+router.put('/contact/phone', updateContactPhone);
+router.put('/password', changePassword);
 
 export default router;

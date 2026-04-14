@@ -129,6 +129,15 @@ export default function MatchRecommendations() {
       fetchPending();
     },
     onMatchRemoved: () => refreshMutualMatches(),
+    onInterestAccepted: (data) => {
+      setPendingSent((prev) => prev.filter((m) => m.id !== data.fromUserId));
+      dispatch(showToast({ type: 'success', message: `${data.fromUserName} accepted your interest! 🎉` }));
+      refreshMutualMatches();
+    },
+    onInterestDeclined: (data) => {
+      setPendingSent((prev) => prev.filter((m) => m.id !== data.fromUserId));
+      dispatch(showToast({ type: 'info', message: `${data.fromUserName} has declined your interest.` }));
+    },
   });
 
   const handleRemoveInterest = async (id: string) => {
@@ -181,7 +190,7 @@ export default function MatchRecommendations() {
   const handleDeclineInterest = async (id: string) => {
     setDecliningId(id);
     try {
-      await matchService.undoInterest(id);
+      await matchService.declineInterest(id);
       setPendingReceived((prev) => prev.filter((m) => m.id !== id));
       dispatch(showToast({ type: 'info', message: 'Interest declined.' }));
     } catch (err: any) {
@@ -630,6 +639,13 @@ export default function MatchRecommendations() {
                                     Decline
                                   </Button>
                                 </Stack>
+                                <Button
+                                  variant="text" size="small" fullWidth
+                                  onClick={() => handleViewProfile(match.id)}
+                                  sx={{ borderRadius: 3, fontWeight: 700, fontSize: '0.75rem', color: 'text.secondary', textTransform: 'none', mt: 0.5 }}
+                                >
+                                  View Profile
+                                </Button>
                               </Box>
                             </Box>
                           </motion.div>

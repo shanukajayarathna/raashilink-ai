@@ -45,6 +45,17 @@ const matchService = {
     return response.data;
   },
 
+  /**
+   * Decline a pending interest that another user sent to the current user.
+   * Notifies the sender. Does not delete conversations or mutual data.
+   * @param {string} senderId - ID of the user whose interest should be declined.
+   * @returns {Promise<object>} - Decline status.
+   */
+  declineInterest: async (senderId: string) => {
+    const response = await axiosInstance.post(`/matches/${senderId}/interest/decline`);
+    return response.data;
+  },
+
   getMutualMatches: async () => {
     const response = await axiosInstance.get('/matches/mutual');
     return response.data;

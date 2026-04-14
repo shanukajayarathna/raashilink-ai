@@ -18,6 +18,7 @@ const BudgetPlanner = lazy(() => import('@/features/budget/pages/BudgetPlanner')
 const HoneymoonDestinations = lazy(() => import('@/features/honeymoon/pages/HoneymoonDestinations'));
 const DestinationDetail = lazy(() => import('@/features/honeymoon/pages/DestinationDetailPage'));
 const UserProfile = lazy(() => import('@/features/profile/pages/UserProfile'));
+const EditProfile = lazy(() => import('@/features/profile/pages/EditProfile'));
 const VendorMarketplace = lazy(() => import('@/features/vendors/pages/VendorMarketplace'));
 const VendorDetailPage = lazy(() => import('@/features/vendors/pages/VendorDetailPage'));
 const AdminDashboard = lazy(() => import('@/features/admin/pages/AdminDashboard'));
@@ -102,7 +103,8 @@ function AppShell() {
               <Route path="/honeymoon" element={<ProtectedRoute><HoneymoonDestinations /></ProtectedRoute>} />
               <Route path="/honeymoon/:id" element={<ProtectedRoute><DestinationDetail /></ProtectedRoute>} />
               <Route path="/profile" element={<ProtectedRoute><UserProfile /></ProtectedRoute>} />
-              <Route path="/edit-profile" element={<Navigate to="/profile" replace />} />
+              <Route path="/profile/edit" element={<ProtectedRoute><EditProfile /></ProtectedRoute>} />
+              <Route path="/edit-profile" element={<Navigate to="/profile/edit" replace />} />
               <Route path="/settings" element={<Navigate to="/profile" replace />} />
               <Route path="/vendors" element={<ProtectedRoute><VendorMarketplace /></ProtectedRoute>} />
               <Route path="/vendors/:id" element={<ProtectedRoute><VendorDetailPage /></ProtectedRoute>} />

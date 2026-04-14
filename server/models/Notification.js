@@ -10,7 +10,7 @@ const notificationSchema = new mongoose.Schema(
     },
     type: {
       type: String,
-      enum: ['interest_received', 'mutual_match'],
+      enum: ['interest_received', 'mutual_match', 'interest_accepted', 'interest_declined'],
       required: true,
     },
     fromUserId: {

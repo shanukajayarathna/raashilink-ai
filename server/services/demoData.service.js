@@ -604,7 +604,9 @@ export async function seedDemoUsers() {
       );
 
       const updates = {
-        verification,
+        // Only set verification for NEW users ($setOnInsert handles it above).
+        // Existing users keep their real verification state so resets are not overwritten on restart.
+        ...(!existingUser ? { verification } : {}),
         // Always sync gender so DB stays consistent with seed data.
         ...(entry.personalInfo?.gender ? { 'personalInfo.gender': entry.personalInfo.gender } : {}),
         // Preserve real user edits on restart. Seed horoscope/birth only for first-time inserts.

@@ -45,7 +45,9 @@ export function disconnectSocket(): void {
 export type RealtimeEvent =
   | 'interest_received'   // You received a new pending interest
   | 'mutual_match'        // A new mutual match was created (you're one of the parties)
-  | 'match_removed';      // Someone removed you from their matches
+  | 'match_removed'       // Someone removed you from their matches
+  | 'interest_accepted'   // Someone accepted your pending interest
+  | 'interest_declined';  // Someone declined your pending interest
 
 export type RealtimeCallbacks = {
   /** Fired when another user sends you a pending interest */
@@ -54,6 +56,10 @@ export type RealtimeCallbacks = {
   onMutualMatch?: (data: { fromUserId: string; fromUserName: string; fromUserProfilePic: string | null; conversationId: string | null }) => void;
   /** Fired when someone removes you from their mutual matches */
   onMatchRemoved?: (data: { byUserId: string }) => void;
+  /** Fired when someone accepted your interest */
+  onInterestAccepted?: (data: { fromUserId: string; fromUserName: string; fromUserProfilePic: string | null }) => void;
+  /** Fired when someone declined your interest */
+  onInterestDeclined?: (data: { fromUserId: string; fromUserName: string; fromUserProfilePic: string | null }) => void;
 };
 
 /**
@@ -76,15 +82,21 @@ export function useRealtimeUpdates(callbacks: RealtimeCallbacks) {
     const onInterestReceived = (d: any) => cbRef.current.onInterestReceived?.(d);
     const onMutualMatch = (d: any) => cbRef.current.onMutualMatch?.(d);
     const onMatchRemoved = (d: any) => cbRef.current.onMatchRemoved?.(d);
+    const onInterestAccepted = (d: any) => cbRef.current.onInterestAccepted?.(d);
+    const onInterestDeclined = (d: any) => cbRef.current.onInterestDeclined?.(d);
 
     socket.on('interest_received', onInterestReceived);
     socket.on('mutual_match', onMutualMatch);
     socket.on('match_removed', onMatchRemoved);
+    socket.on('interest_accepted', onInterestAccepted);
+    socket.on('interest_declined', onInterestDeclined);
 
     return () => {
       socket.off('interest_received', onInterestReceived);
       socket.off('mutual_match', onMutualMatch);
       socket.off('match_removed', onMatchRemoved);
+      socket.off('interest_accepted', onInterestAccepted);
+      socket.off('interest_declined', onInterestDeclined);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

@@ -59,7 +59,8 @@ import {
   YAxis, 
   Tooltip as RechartsTooltip 
 } from 'recharts';
-import { MessageCircle, UserMinus, Send, Inbox, UserCheck, UserX } from 'lucide-react';
+import { MessageCircle, UserMinus, Send, Inbox, UserCheck, UserX, Eye } from 'lucide-react';
+import MatchDetailPanel from '@/features/matchmaking/components/MatchDetailPanel';
 import { useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { RootState } from '@/app/store/store';
@@ -784,11 +785,22 @@ export default function UserDashboard() {
   
   const [loading, setLoading] = useState(true);
   const [widgetLoading, setWidgetLoading] = useState(true);
+  // Verification state — starts unverified (show banner) and is updated solely
+  // by its own dedicated effect. Never overwritten by main data loading.
+  const [verificationLoaded, setVerificationLoaded] = useState(false);
+  const [verificationStatus, setVerificationStatus] = useState({
+    emailVerified: false,
+    phoneVerified: false,
+    email: user?.email || '',
+    phone: user?.phone || '',
+  });
   const [mutualMatches, setMutualMatches] = useState<any[]>([]);
   const [mutualMatchesLoading, setMutualMatchesLoading] = useState(true);
   const [removingMatchId, setRemovingMatchId] = useState<string | null>(null);
   const [pendingSent, setPendingSent] = useState<any[]>([]);
   const [pendingReceived, setPendingReceived] = useState<any[]>([]);
+  const [selectedInterestId, setSelectedInterestId] = useState<string | null>(null);
+  const [interestDetailOpen, setInterestDetailOpen] = useState(false);
   const [pendingLoading, setPendingLoading] = useState(true);
   const [data, setData] = useState<any>(() => {
     const userData = user || JSON.parse(localStorage.getItem('user') || 'null') || {};
@@ -817,7 +829,9 @@ export default function UserDashboard() {
         online: true,
       },
       vendors: [],
-      verification: userData.verification || {},
+      // Start null – the profile API fetch is the authoritative source.
+      // Using userData.verification here would surface a stale cached value.
+      verification: null,
       notifications: [
         { id: 1, text: 'Dashboard is updating your recommendations…', time: 'now', read: false },
       ],
@@ -857,6 +871,15 @@ export default function UserDashboard() {
       refreshPendingInterests();
     },
     onMatchRemoved: () => refreshMutualMatches(),
+    onInterestAccepted: (data) => {
+      setPendingSent((p) => p.filter((m) => m.id !== data.fromUserId));
+      dispatch(showToast({ type: 'success', message: `${data.fromUserName} accepted your interest! 🎉` }));
+      refreshMutualMatches();
+    },
+    onInterestDeclined: (data) => {
+      setPendingSent((p) => p.filter((m) => m.id !== data.fromUserId));
+      dispatch(showToast({ type: 'info', message: `${data.fromUserName} has declined your interest.` }));
+    },
   });
 
   useEffect(() => {
@@ -894,10 +917,19 @@ export default function UserDashboard() {
           phone: user?.phone || profile?.personalInfo?.phone || '',
           verification: profile?.verification || prev.verification,
         }));
+
+        // Set verification status from the profile already fetched
+        if (profile?.verification !== undefined) {
+          const v = profile.verification;
+          setVerificationStatus({
+            emailVerified: Boolean(v?.emailVerified),
+            phoneVerified: Boolean(v?.phoneVerified),
+            email: v?.email || user?.email || '',
+            phone: v?.phone || profile?.personalInfo?.phone || user?.phone || '',
+          });
+        }
       } catch (error) {
         console.error('Error fetching dashboard profile', error);
-      } finally {
-        if (mounted) setLoading(false);
       }
     };
 
@@ -985,7 +1017,12 @@ export default function UserDashboard() {
       }
     };
 
-    void Promise.allSettled([fetchProfile(), fetchWidgets()]);
+    void Promise.allSettled([fetchProfile(), fetchWidgets()]).then(() => {
+      if (mounted) {
+        setLoading(false);
+        setVerificationLoaded(true);
+      }
+    });
 
     return () => {
       mounted = false;
@@ -1011,7 +1048,10 @@ export default function UserDashboard() {
         },
         email: user.email || prev.email,
         phone: user.phone || prev.phone,
-        verification: user.verification || prev.verification,
+        // Do NOT overwrite verification here – the profile API fetch returns the
+        // authoritative value straight from the DB. Using the Redux user object
+        // (populated at login time) would silently restore a stale emailVerified:true
+        // value every time the component re-renders.
       }));
     }
   }, [user]);
@@ -1077,6 +1117,9 @@ export default function UserDashboard() {
         },
       }));
 
+      // Keep dedicated verificationStatus in sync
+      setVerificationStatus((prev) => prev ? { ...prev, ...response.verification } : response.verification);
+
       dispatch(
         updateUser({
           verification: {
@@ -1102,7 +1145,23 @@ export default function UserDashboard() {
 
   if (loading) {
     return (
-      <Box sx={{ p: 4, bgcolor: COLORS.background, minHeight: '100vh' }}>
+      <Box sx={{ p: { xs: 2, md: 4 }, bgcolor: COLORS.background, minHeight: '100vh' }}>
+        {/* Show verification banner during loading only if we already know status */}
+        {verificationLoaded && (!verificationStatus.emailVerified || !verificationStatus.phoneVerified) && (
+          <Box sx={{ mb: 3 }}>
+            <VerificationSetupCard
+              verification={verificationStatus}
+              email={verificationStatus.email || user?.email || ''}
+              phone={verificationStatus.phone || user?.phone || ''}
+              onRequestOtp={handleRequestVerificationOtp}
+              onOpenVerify={(channel) => {
+                setVerifyDialog({ open: true, channel });
+                setOtpValue('');
+              }}
+              busyChannel={busyChannel}
+            />
+          </Box>
+        )}
         <Skeleton variant="text" width={300} height={60} sx={{ mb: 4 }} />
         <DashboardSkeleton />
       </Box>
@@ -1169,12 +1228,12 @@ export default function UserDashboard() {
 
       {/* Grid Layout */}
       <Grid container spacing={3}>
-        {data.verification && (!data.verification.emailVerified || !data.verification.phoneVerified) && (
+        {verificationLoaded && (!verificationStatus.emailVerified || !verificationStatus.phoneVerified) && (
           <Grid size={{ xs: 12 }}>
             <VerificationSetupCard
-              verification={data.verification}
-              email={data.email}
-              phone={data.phone}
+              verification={verificationStatus}
+              email={verificationStatus.email || data.email}
+              phone={verificationStatus.phone || data.phone}
               onRequestOtp={handleRequestVerificationOtp}
               onOpenVerify={(channel) => {
                 setVerifyDialog({ open: true, channel });
@@ -1480,7 +1539,7 @@ export default function UserDashboard() {
                                     size="small"
                                     onClick={async () => {
                                       try {
-                                        await matchService.undoInterest(match.id);
+                                        await matchService.declineInterest(match.id);
                                         setPendingReceived((p) => p.filter((m) => m.id !== match.id));
                                         dispatch(showToast({ type: 'info', message: 'Interest declined.' }));
                                       } catch { dispatch(showToast({ type: 'error', message: 'Failed.' })); }
@@ -1488,6 +1547,15 @@ export default function UserDashboard() {
                                     sx={{ flex: 1, borderRadius: 2, border: `1px solid rgba(211,47,47,0.5)`, color: '#d32f2f', '&:hover': { bgcolor: 'rgba(211,47,47,0.08)' } }}
                                   >
                                     <UserX size={14} />
+                                  </IconButton>
+                                </Tooltip>
+                                <Tooltip title="View Profile">
+                                  <IconButton
+                                    size="small"
+                                    onClick={() => { setSelectedInterestId(match.id); setInterestDetailOpen(true); }}
+                                    sx={{ flex: 1, borderRadius: 2, border: `1px solid rgba(26,107,114,0.5)`, color: '#1A6B72', '&:hover': { bgcolor: 'rgba(26,107,114,0.08)' } }}
+                                  >
+                                    <Eye size={14} />
                                   </IconButton>
                                 </Tooltip>
                               </Stack>
@@ -1650,6 +1718,25 @@ export default function UserDashboard() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <MatchDetailPanel
+        matchId={selectedInterestId}
+        open={interestDetailOpen}
+        onClose={() => setInterestDetailOpen(false)}
+        onSendMessage={(id) => { setInterestDetailOpen(false); navigate(`/chat?user=${id}`); }}
+        onExpressInterest={async (id) => {
+          try {
+            const res = await matchService.expressInterest(id);
+            setPendingReceived((p) => p.filter((m) => m.id !== id));
+            if (res.data?.matched) {
+              dispatch(showToast({ type: 'success', message: 'Mutual match unlocked!' }));
+            } else {
+              dispatch(showToast({ type: 'success', message: 'Interest sent back!' }));
+            }
+            setInterestDetailOpen(false);
+          } catch { dispatch(showToast({ type: 'error', message: 'Failed.' })); }
+        }}
+      />
     </Box>
   );
 }

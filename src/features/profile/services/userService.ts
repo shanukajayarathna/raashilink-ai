@@ -97,6 +97,21 @@ const userService = {
     return response.data;
   },
 
+  updateContactEmail: async (data: { currentPassword: string; newEmail: string }) => {
+    const response = await axiosInstance.put('/users/contact/email', data);
+    return response.data;
+  },
+
+  updateContactPhone: async (data: { newPhone: string }) => {
+    const response = await axiosInstance.put('/users/contact/phone', data);
+    return response.data;
+  },
+
+  changePassword: async (data: { currentPassword: string; newPassword: string }) => {
+    const response = await axiosInstance.put('/users/password', data);
+    return response.data;
+  },
+
   /**
    * Permanently delete current user's account.
    * @returns {Promise<object>} - Deletion status.

@@ -41,6 +41,7 @@ export default function MatchDetailPanel({
   const [detail, setDetail] = React.useState<any>(null);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [imageError, setImageError] = React.useState(false);
 
   React.useEffect(() => {
     if (!open || !matchId) return;
@@ -56,6 +57,7 @@ export default function MatchDetailPanel({
         if (isMounted) {
           setDetail(response.data);
           setActivePhoto(0);
+          setImageError(false);
         }
       } catch (err: any) {
         if (isMounted) {
@@ -77,8 +79,9 @@ export default function MatchDetailPanel({
 
   if (!matchId) return null;
 
-  const availablePhotos = detail?.photos?.length ? detail.photos : detail?.profileImage ? [detail.profileImage] : [];
-  const hasPhoto = availablePhotos.length > 0;
+  const validPhotos = (detail?.photos || []).filter(Boolean);
+  const availablePhotos = !imageError && (validPhotos.length ? validPhotos : detail?.profileImage ? [detail.profileImage] : []);
+  const hasPhoto = availablePhotos && availablePhotos.length > 0;
   const hobbies = detail?.lifestyle?.hobbies || [];
   const displayAge = typeof detail?.age === 'number' ? `, ${detail.age}` : '';
 
@@ -154,6 +157,7 @@ export default function MatchDetailPanel({
                         exit={{ opacity: 0 }}
                         style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
                         referrerPolicy="no-referrer"
+                        onError={() => setImageError(true)}
                       />
                     </AnimatePresence>
                     {/* Gradient overlay for readability */}

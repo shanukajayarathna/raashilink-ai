@@ -308,7 +308,7 @@ function buildDetail(user, compatibility, mutualMatch) {
       smoking: normalizeDisplayValue(user.lifestyle?.smoking),
       drinking: normalizeDisplayValue(user.lifestyle?.drinking),
     },
-    photos: user.photos?.length > 0 ? user.photos.map((photo) => photo.url) : [],
+    photos: (user.personalInfo?.photos || user.photos || []).filter((p) => p?.url).map((p) => p.url),
     profileImage: mainPhoto(user),
     mutualMatch,
     explanation: compatibility.explanation,
@@ -683,6 +683,25 @@ export const expressInterest = asyncHandler(async (req, res) => {
       fromUserName: senderName,
       fromUserProfilePic: senderPic,
     });
+
+    // Check if current user is accepting a received interest (i.e. reverse pending exists)
+    // The reverse interest was already found above — if there was a reverseInterest that led
+    // to mutual, we already handled it. Here we check if our express is a direct accept
+    // of a pending interest that the OTHER user sent us previously.
+    const theyHadSentToUs = await MatchInterest.findOne({
+      fromUser: req.params.id,
+      toUser: req.user._id,
+    }).lean();
+    if (theyHadSentToUs) {
+      // They sent interest first, we just accepted → notify them of the acceptance
+      await Notification.create({
+        userId: req.params.id,
+        type: 'interest_accepted',
+        fromUserId: req.user._id,
+        fromUserName: senderName,
+        fromUserProfilePic: senderPic,
+      });
+    }
   }
   // --- End Notifications ---
 
@@ -706,6 +725,19 @@ export const expressInterest = asyncHandler(async (req, res) => {
       fromUserName: senderName,
       fromUserProfilePic: senderPic,
     });
+
+    // If this was an acceptance of a previously-received interest, also fire interest_accepted
+    const theyHadSentCheck = await MatchInterest.findOne({
+      fromUser: req.params.id,
+      toUser: req.user._id,
+    }).lean();
+    if (theyHadSentCheck) {
+      emitToUser(req.params.id, 'interest_accepted', {
+        fromUserId: String(req.user._id),
+        fromUserName: senderName,
+        fromUserProfilePic: senderPic,
+      });
+    }
   }
   // --- End Real-time events ---
 
@@ -756,6 +788,62 @@ export const undoInterest = asyncHandler(async (req, res) => {
   res.status(200).json({
     success: true,
     data: { message: 'Match removed' },
+  });
+});
+
+/**
+ * Decline a pending interest sent to the current user by another user.
+ * Unlike undoInterest, this only removes the one-way pending record and
+ * notifies the sender — it does NOT wipe conversations or mutual data.
+ */
+export const declineInterest = asyncHandler(async (req, res) => {
+  ensureObjectId(req.params.id, 'senderId');
+  const senderId = req.params.id;
+
+  // Only delete the pending interest FROM them TO us
+  const deleted = await MatchInterest.findOneAndDelete({
+    fromUser: senderId,
+    toUser: req.user._id,
+    status: 'pending',
+  });
+
+  if (!deleted) {
+    throw new ApiError(404, 'No pending interest from that user found');
+  }
+
+  // Clean up the interest_received notification they triggered
+  await Notification.deleteMany({
+    userId: req.user._id,
+    fromUserId: senderId,
+    type: 'interest_received',
+  });
+
+  // Build current user's display info for the notification
+  const decliner = await User.findById(req.user._id)
+    .select('personalInfo.firstName personalInfo.lastName personalInfo.profilePic')
+    .lean();
+  const declinerName = [decliner?.personalInfo?.firstName, decliner?.personalInfo?.lastName]
+    .filter(Boolean).join(' ') || 'Someone';
+  const declinerPic = decliner?.personalInfo?.profilePic || null;
+
+  // Notify the sender that their interest was declined
+  await Notification.create({
+    userId: senderId,
+    type: 'interest_declined',
+    fromUserId: req.user._id,
+    fromUserName: declinerName,
+    fromUserProfilePic: declinerPic,
+  });
+
+  emitToUser(senderId, 'interest_declined', {
+    fromUserId: String(req.user._id),
+    fromUserName: declinerName,
+    fromUserProfilePic: declinerPic,
+  });
+
+  res.status(200).json({
+    success: true,
+    data: { message: 'Interest declined' },
   });
 });
 
@@ -1007,6 +1095,7 @@ export default {
   getMatchDetail,
   expressInterest,
   undoInterest,
+  declineInterest,
   getPendingInterests,
   getMutualMatches,
   getTodayMatches,
