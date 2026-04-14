@@ -18,6 +18,15 @@ import { playInterestSound, playMatchSound, playMessageSound } from '@/features/
 import api from '@/shared/config/axiosConfig';
 import { consumeSentPreview } from '@/shared/lib/sentMsgTracker';
 
+// Persist which conversation previews the user has already acknowledged,
+// so we don't re-fire notifications for old messages on every login.
+const getSeenPreviews = (uid: string): Record<string, string> => {
+  try { return JSON.parse(localStorage.getItem(`rl_seen_${uid}`) || '{}'); } catch { return {}; }
+};
+const saveSeenPreviews = (uid: string, map: Record<string, string>) => {
+  try { localStorage.setItem(`rl_seen_${uid}`, JSON.stringify(map)); } catch {}
+};
+
 export default function MainLayout({ children }: { children?: React.ReactNode }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
@@ -79,6 +88,12 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
     const notif = notifications.find((n) => n.id === id);
     if (notif?.type === 'message_received') {
       clientMsgCountRef.current = Math.max(0, clientMsgCountRef.current - 1);
+      // Persist the seen state so this notification doesn't re-fire on next login
+      if (notif.conversationId && currentUserId) {
+        const seenMap = getSeenPreviews(currentUserId);
+        seenMap[notif.conversationId] = notif.preview || convPrevRef.current[notif.conversationId] || '';
+        saveSeenPreviews(currentUserId, seenMap);
+      }
     } else {
       await notificationService.markRead(id);
     }
@@ -88,6 +103,18 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
 
   const handleMarkAllRead = async () => {
     await notificationService.markAllRead();
+    // Persist all current previews as seen so message notifs don't re-fire on next login
+    if (currentUserId) {
+      const seenMap = { ...convPrevRef.current };
+      // Also capture any message_received notifs in state (in case first poll hasn't fired yet)
+      notifications.forEach((n) => {
+        if (n.type === 'message_received' && n.conversationId && n.preview) {
+          seenMap[n.conversationId] = n.preview;
+        }
+      });
+      saveSeenPreviews(currentUserId, seenMap);
+    }
+    clientMsgCountRef.current = 0;
     setNotifications([]);
     setUnreadCount(0);
   };
@@ -95,6 +122,10 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
   // When user navigates to /messages, silently remove all mutual_match + message_received notifications
   useEffect(() => {
     if (location.pathname !== '/messages') return;
+    // Always save current previews as seen when the user opens /messages
+    if (currentUserId && Object.keys(convPrevRef.current).length > 0) {
+      saveSeenPreviews(currentUserId, { ...convPrevRef.current });
+    }
     const toRemove = notifications.filter((n) => n.type === 'mutual_match' || n.type === 'message_received');
     if (toRemove.length === 0) return;
     // Only call markAllRead for real DB notifications (not client-side msg ones)
@@ -103,6 +134,16 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
     clientMsgCountRef.current = 0;
     setNotifications((prev) => prev.filter((n) => n.type !== 'mutual_match' && n.type !== 'message_received'));
     setUnreadCount((c) => Math.max(0, c - toRemove.length));
+    // Mark all current previews as seen so they don't re-fire on next login
+    if (currentUserId) {
+      const seenMap = { ...convPrevRef.current };
+      toRemove.forEach((n) => {
+        if (n.type === 'message_received' && n.conversationId && n.preview) {
+          seenMap[n.conversationId] = n.preview;
+        }
+      });
+      saveSeenPreviews(currentUserId, seenMap);
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname]);
 
@@ -129,6 +170,8 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
   const navItems = isCouple ? coupleNavItems : partnerNavItems;
 
   const handleLogout = () => {
+    // Save all current previews as seen before logging out so they don't re-fire on next login
+    if (currentUserId) saveSeenPreviews(currentUserId, { ...convPrevRef.current });
     dispatch(logout());
     navigate('/');
   };
@@ -145,6 +188,9 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
   // Poll conversations globally so message notifications fire on every page
   useEffect(() => {
     if (!token) return;
+    // Reset seed state on every (re-)login so the localStorage check always runs fresh
+    convSeeded.current = false;
+    convPrevRef.current = {};
     const poll = async () => {
       try {
         const res: any = await api.get('/chat/conversations');
@@ -152,10 +198,12 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
         if (!convSeeded.current) {
           const map: Record<string, string> = {};
           const pendingMsgNotifs: AppNotification[] = [];
+          const seenMap = getSeenPreviews(currentUserId);
           fresh.forEach((c) => {
             map[c.id] = c.preview;
-            // If the last sender is someone else, this is an unread message
-            if (c.lastSenderId && c.lastSenderId !== currentUserId) {
+            // Only notify if the last sender is someone else AND the preview
+            // is different from what the user last acknowledged (i.e. a new unseen message).
+            if (c.lastSenderId && c.lastSenderId !== currentUserId && c.preview !== seenMap[c.id]) {
               pendingMsgNotifs.push({
                 id: `msg-${c.id}`,
                 type: 'message_received',
@@ -171,6 +219,16 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
           });
           convPrevRef.current = map;
           convSeeded.current = true;
+          // For conversations that had NO new message, mark them as seen now
+          // so they never fire on the next login either.
+          if (currentUserId) {
+            const pendingIds = new Set(pendingMsgNotifs.map((n) => n.conversationId));
+            const updatedSeen = { ...seenMap };
+            Object.entries(map).forEach(([convId, preview]) => {
+              if (!pendingIds.has(convId)) updatedSeen[convId] = preview;
+            });
+            saveSeenPreviews(currentUserId, updatedSeen);
+          }
           if (pendingMsgNotifs.length > 0) {
             setNotifications((prev) => [...pendingMsgNotifs, ...prev]);
             setUnreadCount((count) => count + pendingMsgNotifs.length);

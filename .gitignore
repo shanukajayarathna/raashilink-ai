@@ -8,3 +8,7 @@ coverage/
 __pycache__/
 .env*
 !.env.example
+
+# Temporary API response / test data files
+n.json
+s.json

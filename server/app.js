@@ -1,6 +1,8 @@
+import http from 'node:http';
 import express from 'express';
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
+import { initSocket } from './lib/socket.js';
 import authRoutes from './routes/v1/auth.routes.js';
 import usersRoutes from './routes/v1/users.routes.js';
 import matchesRoutes from './routes/v1/matches.routes.js';
@@ -115,7 +117,9 @@ export async function startServer() {
     logger.error('MongoDB connection error', { message: error.message });
   });
 
-  const server = app.listen(port, () => {
+  const server = http.createServer(app);
+  initSocket(server);
+  server.listen(port, () => {
     logger.info(`Server listening on port ${port}`);
   });
 

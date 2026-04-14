@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Box, 
   Grid, 
@@ -59,16 +59,19 @@ import {
   YAxis, 
   Tooltip as RechartsTooltip 
 } from 'recharts';
+import { MessageCircle, UserMinus, Send, Inbox, UserCheck, UserX } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { RootState } from '@/app/store/store';
 import axiosInstance from '@/shared/config/axiosConfig';
 import DashboardSkeleton from '@/components/skeletons/DashboardSkeleton';
 import userService from '@/features/profile/services/userService';
+import matchService from '@/features/matchmaking/services/matchService';
 import { showToast } from '@/app/store/uiSlice';
 import { updateUser } from '@/features/auth/store/authSlice';
 import CoupleDashboard from '@/features/dashboard/pages/CoupleDashboard';
 import { translateZodiacSign } from '@/features/horoscope/utils/horoscopeLocalization';
+import { useRealtimeUpdates } from '@/shared/hooks/useRealtimeUpdates';
 
 // Design System Constants
 const COLORS = {
@@ -781,6 +784,12 @@ export default function UserDashboard() {
   
   const [loading, setLoading] = useState(true);
   const [widgetLoading, setWidgetLoading] = useState(true);
+  const [mutualMatches, setMutualMatches] = useState<any[]>([]);
+  const [mutualMatchesLoading, setMutualMatchesLoading] = useState(true);
+  const [removingMatchId, setRemovingMatchId] = useState<string | null>(null);
+  const [pendingSent, setPendingSent] = useState<any[]>([]);
+  const [pendingReceived, setPendingReceived] = useState<any[]>([]);
+  const [pendingLoading, setPendingLoading] = useState(true);
   const [data, setData] = useState<any>(() => {
     const userData = user || JSON.parse(localStorage.getItem('user') || 'null') || {};
     return {
@@ -823,6 +832,32 @@ export default function UserDashboard() {
   const [busyChannel, setBusyChannel] = useState<'email' | 'phone' | null>(null);
   const [verifying, setVerifying] = useState(false);
   const liveProfilePic = resolveProfilePic(user, data);
+
+  // ── Lightweight refresh fns (for real-time events) ──────────────────────
+  const refreshMutualMatches = useCallback(async () => {
+    try {
+      const res = await axiosInstance.get('/matches/mutual');
+      setMutualMatches(res.data?.data?.items || []);
+    } catch { /* silent */ }
+  }, []);
+
+  const refreshPendingInterests = useCallback(async () => {
+    try {
+      const res = await axiosInstance.get('/matches/pending');
+      setPendingSent(res.data?.data?.sent || []);
+      setPendingReceived(res.data?.data?.received || []);
+    } catch { /* silent */ }
+  }, []);
+
+  // ── Real-time socket events ──────────────────────────────────────────────
+  useRealtimeUpdates({
+    onInterestReceived: () => refreshPendingInterests(),
+    onMutualMatch: () => {
+      refreshMutualMatches();
+      refreshPendingInterests();
+    },
+    onMatchRemoved: () => refreshMutualMatches(),
+  });
 
   useEffect(() => {
     let mounted = true;
@@ -868,12 +903,14 @@ export default function UserDashboard() {
 
     const fetchWidgets = async () => {
       try {
-        const [recommendationsResponse, weddingProjectResponse, budgetResponse, vendorsResponse] =
+        const [recommendationsResponse, weddingProjectResponse, budgetResponse, vendorsResponse, mutualMatchesResponse, pendingResponse] =
           await Promise.allSettled([
             axiosInstance.get('/matches/recommendations', { params: { pageSize: 4, fast: true } }),
             axiosInstance.get('/wedding/project'),
             axiosInstance.get('/wedding/budget'),
             axiosInstance.get('/wedding/vendors'),
+            axiosInstance.get('/matches/mutual'),
+            axiosInstance.get('/matches/pending'),
           ]);
 
         if (!mounted) return;
@@ -901,6 +938,24 @@ export default function UserDashboard() {
             : [];
         const recommendedVendors = formatVendors(vendorItems);
 
+        const mutualItems =
+          mutualMatchesResponse.status === 'fulfilled'
+            ? mutualMatchesResponse.value.data?.data?.items || []
+            : [];
+
+        const pendingData =
+          pendingResponse.status === 'fulfilled'
+            ? pendingResponse.value.data?.data
+            : null;
+
+        if (mounted) {
+          setMutualMatches(mutualItems);
+          setMutualMatchesLoading(false);
+          setPendingSent(pendingData?.sent || []);
+          setPendingReceived(pendingData?.received || []);
+          setPendingLoading(false);
+        }
+
         setData((prev: any) => ({
           ...prev,
           todayMatch: topMatch,
@@ -922,7 +977,11 @@ export default function UserDashboard() {
       } catch (error) {
         console.error('Error fetching dashboard widgets', error);
       } finally {
-        if (mounted) setWidgetLoading(false);
+        if (mounted) {
+          setWidgetLoading(false);
+          setMutualMatchesLoading(false);
+          setPendingLoading(false);
+        }
       }
     };
 
@@ -956,6 +1015,19 @@ export default function UserDashboard() {
       }));
     }
   }, [user]);
+
+  const handleRemoveMatch = async (matchId: string) => {
+    setRemovingMatchId(matchId);
+    try {
+      await matchService.undoInterest(matchId);
+      setMutualMatches((prev) => prev.filter((m) => m.id !== matchId));
+      dispatch(showToast({ type: 'success', message: 'Match removed.' }));
+    } catch (err: any) {
+      dispatch(showToast({ type: 'error', message: err.response?.data?.message || 'Failed to remove match.' }));
+    } finally {
+      setRemovingMatchId(null);
+    }
+  };
 
   const handleRequestVerificationOtp = async (channel: 'email' | 'phone') => {
     try {
@@ -1133,6 +1205,363 @@ export default function UserDashboard() {
         <Grid size={{ xs: 12, md: 4 }}>
           <VendorRecommendations vendors={data.vendors} loading={widgetLoading} />
         </Grid>
+
+        {/* Row 3 — Mutual Matches */}
+        {(mutualMatchesLoading || mutualMatches.length > 0) && (
+          <Grid size={{ xs: 12 }}>
+            <Box
+              sx={{
+                bgcolor: COLORS.white,
+                borderRadius: '24px',
+                p: { xs: 2.5, md: 3 },
+                border: `1.5px solid rgba(201,168,76,0.35)`,
+                boxShadow: '0 4px 24px rgba(139,26,46,0.06)',
+              }}
+            >
+              {/* Header */}
+              <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2.5 }}>
+                <Stack direction="row" alignItems="center" spacing={1.5}>
+                  <Box
+                    sx={{
+                      width: 32, height: 32, borderRadius: '50%',
+                      background: `linear-gradient(135deg, ${COLORS.primary} 0%, ${COLORS.secondary} 100%)`,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}
+                  >
+                    <Favorite sx={{ fontSize: 16, color: '#fff' }} />
+                  </Box>
+                  <Typography sx={{ fontFamily: 'Playfair Display', fontWeight: 700, color: COLORS.primary, fontSize: '1.1rem' }}>
+                    Mutual Matches
+                  </Typography>
+                  {!mutualMatchesLoading && mutualMatches.length > 0 && (
+                    <Chip
+                      label={mutualMatches.length}
+                      size="small"
+                      sx={{ bgcolor: COLORS.primary, color: '#fff', fontWeight: 700, height: 20, '& .MuiChip-label': { px: 1 } }}
+                    />
+                  )}
+                </Stack>
+                <Button
+                  size="small"
+                  endIcon={<ArrowForward sx={{ fontSize: 16 }} />}
+                  onClick={() => navigate('/matches')}
+                  sx={{ color: COLORS.primary, fontWeight: 700, textTransform: 'none', fontSize: '0.8rem' }}
+                >
+                  View All
+                </Button>
+              </Stack>
+
+              {mutualMatchesLoading ? (
+                <Stack direction="row" spacing={2} sx={{ overflowX: 'auto', pb: 1 }}>
+                  {[...Array(4)].map((_, i) => (
+                    <Box key={i} sx={{ minWidth: 200, flexShrink: 0 }}>
+                      <Skeleton variant="rectangular" height={130} sx={{ borderRadius: 3 }} />
+                    </Box>
+                  ))}
+                </Stack>
+              ) : (
+                <Stack direction="row" spacing={2} sx={{ overflowX: 'auto', pb: 1, scrollbarWidth: 'thin' }}>
+                  {mutualMatches.map((match, idx) => {
+                    const initials = match.initials || match.name?.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2) || '??';
+                    const isRemoving = removingMatchId === match.id;
+                    return (
+                      <motion.div
+                        key={match.id}
+                        initial={{ opacity: 0, scale: 0.92 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.88 }}
+                        transition={{ duration: 0.3, delay: idx * 0.06 }}
+                        style={{ flexShrink: 0 }}
+                      >
+                        <Box
+                          sx={{
+                            minWidth: 200,
+                            bgcolor: COLORS.background,
+                            borderRadius: 4,
+                            border: `1px solid rgba(201,168,76,0.25)`,
+                            p: 2,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            gap: 1,
+                            position: 'relative',
+                            transition: 'box-shadow 0.2s',
+                            '&:hover': { boxShadow: '0 4px 16px rgba(139,26,46,0.12)' },
+                          }}
+                        >
+                          {/* Compatibility badge */}
+                          <Box
+                            sx={{
+                              position: 'absolute', top: 10, right: 10,
+                              bgcolor: COLORS.primary, color: '#fff',
+                              borderRadius: 2, px: 1, py: 0.3,
+                              fontSize: '0.65rem', fontWeight: 700, lineHeight: 1.4,
+                            }}
+                          >
+                            {match.score ?? '—'}%
+                          </Box>
+
+                          <Avatar
+                            src={match.img || undefined}
+                            sx={{
+                              width: 56, height: 56,
+                              background: `linear-gradient(135deg, ${COLORS.primary}, ${COLORS.secondary})`,
+                              fontWeight: 700, color: '#fff', fontSize: '1.1rem',
+                              border: `2px solid rgba(201,168,76,0.4)`,
+                            }}
+                          >
+                            {initials}
+                          </Avatar>
+                          <Typography sx={{ fontWeight: 700, color: COLORS.textPrimary, fontSize: '0.9rem', textAlign: 'center', lineHeight: 1.2 }} noWrap>
+                            {match.name}{match.age ? `, ${match.age}` : ''}
+                          </Typography>
+                          {match.location && (
+                            <Stack direction="row" spacing={0.4} alignItems="center">
+                              <LocationOn sx={{ fontSize: 12, color: '#999' }} />
+                              <Typography variant="caption" sx={{ color: '#888' }} noWrap>{match.location}</Typography>
+                            </Stack>
+                          )}
+
+                          <Stack direction="row" spacing={1} sx={{ mt: 0.5, width: '100%' }}>
+                            <Tooltip title="Send a message">
+                              <IconButton
+                                size="small"
+                                onClick={() => navigate('/messages', { state: { openUserId: match.id, openUserName: match.name } })}
+                                sx={{
+                                  flex: 1, borderRadius: 2,
+                                  bgcolor: COLORS.primary, color: '#fff',
+                                  '&:hover': { bgcolor: '#6e1526' },
+                                }}
+                              >
+                                <MessageCircle size={15} />
+                              </IconButton>
+                            </Tooltip>
+                            <Tooltip title="Remove match">
+                              <IconButton
+                                size="small"
+                                disabled={isRemoving}
+                                onClick={() => handleRemoveMatch(match.id)}
+                                sx={{
+                                  flex: 1, borderRadius: 2,
+                                  border: `1px solid rgba(211,47,47,0.5)`,
+                                  color: '#d32f2f',
+                                  '&:hover': { bgcolor: 'rgba(211,47,47,0.08)' },
+                                }}
+                              >
+                                {isRemoving ? <Skeleton variant="circular" width={15} height={15} /> : <UserMinus size={15} />}
+                              </IconButton>
+                            </Tooltip>
+                          </Stack>
+                        </Box>
+                      </motion.div>
+                    );
+                  })}
+                </Stack>
+              )}
+            </Box>
+          </Grid>
+        )}
+
+        {/* Row 4 — Pending Interests */}
+        {(pendingLoading || pendingSent.length > 0 || pendingReceived.length > 0) && (
+          <Grid size={{ xs: 12 }}>
+            <Box
+              sx={{
+                bgcolor: COLORS.white, borderRadius: '24px',
+                p: { xs: 2.5, md: 3 },
+                border: '1.5px solid rgba(26,107,114,0.2)',
+                boxShadow: '0 4px 24px rgba(26,107,114,0.06)',
+              }}
+            >
+              {/* Header */}
+              <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2.5 }}>
+                <Stack direction="row" alignItems="center" spacing={1.5}>
+                  <Box
+                    sx={{
+                      width: 32, height: 32, borderRadius: '50%',
+                      background: 'linear-gradient(135deg, #1A6B72 0%, #C9A84C 100%)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}
+                  >
+                    <Send size={15} color="#fff" />
+                  </Box>
+                  <Typography sx={{ fontFamily: 'Playfair Display', fontWeight: 700, color: '#1A6B72', fontSize: '1.1rem' }}>
+                    Pending Interests
+                  </Typography>
+                  {!pendingLoading && (pendingSent.length + pendingReceived.length) > 0 && (
+                    <Chip
+                      label={pendingSent.length + pendingReceived.length}
+                      size="small"
+                      sx={{ bgcolor: '#1A6B72', color: '#fff', fontWeight: 700, height: 20, '& .MuiChip-label': { px: 1 } }}
+                    />
+                  )}
+                </Stack>
+                <Button
+                  size="small"
+                  endIcon={<ArrowForward sx={{ fontSize: 16 }} />}
+                  onClick={() => navigate('/matches')}
+                  sx={{ color: '#1A6B72', fontWeight: 700, textTransform: 'none', fontSize: '0.8rem' }}
+                >
+                  Manage
+                </Button>
+              </Stack>
+
+              {pendingLoading ? (
+                <Stack direction="row" spacing={2} sx={{ overflowX: 'auto', pb: 1 }}>
+                  {[...Array(4)].map((_, i) => (
+                    <Box key={i} sx={{ minWidth: 170, flexShrink: 0 }}>
+                      <Skeleton variant="rectangular" height={120} sx={{ borderRadius: 3 }} />
+                    </Box>
+                  ))}
+                </Stack>
+              ) : (
+                <Box>
+                  {/* Received sub-row */}
+                  {pendingReceived.length > 0 && (
+                    <Box sx={{ mb: pendingSent.length > 0 ? 3 : 0 }}>
+                      <Stack direction="row" alignItems="center" spacing={0.8} sx={{ mb: 1.5 }}>
+                        <Inbox size={13} color={COLORS.primary} />
+                        <Typography variant="caption" sx={{ fontWeight: 700, color: COLORS.primary, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                          Received ({pendingReceived.length})
+                        </Typography>
+                      </Stack>
+                      <Stack direction="row" spacing={2} sx={{ overflowX: 'auto', pb: 1, scrollbarWidth: 'thin' }}>
+                        {pendingReceived.map((match) => {
+                          const initials = match.initials || '??';
+                          return (
+                            <Box
+                              key={match.id}
+                              sx={{
+                                minWidth: 175, flexShrink: 0,
+                                bgcolor: COLORS.background, borderRadius: 3,
+                                border: `1px solid rgba(139,26,46,0.2)`,
+                                p: 1.8,
+                              }}
+                            >
+                              <Stack direction="row" spacing={1.2} alignItems="center" sx={{ mb: 1.2 }}>
+                                <Avatar
+                                  src={match.img || undefined}
+                                  sx={{ width: 40, height: 40, bgcolor: COLORS.primary, fontWeight: 700, color: '#fff', fontSize: '0.85rem', border: `1.5px solid rgba(139,26,46,0.3)` }}
+                                >
+                                  {initials}
+                                </Avatar>
+                                <Box sx={{ minWidth: 0 }}>
+                                  <Typography sx={{ fontWeight: 700, fontSize: '0.82rem', color: COLORS.textPrimary }} noWrap>
+                                    {match.name}{match.age ? `, ${match.age}` : ''}
+                                  </Typography>
+                                  {match.location && match.location !== 'Not provided' && (
+                                    <Typography variant="caption" sx={{ color: '#888' }} noWrap>{match.location}</Typography>
+                                  )}
+                                </Box>
+                              </Stack>
+                              <Stack direction="row" spacing={0.8}>
+                                <Tooltip title="Accept interest">
+                                  <IconButton
+                                    size="small"
+                                    onClick={async () => {
+                                      try {
+                                        const res = await matchService.expressInterest(match.id);
+                                        setPendingReceived((p) => p.filter((m) => m.id !== match.id));
+                                        if (res.data?.matched) {
+                                          setMutualMatches((p) => [...p, match]);
+                                          dispatch(showToast({ type: 'success', message: 'Mutual match unlocked!' }));
+                                        } else {
+                                          dispatch(showToast({ type: 'success', message: 'Interest sent back!' }));
+                                        }
+                                      } catch { dispatch(showToast({ type: 'error', message: 'Failed.' })); }
+                                    }}
+                                    sx={{ flex: 1, borderRadius: 2, bgcolor: COLORS.primary, color: '#fff', '&:hover': { bgcolor: '#6e1526' } }}
+                                  >
+                                    <UserCheck size={14} />
+                                  </IconButton>
+                                </Tooltip>
+                                <Tooltip title="Decline">
+                                  <IconButton
+                                    size="small"
+                                    onClick={async () => {
+                                      try {
+                                        await matchService.undoInterest(match.id);
+                                        setPendingReceived((p) => p.filter((m) => m.id !== match.id));
+                                        dispatch(showToast({ type: 'info', message: 'Interest declined.' }));
+                                      } catch { dispatch(showToast({ type: 'error', message: 'Failed.' })); }
+                                    }}
+                                    sx={{ flex: 1, borderRadius: 2, border: `1px solid rgba(211,47,47,0.5)`, color: '#d32f2f', '&:hover': { bgcolor: 'rgba(211,47,47,0.08)' } }}
+                                  >
+                                    <UserX size={14} />
+                                  </IconButton>
+                                </Tooltip>
+                              </Stack>
+                            </Box>
+                          );
+                        })}
+                      </Stack>
+                    </Box>
+                  )}
+
+                  {/* Sent sub-row */}
+                  {pendingSent.length > 0 && (
+                    <Box>
+                      <Stack direction="row" alignItems="center" spacing={0.8} sx={{ mb: 1.5 }}>
+                        <Send size={13} color="#1A6B72" />
+                        <Typography variant="caption" sx={{ fontWeight: 700, color: '#1A6B72', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                          Sent ({pendingSent.length}) · Awaiting response
+                        </Typography>
+                      </Stack>
+                      <Stack direction="row" spacing={2} sx={{ overflowX: 'auto', pb: 1, scrollbarWidth: 'thin' }}>
+                        {pendingSent.map((match) => {
+                          const initials = match.initials || '??';
+                          return (
+                            <Box
+                              key={match.id}
+                              sx={{
+                                minWidth: 175, flexShrink: 0,
+                                bgcolor: COLORS.background, borderRadius: 3,
+                                border: `1px solid rgba(26,107,114,0.2)`,
+                                p: 1.8,
+                              }}
+                            >
+                              <Stack direction="row" spacing={1.2} alignItems="center" sx={{ mb: 1.2 }}>
+                                <Avatar
+                                  src={match.img || undefined}
+                                  sx={{ width: 40, height: 40, bgcolor: '#1A6B72', fontWeight: 700, color: '#fff', fontSize: '0.85rem', border: `1.5px solid rgba(26,107,114,0.3)` }}
+                                >
+                                  {initials}
+                                </Avatar>
+                                <Box sx={{ minWidth: 0 }}>
+                                  <Typography sx={{ fontWeight: 700, fontSize: '0.82rem', color: COLORS.textPrimary }} noWrap>
+                                    {match.name}{match.age ? `, ${match.age}` : ''}
+                                  </Typography>
+                                  {match.location && match.location !== 'Not provided' && (
+                                    <Typography variant="caption" sx={{ color: '#888' }} noWrap>{match.location}</Typography>
+                                  )}
+                                </Box>
+                              </Stack>
+                              <Tooltip title="Withdraw interest">
+                                <IconButton
+                                  size="small"
+                                  onClick={async () => {
+                                    try {
+                                      await matchService.undoInterest(match.id);
+                                      setPendingSent((p) => p.filter((m) => m.id !== match.id));
+                                      dispatch(showToast({ type: 'info', message: 'Interest withdrawn.' }));
+                                    } catch { dispatch(showToast({ type: 'error', message: 'Failed.' })); }
+                                  }}
+                                  sx={{ width: '100%', borderRadius: 2, border: `1px solid rgba(211,47,47,0.4)`, color: '#d32f2f', '&:hover': { bgcolor: 'rgba(211,47,47,0.08)' } }}
+                                >
+                                  <UserMinus size={14} />
+                                </IconButton>
+                              </Tooltip>
+                            </Box>
+                          );
+                        })}
+                      </Stack>
+                    </Box>
+                  )}
+                </Box>
+              )}
+            </Box>
+          </Grid>
+        )}
       </Grid>
 
       {/* Notification Drawer */}

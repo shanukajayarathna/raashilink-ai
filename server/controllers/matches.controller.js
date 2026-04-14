@@ -4,6 +4,7 @@ import { spawn } from 'child_process';
 import User from '../models/User.js';
 import MatchInterest from '../models/MatchInterest.js';
 import Conversation from '../models/Conversation.js';
+import Message from '../models/Message.js';
 import Match from '../models/Match.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import ApiError from '../utils/ApiError.js';
@@ -12,6 +13,7 @@ import redisClient from '../lib/redis.js';
 import logger from '../utils/logger.js';
 import Notification from '../models/Notification.js';
 import { resolvePythonCommand } from '../utils/pythonRuntime.js';
+import { emitToUser } from '../lib/socket.js';
 
 function escapeRegex(value = '') {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -269,9 +271,13 @@ function buildDetail(user, compatibility, mutualMatch) {
     name: fullName,
     initials: fallbackInitials(fullName),
     age: user.age ?? profileField(user, 'age'),
+    gender: normalizeDisplayValue(profileField(user, 'gender')),
+    height: normalizeDisplayValue(profileField(user, 'height')),
+    ethnicity: normalizeDisplayValue(profileField(user, 'ethnicity')),
     location: normalizeDisplayValue(user.location || profileField(user, 'location')),
     job: normalizeDisplayValue(user.lifestyle?.professionType || user.lifestyle?.careerAmbitions),
     education: normalizeDisplayValue(user.lifestyle?.educationLevel),
+    religion: normalizeDisplayValue(user.lifestyle?.religion),
     score: compatibility.overallScore,
     band: compatibility.bandLabel,
     bio: normalizeDisplayValue(user.bio || profileField(user, 'bio')),
@@ -298,6 +304,9 @@ function buildDetail(user, compatibility, mutualMatch) {
       interests: Array.isArray(user.lifestyle?.languages) ? user.lifestyle.languages.filter(Boolean) : [],
       career: normalizeDisplayValue(user.lifestyle?.professionType || user.lifestyle?.careerAmbitions),
       familyPlans: normalizeDisplayValue(user.lifestyle?.familyPlans),
+      diet: normalizeDisplayValue(user.lifestyle?.diet),
+      smoking: normalizeDisplayValue(user.lifestyle?.smoking),
+      drinking: normalizeDisplayValue(user.lifestyle?.drinking),
     },
     photos: user.photos?.length > 0 ? user.photos.map((photo) => photo.url) : [],
     profileImage: mainPhoto(user),
@@ -525,19 +534,31 @@ export const getMatchDetail = asyncHandler(async (req, res) => {
       'personalInfo.firstName',
       'personalInfo.lastName',
       'personalInfo.age',
+      'personalInfo.gender',
+      'personalInfo.height',
+      'personalInfo.ethnicity',
       'personalInfo.location',
       'personalInfo.profilePic',
       'personalInfo.bio',
       'personalInfo.photos',
       'lifestyle.professionType',
+      'lifestyle.careerAmbitions',
       'lifestyle.educationLevel',
       'lifestyle.familyValues',
+      'lifestyle.familyPlans',
+      'lifestyle.hobbies',
+      'lifestyle.religion',
+      'lifestyle.diet',
+      'lifestyle.smoking',
+      'lifestyle.drinking',
+      'lifestyle.languages',
       'personality.openness',
       'personality.neuroticism',
       'horoscopeData.moonSign',
       'horoscopeData.rashi',
       'horoscopeData.nakshatra',
       'horoscopeData.ascendant',
+      'photos',
     ].join(' '))
     .lean({ virtuals: true });
   if (!user || user.role !== 'user') {
@@ -665,6 +686,29 @@ export const expressInterest = asyncHandler(async (req, res) => {
   }
   // --- End Notifications ---
 
+  // --- Real-time events ---
+  if (matched) {
+    emitToUser(req.params.id, 'mutual_match', {
+      fromUserId: String(req.user._id),
+      fromUserName: senderName,
+      fromUserProfilePic: senderPic,
+      conversationId: conversation ? String(conversation._id) : null,
+    });
+    emitToUser(req.user._id, 'mutual_match', {
+      fromUserId: String(req.params.id),
+      fromUserName: recipientName,
+      fromUserProfilePic: recipientPic,
+      conversationId: conversation ? String(conversation._id) : null,
+    });
+  } else {
+    emitToUser(req.params.id, 'interest_received', {
+      fromUserId: String(req.user._id),
+      fromUserName: senderName,
+      fromUserProfilePic: senderPic,
+    });
+  }
+  // --- End Real-time events ---
+
   res.status(200).json({
     success: true,
     data: {
@@ -679,13 +723,150 @@ export const expressInterest = asyncHandler(async (req, res) => {
 
 export const undoInterest = asyncHandler(async (req, res) => {
   ensureObjectId(req.params.id, 'matchId');
+  const otherId = req.params.id;
 
-  await MatchInterest.deleteOne({ fromUser: req.user._id, toUser: req.params.id });
+  // Delete both directions so a mutual match is fully removed
+  await MatchInterest.deleteMany({
+    $or: [
+      { fromUser: req.user._id, toUser: otherId },
+      { fromUser: otherId, toUser: req.user._id },
+    ],
+  });
+
+  // Also wipe the conversation and all messages between them
+  const conversation = await Conversation.findOne({
+    participants: { $all: [req.user._id, otherId] },
+  });
+  if (conversation) {
+    await Message.deleteMany({ conversationId: conversation._id });
+    await conversation.deleteOne();
+  }
+
+  // Delete mutual_match and interest_received notifications between both users
+  await Notification.deleteMany({
+    $or: [
+      { userId: req.user._id, fromUserId: otherId, type: { $in: ['mutual_match', 'interest_received'] } },
+      { userId: otherId, fromUserId: req.user._id, type: { $in: ['mutual_match', 'interest_received'] } },
+    ],
+  });
+
+  // Notify the other user that the match was removed
+  emitToUser(otherId, 'match_removed', { byUserId: String(req.user._id) });
 
   res.status(200).json({
     success: true,
-    data: { message: 'Interest removed' },
+    data: { message: 'Match removed' },
   });
+});
+
+export const getPendingInterests = asyncHandler(async (req, res) => {
+  const userId = req.user._id;
+
+  const [sentRecords, receivedRecords] = await Promise.all([
+    MatchInterest.find({ fromUser: userId, status: 'pending' }).lean(),
+    MatchInterest.find({ toUser: userId, status: 'pending' }).lean(),
+  ]);
+
+  const sentUserIds = sentRecords.map((i) => i.toUser);
+  const receivedUserIds = receivedRecords.map((i) => i.fromUser);
+
+  const userFields = [
+    '_id',
+    'personalInfo.firstName', 'personalInfo.lastName',
+    'personalInfo.age', 'personalInfo.location', 'personalInfo.profilePic',
+    'personalInfo.height',
+    'lifestyle.professionType', 'lifestyle.careerAmbitions', 'lifestyle.educationLevel',
+    'photos',
+  ].join(' ');
+
+  const [sentUsers, receivedUsers] = await Promise.all([
+    User.find({ _id: { $in: sentUserIds } }).select(userFields).lean(),
+    User.find({ _id: { $in: receivedUserIds } }).select(userFields).lean(),
+  ]);
+
+  const sentMap = Object.fromEntries(sentUsers.map((u) => [String(u._id), u]));
+  const receivedMap = Object.fromEntries(receivedUsers.map((u) => [String(u._id), u]));
+
+  const formatUser = (u) => {
+    const fullName = [u.personalInfo?.firstName, u.personalInfo?.lastName].filter(Boolean).join(' ') || 'Member';
+    const initials = fullName.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2) || '??';
+    return {
+      id: String(u._id),
+      name: fullName,
+      initials,
+      age: u.personalInfo?.age ?? null,
+      location: normalizeDisplayValue(u.personalInfo?.location),
+      height: normalizeDisplayValue(u.personalInfo?.height),
+      job: normalizeDisplayValue(u.lifestyle?.professionType || u.lifestyle?.careerAmbitions),
+      education: normalizeDisplayValue(u.lifestyle?.educationLevel),
+      img: mainPhoto(u),
+    };
+  };
+
+  const sent = sentRecords
+    .map((i) => {
+      const u = sentMap[String(i.toUser)];
+      return u ? { ...formatUser(u), sentAt: i.createdAt } : null;
+    })
+    .filter(Boolean);
+
+  const received = receivedRecords
+    .map((i) => {
+      const u = receivedMap[String(i.fromUser)];
+      return u ? { ...formatUser(u), receivedAt: i.createdAt } : null;
+    })
+    .filter(Boolean);
+
+  res.status(200).json({ success: true, data: { sent, received } });
+});
+
+export const getMutualMatches = asyncHandler(async (req, res) => {
+  const userId = req.user._id;
+
+  // Find all mutual MatchInterest records involving this user
+  const mutualInterests = await MatchInterest.find({
+    $or: [{ fromUser: userId }, { toUser: userId }],
+    status: 'mutual',
+  }).lean();
+
+  if (!mutualInterests.length) {
+    return res.status(200).json({ success: true, data: { items: [] } });
+  }
+
+  // Get the other user's ID from each mutual interest
+  const otherIds = mutualInterests.map((mi) =>
+    String(mi.fromUser) === String(userId) ? mi.toUser : mi.fromUser
+  );
+
+  const [otherUsers, currentUserData, conversations] = await Promise.all([
+    User.find({ _id: { $in: otherIds } })
+      .select([
+        '_id', 'personalInfo.firstName', 'personalInfo.lastName', 'personalInfo.age',
+        'personalInfo.location', 'personalInfo.bio', 'personalInfo.profilePic',
+        'personality', 'lifestyle', 'horoscopeData', 'photos', 'createdAt',
+      ].join(' '))
+      .lean(),
+    User.findById(userId).lean(),
+    Conversation.find({
+      participants: { $in: [userId] },
+    }).lean(),
+  ]);
+
+  // Build a map: otherUserId → conversationId
+  const convByUser = {};
+  for (const conv of conversations) {
+    const otherId = conv.participants.find((p) => String(p) !== String(userId));
+    if (otherId) convByUser[String(otherId)] = String(conv._id);
+  }
+
+  const items = otherUsers.map((u) => {
+    const compat = calculateCompatibilityFromData(currentUserData, u);
+    const card = buildCard(u, compat, true);
+    card.conversationId = convByUser[String(u._id)] || null;
+    return card;
+  });
+
+  res.status(200).json({ success: true, data: { items } });
 });
 
 export const getTodayMatches = asyncHandler(async (req, res) => {
@@ -826,5 +1007,7 @@ export default {
   getMatchDetail,
   expressInterest,
   undoInterest,
+  getPendingInterests,
+  getMutualMatches,
   getTodayMatches,
 };

@@ -244,6 +244,26 @@ export const getConversations = asyncHandler(async (req, res) => {
   });
 });
 
+export const deleteConversation = asyncHandler(async (req, res) => {
+  const { convId } = req.params;
+  ensureObjectId(convId, 'convId');
+
+  // Only allow participants of this conversation to delete it
+  const conversation = await Conversation.findOne({
+    _id: convId,
+    participants: req.user._id,
+  });
+
+  if (!conversation) {
+    throw new ApiError(404, 'Conversation not found');
+  }
+
+  await Message.deleteMany({ conversationId: conversation._id });
+  await conversation.deleteOne();
+
+  res.status(200).json({ success: true });
+});
+
 export default {
   sendMessage,
   sendAssistantMessage,

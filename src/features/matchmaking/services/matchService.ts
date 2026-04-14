@@ -45,6 +45,16 @@ const matchService = {
     return response.data;
   },
 
+  getMutualMatches: async () => {
+    const response = await axiosInstance.get('/matches/mutual');
+    return response.data;
+  },
+
+  getPendingInterests: async () => {
+    const response = await axiosInstance.get('/matches/pending');
+    return response.data;
+  },
+
   /**
    * Filter matches based on specific criteria.
    * @param {object} filters - Filtering criteria (age, location, etc.).

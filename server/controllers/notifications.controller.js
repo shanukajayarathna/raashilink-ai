@@ -3,15 +3,12 @@ import asyncHandler from '../utils/asyncHandler.js';
 
 
 export const getNotifications = asyncHandler(async (req, res) => {
-  const notifications = await Notification.find({ userId: req.user._id })
+  const notifications = await Notification.find({ userId: req.user._id, read: false })
     .sort({ createdAt: -1 })
     .limit(30)
     .lean();
 
-  const unreadCount = await Notification.countDocuments({
-    userId: req.user._id,
-    read: false,
-  });
+  const unreadCount = notifications.length;
 
   res.status(200).json({
     success: true,

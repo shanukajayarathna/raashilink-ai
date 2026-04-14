@@ -3,8 +3,9 @@ import {
   Box, Typography, Stack, Avatar, TextField, IconButton,
   List, ListItem, ListItemButton, ListItemAvatar, ListItemText,
   Divider, CircularProgress, useTheme, useMediaQuery,
+  Dialog, DialogTitle, DialogContent, DialogActions, Button,
 } from '@mui/material';
-import { Send, ArrowLeft, MessageCircle } from 'lucide-react';
+import { Send, ArrowLeft, MessageCircle, Trash2 } from 'lucide-react';
 import { useSelector } from 'react-redux';
 import { RootState } from '@/app/store/store';
 import api from '@/shared/config/axiosConfig';
@@ -44,6 +45,8 @@ export default function MessagesPage() {
   const [showList, setShowList] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const prevMsgIdsRef = useRef<Set<string>>(new Set());
+  const [deleteTarget, setDeleteTarget] = useState<Conversation | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     api.get('/chat/conversations')
@@ -105,6 +108,25 @@ export default function MessagesPage() {
   const handleSelectConv = (conv: Conversation) => {
     setSelectedConv(conv);
     if (isMobile) setShowList(false);
+  };
+
+  const handleDeleteConv = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await api.delete(`/chat/conversations/${deleteTarget.id}`);
+      setConversations((prev) => prev.filter((c) => c.id !== deleteTarget.id));
+      if (selectedConv?.id === deleteTarget.id) {
+        setSelectedConv(null);
+        setMessages([]);
+        if (isMobile) setShowList(true);
+      }
+    } catch {
+      // silent
+    } finally {
+      setDeleting(false);
+      setDeleteTarget(null);
+    }
   };
 
   const handleSend = async () => {
@@ -188,11 +210,23 @@ export default function MessagesPage() {
         <List disablePadding sx={{ flex: 1, overflowY: 'auto' }}>
           {conversations.map((conv) => (
             <React.Fragment key={conv.id}>
-              <ListItem disablePadding>
+              <ListItem
+                disablePadding
+                secondaryAction={
+                  <IconButton
+                    size="small"
+                    onClick={(e) => { e.stopPropagation(); setDeleteTarget(conv); }}
+                    sx={{ opacity: 0, transition: 'opacity 0.15s', color: 'error.main', '.MuiListItem-root:hover &': { opacity: 1 } }}
+                    aria-label="Delete conversation"
+                  >
+                    <Trash2 size={15} />
+                  </IconButton>
+                }
+              >
                 <ListItemButton
                   selected={selectedConv?.id === conv.id}
                   onClick={() => handleSelectConv(conv)}
-                  sx={{ py: 1.5, px: 2, '&.Mui-selected': { bgcolor: 'primary.50' } }}
+                  sx={{ py: 1.5, px: 2, pr: 5, '&.Mui-selected': { bgcolor: 'primary.50' } }}
                 >
                   <ListItemAvatar>
                     <Avatar sx={{ bgcolor: 'primary.main', width: 44, height: 44 }}>
@@ -232,12 +266,20 @@ export default function MessagesPage() {
         <Avatar sx={{ bgcolor: 'primary.main', width: 40, height: 40 }}>
           {initials(selectedConv.title)}
         </Avatar>
-        <Box>
+        <Box sx={{ flex: 1 }}>
           <Typography variant="subtitle1" sx={{ fontWeight: 700, lineHeight: 1.2 }}>
             {selectedConv.title}
           </Typography>
           <Typography variant="caption" color="text.secondary">Mutual match</Typography>
         </Box>
+        <IconButton
+          size="small"
+          onClick={() => setDeleteTarget(selectedConv)}
+          sx={{ color: 'error.main' }}
+          aria-label="Delete conversation"
+        >
+          <Trash2 size={18} />
+        </IconButton>
       </Box>
 
       {/* Messages */}
@@ -346,18 +388,42 @@ export default function MessagesPage() {
   );
 
   return (
-    <Box sx={{ height: 'calc(100vh - 80px)', display: 'flex', overflow: 'hidden', bgcolor: 'background.paper', borderRadius: 2, border: '1px solid', borderColor: 'divider' }}>
-      {isMobile ? (
-        <>
-          {showList && conversationList}
-          {!showList && selectedConv && chatArea}
-        </>
-      ) : (
-        <>
-          {conversationList}
-          {chatArea}
-        </>
-      )}
-    </Box>
+    <>
+      <Box sx={{ height: 'calc(100vh - 80px)', display: 'flex', overflow: 'hidden', bgcolor: 'background.paper', borderRadius: 2, border: '1px solid', borderColor: 'divider' }}>
+        {isMobile ? (
+          <>
+            {showList && conversationList}
+            {!showList && selectedConv && chatArea}
+          </>
+        ) : (
+          <>
+            {conversationList}
+            {chatArea}
+          </>
+        )}
+      </Box>
+
+      {/* Delete confirmation dialog */}
+      <Dialog open={!!deleteTarget} onClose={() => !deleting && setDeleteTarget(null)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700 }}>Delete conversation?</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary">
+            This will permanently delete your conversation with <strong>{deleteTarget?.title}</strong> and all messages. This cannot be undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setDeleteTarget(null)} disabled={deleting}>Cancel</Button>
+          <Button
+            variant="contained"
+            color="error"
+            onClick={handleDeleteConv}
+            disabled={deleting}
+            startIcon={deleting ? <CircularProgress size={14} color="inherit" /> : <Trash2 size={14} />}
+          >
+            {deleting ? 'Deleting…' : 'Delete'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </>
   );
 }
