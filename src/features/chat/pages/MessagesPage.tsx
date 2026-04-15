@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Box, Typography, Stack, Avatar, TextField, IconButton,
   List, ListItem, ListItemButton, ListItemAvatar, ListItemText,
   Divider, CircularProgress, useTheme, useMediaQuery,
-  Dialog, DialogTitle, DialogContent, DialogActions, Button,
+  Dialog, DialogTitle, DialogContent, DialogActions, Button, Chip, Tooltip,
 } from '@mui/material';
-import { Send, ArrowLeft, MessageCircle, Trash2 } from 'lucide-react';
+import { Send, ArrowLeft, MessageCircle, Trash2, PlusCircle } from 'lucide-react';
 import { useSelector } from 'react-redux';
 import { RootState } from '@/app/store/store';
 import api from '@/shared/config/axiosConfig';
@@ -27,6 +27,13 @@ interface Message {
   createdAt: string;
 }
 
+interface MutualMatch {
+  id: string;
+  name: string;
+  initials: string;
+  img: string | null;
+}
+
 export default function MessagesPage() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
@@ -34,13 +41,16 @@ export default function MessagesPage() {
   const currentUserId = (currentUser as any)?._id || (currentUser as any)?.id || '';
   const location = useLocation();
   const deepLinkConvId = (location.state as any)?.conversationId as string | undefined;
+  const deepLinkUserId = (location.state as any)?.openUserId as string | undefined;
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [mutualMatches, setMutualMatches] = useState<MutualMatch[]>([]);
   const [selectedConv, setSelectedConv] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [loadingConvs, setLoadingConvs] = useState(true);
   const [loadingMsgs, setLoadingMsgs] = useState(false);
+  const [openingConvFor, setOpeningConvFor] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [showList, setShowList] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -48,25 +58,91 @@ export default function MessagesPage() {
   const [deleteTarget, setDeleteTarget] = useState<Conversation | null>(null);
   const [deleting, setDeleting] = useState(false);
 
+  /** Find an existing conversation by partner userId, or call the server to create one */
+  const getOrOpenConversation = useCallback(async (userId: string): Promise<Conversation | null> => {
+    // Check local state first — no round-trip if it already exists
+    const existing = conversations.find((c) => c.otherUserId === userId);
+    if (existing) return existing;
+
+    setOpeningConvFor(userId);
+    try {
+      const res: any = await api.post('/chat/conversations/open', { userId });
+      const conv: Conversation = res.data.data.conversation;
+      // Add to list (deduplicated by id)
+      setConversations((prev) => {
+        if (prev.some((c) => c.id === conv.id)) return prev;
+        return [conv, ...prev];
+      });
+      return conv;
+    } catch {
+      return null;
+    } finally {
+      setOpeningConvFor(null);
+    }
+  }, [conversations]);
+
   useEffect(() => {
-    api.get('/chat/conversations')
-      .then((res: any) => {
-        const items: Conversation[] = res.data.data.items || [];
-        setConversations(items);
-        // Auto-select conversation if navigated here from a notification
-        if (deepLinkConvId) {
-          const target = items.find((c) => c.id === deepLinkConvId);
-          if (target) {
-            setSelectedConv(target);
+    // Fetch conversations and mutual matches in parallel
+    Promise.all([
+      api.get('/chat/conversations'),
+      api.get('/matches/mutual'),
+    ]).then(async ([convRes, matchRes]: any[]) => {
+      const items: Conversation[] = convRes.data.data.items || [];
+      setConversations(items);
+
+      // Build mutual matches list — only those without an existing conversation
+      const rawMatches: any[] = matchRes.data?.data?.items || [];
+      const convUserIds = new Set(items.map((c) => c.otherUserId));
+      const contacts: MutualMatch[] = rawMatches
+        .filter((m: any) => !convUserIds.has(m.id))
+        .map((m: any) => ({
+          id: m.id,
+          name: m.name,
+          initials: m.initials || m.name?.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2) || '??',
+          img: m.img || null,
+        }));
+      setMutualMatches(contacts);
+
+      // ── Auto-select from navigation state ──
+      if (deepLinkConvId) {
+        const target = items.find((c) => c.id === deepLinkConvId);
+        if (target) { setSelectedConv(target); if (isMobile) setShowList(false); }
+      } else if (deepLinkUserId) {
+        // Find existing conv or create one via server
+        const existing = items.find((c) => c.otherUserId === deepLinkUserId);
+        if (existing) {
+          setSelectedConv(existing);
+          if (isMobile) setShowList(false);
+        } else {
+          // Need to open (conversation may not exist yet — create it)
+          setOpeningConvFor(deepLinkUserId);
+          try {
+            const r: any = await api.post('/chat/conversations/open', { userId: deepLinkUserId });
+            const conv: Conversation = r.data.data.conversation;
+            setConversations((prev) => prev.some((c) => c.id === conv.id) ? prev : [conv, ...prev]);
+            // Remove from contacts list now that it has a conv
+            setMutualMatches((prev) => prev.filter((m) => m.id !== deepLinkUserId));
+            setSelectedConv(conv);
             if (isMobile) setShowList(false);
-          }
+          } catch { /* mutual match may not exist — fail silently */ }
+          finally { setOpeningConvFor(null); }
         }
-      })
-      .catch(() => {})
-      .finally(() => setLoadingConvs(false));
-  // deepLinkConvId intentionally only used on mount
+      }
+    })
+    .catch(() => {})
+    .finally(() => setLoadingConvs(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /** Start or open an existing conversation with a mutual match contact */
+  const handleStartChat = async (match: MutualMatch) => {
+    const conv = await getOrOpenConversation(match.id);
+    if (!conv) return;
+    // Remove from contacts section — it now has a conversation
+    setMutualMatches((prev) => prev.filter((m) => m.id !== match.id));
+    setSelectedConv(conv);
+    if (isMobile) setShowList(false);
+  };
 
   useEffect(() => {
     if (!selectedConv) return;
@@ -199,7 +275,7 @@ export default function MessagesPage() {
         <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <CircularProgress size={28} />
         </Box>
-      ) : conversations.length === 0 ? (
+      ) : conversations.length === 0 && mutualMatches.length === 0 ? (
         <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', p: 4, gap: 2 }}>
           <MessageCircle size={48} color="#ccc" />
           <Typography variant="body2" color="text.secondary" textAlign="center">
@@ -207,49 +283,93 @@ export default function MessagesPage() {
           </Typography>
         </Box>
       ) : (
-        <List disablePadding sx={{ flex: 1, overflowY: 'auto' }}>
-          {conversations.map((conv) => (
-            <React.Fragment key={conv.id}>
-              <ListItem
-                disablePadding
-                secondaryAction={
-                  <IconButton
-                    size="small"
-                    onClick={(e) => { e.stopPropagation(); setDeleteTarget(conv); }}
-                    sx={{ opacity: 0, transition: 'opacity 0.15s', color: 'error.main', '.MuiListItem-root:hover &': { opacity: 1 } }}
-                    aria-label="Delete conversation"
-                  >
-                    <Trash2 size={15} />
-                  </IconButton>
-                }
-              >
-                <ListItemButton
-                  selected={selectedConv?.id === conv.id}
-                  onClick={() => handleSelectConv(conv)}
-                  sx={{ py: 1.5, px: 2, pr: 5, '&.Mui-selected': { bgcolor: 'primary.50' } }}
+        <Box sx={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+          <List disablePadding>
+            {conversations.map((conv) => (
+              <React.Fragment key={conv.id}>
+                <ListItem
+                  disablePadding
+                  secondaryAction={
+                    <IconButton
+                      size="small"
+                      onClick={(e) => { e.stopPropagation(); setDeleteTarget(conv); }}
+                      sx={{ opacity: 0, transition: 'opacity 0.15s', color: 'error.main', '.MuiListItem-root:hover &': { opacity: 1 } }}
+                      aria-label="Delete conversation"
+                    >
+                      <Trash2 size={15} />
+                    </IconButton>
+                  }
                 >
-                  <ListItemAvatar>
-                    <Avatar sx={{ bgcolor: 'primary.main', width: 44, height: 44 }}>
-                      {initials(conv.title)}
-                    </Avatar>
-                  </ListItemAvatar>
-                  <ListItemText
-                    primary={<Typography variant="subtitle2" sx={{ fontWeight: 600 }}>{conv.title}</Typography>}
-                    secondary={
-                      <Typography variant="caption" color="text.secondary" noWrap sx={{ display: 'block', maxWidth: 180 }}>
-                        {conv.preview}
-                      </Typography>
-                    }
-                  />
-                  <Typography variant="caption" color="text.secondary" sx={{ ml: 1, flexShrink: 0 }}>
-                    {conv.date}
-                  </Typography>
-                </ListItemButton>
-              </ListItem>
-              <Divider component="li" />
-            </React.Fragment>
-          ))}
-        </List>
+                  <ListItemButton
+                    selected={selectedConv?.id === conv.id}
+                    onClick={() => handleSelectConv(conv)}
+                    sx={{ py: 1.5, px: 2, pr: 5, '&.Mui-selected': { bgcolor: 'primary.50' } }}
+                  >
+                    <ListItemAvatar>
+                      <Avatar sx={{ bgcolor: 'primary.main', width: 44, height: 44 }}>
+                        {initials(conv.title)}
+                      </Avatar>
+                    </ListItemAvatar>
+                    <ListItemText
+                      primary={<Typography variant="subtitle2" sx={{ fontWeight: 600 }}>{conv.title}</Typography>}
+                      secondary={
+                        <Typography variant="caption" color="text.secondary" noWrap sx={{ display: 'block', maxWidth: 180 }}>
+                          {conv.preview}
+                        </Typography>
+                      }
+                    />
+                    <Typography variant="caption" color="text.secondary" sx={{ ml: 1, flexShrink: 0 }}>
+                      {conv.date}
+                    </Typography>
+                  </ListItemButton>
+                </ListItem>
+                <Divider component="li" />
+              </React.Fragment>
+            ))}
+          </List>
+
+          {/* ── Mutual Matches without a chat yet ── */}
+          {mutualMatches.length > 0 && (
+            <Box sx={{ mt: 'auto', borderTop: '1px solid', borderColor: 'divider' }}>
+              <Box sx={{ px: 2, pt: 1.5, pb: 0.5, display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary', letterSpacing: '0.06em' }}>
+                  MUTUAL MATCHES
+                </Typography>
+                <Chip label={mutualMatches.length} size="small" color="primary" sx={{ height: 16, fontSize: '0.65rem' }} />
+              </Box>
+              <List disablePadding>
+                {mutualMatches.map((match) => (
+                  <ListItemButton
+                    key={match.id}
+                    onClick={() => handleStartChat(match)}
+                    disabled={openingConvFor === match.id}
+                    sx={{ py: 1, px: 2 }}
+                  >
+                    <ListItemAvatar>
+                      <Avatar
+                        src={match.img || undefined}
+                        sx={{ bgcolor: 'secondary.main', width: 40, height: 40, fontSize: '0.85rem' }}
+                      >
+                        {match.initials}
+                      </Avatar>
+                    </ListItemAvatar>
+                    <ListItemText
+                      primary={<Typography variant="subtitle2" sx={{ fontWeight: 600 }}>{match.name}</Typography>}
+                      secondary={<Typography variant="caption" color="text.secondary">Start a conversation</Typography>}
+                    />
+                    {openingConvFor === match.id
+                      ? <CircularProgress size={16} />
+                      : (
+                        <Tooltip title="Start chat">
+                          <PlusCircle size={18} style={{ color: theme.palette.primary.main, flexShrink: 0 }} />
+                        </Tooltip>
+                      )}
+                  </ListItemButton>
+                ))}
+              </List>
+            </Box>
+          )}
+        </Box>
       )}
     </Box>
   );

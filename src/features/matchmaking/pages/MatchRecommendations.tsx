@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Box,
   Typography,
@@ -123,10 +123,23 @@ export default function MatchRecommendations() {
   }, []);
 
   useRealtimeUpdates({
-    onInterestReceived: () => fetchPending(),
-    onMutualMatch: () => {
+    onInterestReceived: (data) => {
+      if (data.senderCard) {
+        // Directly push the card into pendingReceived — no API round-trip needed
+        setPendingReceived((prev) => {
+          if (prev.some((m) => m.id === data.senderCard.id)) return prev;
+          return [data.senderCard, ...prev];
+        });
+      } else {
+        fetchPending();
+      }
+    },
+    onMutualMatch: (data) => {
+      // The other user may have been in pendingSent (we sent interest and they accepted)
+      // OR in pendingReceived (they sent first and we just accepted) — clear both.
+      setPendingSent((prev) => prev.filter((m) => m.id !== data.fromUserId));
+      setPendingReceived((prev) => prev.filter((m) => m.id !== data.fromUserId));
       refreshMutualMatches();
-      fetchPending();
     },
     onMatchRemoved: () => refreshMutualMatches(),
     onInterestAccepted: (data) => {
@@ -200,10 +213,14 @@ export default function MatchRecommendations() {
     }
   };
 
+  const handledUserParam = useRef<string | null>(null);
+
   // Auto-open detail panel when navigated from a notification (?user=<id>)
+  // Only fires once per unique ?user= value to avoid re-opening after state updates
   useEffect(() => {
     const userId = searchParams.get('user');
-    if (userId && matches.length > 0) {
+    if (userId && userId !== handledUserParam.current && matches.length > 0) {
+      handledUserParam.current = userId;
       setSelectedMatchId(userId);
       setDetailPanelOpen(true);
     }
@@ -229,8 +246,43 @@ export default function MatchRecommendations() {
   const handleExpressInterest = async (id: string) => {
     try {
       const response = await matchService.expressInterest(id);
-      dispatch(showToast({ type: response.data.matched ? 'success' : 'info', message: response.data.message }));
-      await fetchMatches();
+      const matchData = matches.find((m) => m.id === id);
+
+      // Optimistically remove from recommendations immediately
+      setMatches((prev) => prev.filter((m) => m.id !== id));
+
+      if (response.data.matched) {
+        // Became a mutual match — add to mutual section
+        if (matchData) {
+          setMutualMatches((prev) => [
+            ...prev,
+            { ...matchData, conversationId: response.data.conversationId ?? null },
+          ]);
+        }
+        dispatch(showToast({ type: 'success', message: response.data.message }));
+      } else {
+        // Pending interest sent — add to the "Interest Sent" section immediately
+        if (matchData) {
+          setPendingSent((prev) => [
+            ...prev,
+            {
+              id: matchData.id,
+              name: matchData.name,
+              initials: matchData.initials,
+              age: matchData.age,
+              location: matchData.location,
+              img: matchData.img,
+              sentAt: new Date().toISOString(),
+            },
+          ]);
+        }
+        dispatch(showToast({ type: 'info', message: response.data.message }));
+      }
+
+      // Close the detail panel if it was showing this profile
+      if (selectedMatchId === id) {
+        setDetailPanelOpen(false);
+      }
     } catch (err: any) {
       dispatch(showToast({ type: 'error', message: err.response?.data?.message || 'Failed to express interest.' }));
     }

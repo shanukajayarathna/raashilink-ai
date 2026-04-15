@@ -51,7 +51,7 @@ export type RealtimeEvent =
 
 export type RealtimeCallbacks = {
   /** Fired when another user sends you a pending interest */
-  onInterestReceived?: (data: { fromUserId: string; fromUserName: string; fromUserProfilePic: string | null }) => void;
+  onInterestReceived?: (data: { fromUserId: string; fromUserName: string; fromUserProfilePic: string | null; senderCard?: any }) => void;
   /** Fired for both parties when a mutual match is formed */
   onMutualMatch?: (data: { fromUserId: string; fromUserName: string; fromUserProfilePic: string | null; conversationId: string | null }) => void;
   /** Fired when someone removes you from their mutual matches */

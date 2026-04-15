@@ -778,6 +778,7 @@ export default function UserDashboard() {
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const { user } = useSelector((state: RootState) => state.auth);
   const dispatch = useDispatch();
+  const navigate = useNavigate();
 
   if (user?.profileType === 'couple') {
     return <CoupleDashboard />;
@@ -865,10 +866,21 @@ export default function UserDashboard() {
 
   // ── Real-time socket events ──────────────────────────────────────────────
   useRealtimeUpdates({
-    onInterestReceived: () => refreshPendingInterests(),
-    onMutualMatch: () => {
+    onInterestReceived: (data) => {
+      if (data.senderCard) {
+        setPendingReceived((p) => {
+          if (p.some((m) => m.id === data.senderCard.id)) return p;
+          return [data.senderCard, ...p];
+        });
+      } else {
+        refreshPendingInterests();
+      }
+    },
+    onMutualMatch: (data) => {
+      // Clear from both directions — could be in pendingSent or pendingReceived
+      setPendingSent((p) => p.filter((m) => m.id !== data.fromUserId));
+      setPendingReceived((p) => p.filter((m) => m.id !== data.fromUserId));
       refreshMutualMatches();
-      refreshPendingInterests();
     },
     onMatchRemoved: () => refreshMutualMatches(),
     onInterestAccepted: (data) => {
@@ -933,16 +945,37 @@ export default function UserDashboard() {
       }
     };
 
+    // Phase 2: mutual matches + pending interests — fast DB queries, unblocks the interest rows quickly
+    const fetchInterests = async () => {
+      try {
+        const [mutualRes, pendingRes] = await Promise.allSettled([
+          axiosInstance.get('/matches/mutual'),
+          axiosInstance.get('/matches/pending'),
+        ]);
+        if (!mounted) return;
+        if (mutualRes.status === 'fulfilled')
+          setMutualMatches(mutualRes.value.data?.data?.items || []);
+        if (pendingRes.status === 'fulfilled') {
+          setPendingSent(pendingRes.value.data?.data?.sent || []);
+          setPendingReceived(pendingRes.value.data?.data?.received || []);
+        }
+      } catch { /* silent */ } finally {
+        if (mounted) {
+          setMutualMatchesLoading(false);
+          setPendingLoading(false);
+        }
+      }
+    };
+
+    // Phase 3: heavier secondary widgets (recommendations involve Python computation)
     const fetchWidgets = async () => {
       try {
-        const [recommendationsResponse, weddingProjectResponse, budgetResponse, vendorsResponse, mutualMatchesResponse, pendingResponse] =
+        const [recommendationsResponse, weddingProjectResponse, budgetResponse, vendorsResponse] =
           await Promise.allSettled([
             axiosInstance.get('/matches/recommendations', { params: { pageSize: 4, fast: true } }),
             axiosInstance.get('/wedding/project'),
             axiosInstance.get('/wedding/budget'),
             axiosInstance.get('/wedding/vendors'),
-            axiosInstance.get('/matches/mutual'),
-            axiosInstance.get('/matches/pending'),
           ]);
 
         if (!mounted) return;
@@ -962,37 +995,17 @@ export default function UserDashboard() {
           budgetResponse.status === 'fulfilled'
             ? budgetResponse.value.data?.data
             : null;
-        const weddingStatus = formatWeddingStatus(weddingProject, budget);
 
         const vendorItems =
           vendorsResponse.status === 'fulfilled'
             ? vendorsResponse.value.data?.data?.items || []
             : [];
-        const recommendedVendors = formatVendors(vendorItems);
-
-        const mutualItems =
-          mutualMatchesResponse.status === 'fulfilled'
-            ? mutualMatchesResponse.value.data?.data?.items || []
-            : [];
-
-        const pendingData =
-          pendingResponse.status === 'fulfilled'
-            ? pendingResponse.value.data?.data
-            : null;
-
-        if (mounted) {
-          setMutualMatches(mutualItems);
-          setMutualMatchesLoading(false);
-          setPendingSent(pendingData?.sent || []);
-          setPendingReceived(pendingData?.received || []);
-          setPendingLoading(false);
-        }
 
         setData((prev: any) => ({
           ...prev,
           todayMatch: topMatch,
-          weddingStatus,
-          vendors: recommendedVendors,
+          weddingStatus: formatWeddingStatus(weddingProject, budget),
+          vendors: formatVendors(vendorItems),
           summary: {
             ...prev.summary,
             matchStats: {
@@ -1009,20 +1022,19 @@ export default function UserDashboard() {
       } catch (error) {
         console.error('Error fetching dashboard widgets', error);
       } finally {
-        if (mounted) {
-          setWidgetLoading(false);
-          setMutualMatchesLoading(false);
-          setPendingLoading(false);
-        }
+        if (mounted) setWidgetLoading(false);
       }
     };
 
-    void Promise.allSettled([fetchProfile(), fetchWidgets()]).then(() => {
+    // profile unblocks the page; interests + widgets load concurrently in background
+    fetchProfile().finally(() => {
       if (mounted) {
         setLoading(false);
         setVerificationLoaded(true);
       }
     });
+    void fetchInterests();
+    void fetchWidgets();
 
     return () => {
       mounted = false;
@@ -1265,9 +1277,9 @@ export default function UserDashboard() {
           <VendorRecommendations vendors={data.vendors} loading={widgetLoading} />
         </Grid>
 
-        {/* Row 3 — Mutual Matches */}
+        {/* Mutual Matches — shown above account setup */}
         {(mutualMatchesLoading || mutualMatches.length > 0) && (
-          <Grid size={{ xs: 12 }}>
+          <Grid size={{ xs: 12 }} sx={{ order: -2 }}>
             <Box
               sx={{
                 bgcolor: COLORS.white,
@@ -1385,7 +1397,13 @@ export default function UserDashboard() {
                             <Tooltip title="Send a message">
                               <IconButton
                                 size="small"
-                                onClick={() => navigate('/messages', { state: { openUserId: match.id, openUserName: match.name } })}
+                                onClick={() => navigate('/messages', {
+                                  state: {
+                                    conversationId: match.conversationId || undefined,
+                                    openUserId: match.id,
+                                    openUserName: match.name,
+                                  }
+                                })}
                                 sx={{
                                   flex: 1, borderRadius: 2,
                                   bgcolor: COLORS.primary, color: '#fff',
@@ -1421,9 +1439,9 @@ export default function UserDashboard() {
           </Grid>
         )}
 
-        {/* Row 4 — Pending Interests */}
+        {/* Pending Interests — shown above account setup */}
         {(pendingLoading || pendingSent.length > 0 || pendingReceived.length > 0) && (
-          <Grid size={{ xs: 12 }}>
+          <Grid size={{ xs: 12 }} sx={{ order: -1 }}>
             <Box
               sx={{
                 bgcolor: COLORS.white, borderRadius: '24px',

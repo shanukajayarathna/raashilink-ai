@@ -1,11 +1,12 @@
 import { Router } from 'express';
 import authenticate from '../../middleware/auth.js';
-import { sendMessage, sendAssistantMessage, streamMessage, getChatHistory, getConversations, deleteConversation } from '../../controllers/chat.controller.js';
+import { sendMessage, sendAssistantMessage, streamMessage, getChatHistory, getConversations, openConversation, deleteConversation } from '../../controllers/chat.controller.js';
 
 const router = Router();
 
 router.use(authenticate);
 router.get('/conversations', getConversations);
+router.post('/conversations/open', openConversation);
 router.post('/messages', sendMessage);
 router.post('/stream', streamMessage);
 router.post('/assistant', sendAssistantMessage);

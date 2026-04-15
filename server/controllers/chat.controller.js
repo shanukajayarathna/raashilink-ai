@@ -244,6 +244,51 @@ export const getConversations = asyncHandler(async (req, res) => {
   });
 });
 
+/**
+ * GET-or-CREATE conversation with a mutual match partner.
+ * Safe to call multiple times — never creates duplicates.
+ */
+export const openConversation = asyncHandler(async (req, res) => {
+  const { userId } = req.body ?? {};
+  ensureObjectId(userId, 'userId');
+
+  if (String(req.user._id) === String(userId)) {
+    throw new ApiError(400, 'Cannot open conversation with yourself');
+  }
+
+  const conversation = await findMutualConversation(req.user._id, userId);
+
+  const partner = await User.findById(userId)
+    .select('personalInfo.firstName personalInfo.lastName')
+    .lean();
+  const title =
+    [partner?.personalInfo?.firstName, partner?.personalInfo?.lastName]
+      .filter(Boolean)
+      .join(' ') || 'Conversation';
+
+  const lastMessage = await Message.findOne({ conversationId: conversation._id })
+    .sort({ createdAt: -1 })
+    .lean();
+
+  res.status(200).json({
+    success: true,
+    data: {
+      conversation: {
+        id: String(conversation._id),
+        title,
+        otherUserId: String(userId),
+        date: conversation.lastMessageAt
+          ? new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(
+              new Date(conversation.lastMessageAt)
+            )
+          : 'Now',
+        preview: lastMessage?.content || 'Start the conversation!',
+        lastSenderId: lastMessage ? String(lastMessage.senderId) : null,
+      },
+    },
+  });
+});
+
 export const deleteConversation = asyncHandler(async (req, res) => {
   const { convId } = req.params;
   ensureObjectId(convId, 'convId');
@@ -270,4 +315,5 @@ export default {
   streamMessage,
   getChatHistory,
   getConversations,
+  openConversation,
 };

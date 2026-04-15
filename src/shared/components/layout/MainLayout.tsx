@@ -16,6 +16,7 @@ import NotificationPanel from '@/features/notifications/components/NotificationP
 import notificationService, { type AppNotification } from '@/features/notifications/services/notificationService';
 import { playInterestSound, playMatchSound, playMessageSound } from '@/features/notifications/utils/sounds';;
 import api from '@/shared/config/axiosConfig';
+import { connectSocket } from '@/shared/hooks/useRealtimeUpdates';
 import { consumeSentPreview } from '@/shared/lib/sentMsgTracker';
 
 // Persist which conversation previews the user has already acknowledged,
@@ -83,6 +84,28 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
     const interval = setInterval(() => fetchNotifications(true), 30_000);
     return () => clearInterval(interval);
   }, [fetchNotifications, token]);
+
+  // ── Real-time notification bell updates ──────────────────────────────────
+  // Listen to match/interest socket events and immediately refresh the bell
+  // so both parties see notifications without waiting for the 30s poll.
+  useEffect(() => {
+    if (!token) return;
+    const socket = connectSocket(token);
+
+    const onMatchEvent = () => fetchNotifications(true);
+
+    socket.on('interest_received', onMatchEvent);
+    socket.on('mutual_match', onMatchEvent);
+    socket.on('interest_accepted', onMatchEvent);
+    socket.on('interest_declined', onMatchEvent);
+
+    return () => {
+      socket.off('interest_received', onMatchEvent);
+      socket.off('mutual_match', onMatchEvent);
+      socket.off('interest_accepted', onMatchEvent);
+      socket.off('interest_declined', onMatchEvent);
+    };
+  }, [token, fetchNotifications]);
 
   const handleMarkRead = async (id: string) => {
     const notif = notifications.find((n) => n.id === id);

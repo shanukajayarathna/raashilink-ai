@@ -645,11 +645,24 @@ export const expressInterest = asyncHandler(async (req, res) => {
 
   // --- Notifications ---
   const senderFull = await User.findById(req.user._id)
-    .select('personalInfo.firstName personalInfo.lastName personalInfo.profilePic')
+    .select('personalInfo lifestyle photos')
     .lean();
   const senderName = [senderFull?.personalInfo?.firstName, senderFull?.personalInfo?.lastName]
     .filter(Boolean).join(' ') || 'Someone';
   const senderPic = senderFull?.personalInfo?.profilePic || null;
+  // Build a full card payload so the receiver can update their UI without a round-trip
+  const senderCardData = {
+    id: String(req.user._id),
+    name: senderName,
+    initials: senderName.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2) || '??',
+    age: senderFull?.personalInfo?.age ?? null,
+    location: normalizeDisplayValue(senderFull?.personalInfo?.location),
+    height: normalizeDisplayValue(senderFull?.personalInfo?.height),
+    job: normalizeDisplayValue(senderFull?.lifestyle?.professionType || senderFull?.lifestyle?.careerAmbitions),
+    education: normalizeDisplayValue(senderFull?.lifestyle?.educationLevel),
+    img: mainPhoto(senderFull),
+    receivedAt: new Date().toISOString(),
+  };
   const recipientName = [candidate?.personalInfo?.firstName, candidate?.personalInfo?.lastName]
     .filter(Boolean).join(' ') || 'Someone';
   const recipientPic = candidate?.personalInfo?.profilePic || null;
@@ -724,6 +737,7 @@ export const expressInterest = asyncHandler(async (req, res) => {
       fromUserId: String(req.user._id),
       fromUserName: senderName,
       fromUserProfilePic: senderPic,
+      senderCard: senderCardData,
     });
 
     // If this was an acceptance of a previously-received interest, also fire interest_accepted
