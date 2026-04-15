@@ -436,8 +436,17 @@ function buildChartData(user) {
 function deriveProfileAstrologyDetails(horoscopeData = {}) {
   const sign = horoscopeData.moonSign || horoscopeData.rashi || horoscopeData.zodiacSign || '';
   const luckyColors = LUCKY_COLORS_BY_SIGN[sign] || ['#8B1A2E', '#C9A84C'];
-  const auspiciousDays = [horoscopeData.vedicDay || 'Thursday', 'Monday'].filter(Boolean).slice(0, 2);
   const favorablePartners = FAVORABLE_PARTNERS_BY_SIGN[sign] || [];
+
+  // Auspicious days: birth weekday + the ruling day of the Moon sign lord
+  const PLANET_RULING_DAY = {
+    Sun: 'Sunday', Moon: 'Monday', Mars: 'Tuesday',
+    Mercury: 'Wednesday', Jupiter: 'Thursday', Venus: 'Friday', Saturn: 'Saturday',
+  };
+  const moonLord = SIGN_LORDS[sign] || null;
+  const birthDay = horoscopeData.vedicDay || null;
+  const moonLordDay = moonLord ? PLANET_RULING_DAY[moonLord] : null;
+  const auspiciousDays = [...new Set([birthDay, moonLordDay].filter(Boolean))].slice(0, 2);
 
   const profileFacts = [
     sign ? `Moon influence in ${sign} points to ${MOON_TRAITS[sign] || 'a sensitive and adaptive emotional nature'}.` : '',
@@ -901,13 +910,34 @@ export const calculateCompatibility = asyncHandler(async (req, res) => {
     });
   }
 
-  const result = await compatibilityService.calculateCompatibility({ userAId, userBId });
-  await persistMatchResult(userAId, userBId, result);
-
   const [currentUser, partner] = await Promise.all([
     User.findById(userAId).lean({ virtuals: true }),
     User.findById(userBId).lean({ virtuals: true }),
   ]);
+
+  if (!currentUser || !partner) {
+    throw new ApiError(404, 'One or both users not found');
+  }
+
+  const currentHasChart =
+    Array.isArray(currentUser?.horoscopeData?.planetaryPositions) &&
+    currentUser.horoscopeData.planetaryPositions.length > 0;
+  const partnerHasChart =
+    Array.isArray(partner?.horoscopeData?.planetaryPositions) &&
+    partner.horoscopeData.planetaryPositions.length > 0;
+
+  if (!currentHasChart || !partnerHasChart) {
+    const missing = [];
+    if (!currentHasChart) missing.push('Your birth chart is not yet generated');
+    if (!partnerHasChart) missing.push(`${partner.name || 'Partner'}'s birth chart is not yet generated`);
+    throw new ApiError(
+      422,
+      `Cannot calculate compatibility: ${missing.join('. ')}. Please ensure both users have complete birth details and generate their horoscope first.`
+    );
+  }
+
+  const result = await compatibilityService.calculateCompatibility({ userAId, userBId });
+  await persistMatchResult(userAId, userBId, result);
 
   res.status(200).json({
     success: true,

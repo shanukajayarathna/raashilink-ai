@@ -92,16 +92,37 @@ def score_vashya(rashi1, rashi2):
     idx2 = get_rashi_index(rashi2)
     if idx1 == -1 or idx2 == -1:
         return 0
-    return 2 if VASHYA_GROUPS[idx1] == VASHYA_GROUPS[idx2] else 1
+    g1 = VASHYA_GROUPS[idx1]
+    g2 = VASHYA_GROUPS[idx2]
+    if g1 == g2:
+        return 2
+    # Vashya (domination) relationships: Manava dominates Chatushpada, Jalachara, Vanachara
+    # Jalachara dominates Keeta
+    VASHYA_OVER = {
+        "Manava":     {"Chatushpada", "Jalachara", "Vanachara"},
+        "Jalachara":  {"Keeta"},
+    }
+    # 1 point if one side is vashya of the other (partial match)
+    if g2 in VASHYA_OVER.get(g1, set()) or g1 in VASHYA_OVER.get(g2, set()):
+        return 1
+    return 0
 
 def score_tara(nak1, nak2):
     idx1 = get_nakshatra_index(nak1)
     idx2 = get_nakshatra_index(nak2)
     if idx1 == -1 or idx2 == -1:
         return 0
-    distance = (idx2 - idx1) % 27
-    tara_group = distance % 9
-    return 3 if tara_group in [1, 3, 5, 7] else 1.5
+    # Favorable Tara groups (0-indexed): Sampat(1), Kshema(3), Sadhana(5), Mitra(7), Parma Mitra(8)
+    # Unfavorable: Janma(0), Vipat(2), Pratyak(4), Naidhana(6)
+    FAVORABLE = {1, 3, 5, 7, 8}
+    group_forward = ((idx2 - idx1) % 27) % 9   # nak1 → nak2
+    group_backward = ((idx1 - idx2) % 27) % 9  # nak2 → nak1
+    score = 0
+    if group_forward in FAVORABLE:
+        score += 1.5
+    if group_backward in FAVORABLE:
+        score += 1.5
+    return score
 
 def score_yoni(nak1, nak2):
     idx1 = get_nakshatra_index(nak1)
@@ -125,13 +146,25 @@ def score_graha_maitri(rashi1, rashi2):
     lord2 = RASHI_LORDS[idx2]
     if lord1 == lord2:
         return 5
-    friends = PLANET_FRIENDSHIPS.get(lord1, {}).get("friends", [])
-    if lord2 in friends:
-        return 5
-    neutrals = PLANET_FRIENDSHIPS.get(lord1, {}).get("neutrals", [])
-    if lord2 in neutrals:
-        return 2.5
-    return 0
+    # Determine the relationship from each lord's perspective
+    def rel(a, b):
+        if b in PLANET_FRIENDSHIPS.get(a, {}).get("friends", []):
+            return "friend"
+        if b in PLANET_FRIENDSHIPS.get(a, {}).get("neutrals", []):
+            return "neutral"
+        return "enemy"
+    r1 = rel(lord1, lord2)  # how lord1 sees lord2
+    r2 = rel(lord2, lord1)  # how lord2 sees lord1
+    # Combined bidirectional scoring (traditional Graha Maitri table)
+    if r1 == "friend"  and r2 == "friend":  return 5
+    if r1 == "friend"  and r2 == "neutral": return 4
+    if r1 == "neutral" and r2 == "friend":  return 4
+    if r1 == "neutral" and r2 == "neutral": return 3
+    if r1 == "friend"  and r2 == "enemy":   return 1.5
+    if r1 == "enemy"   and r2 == "friend":  return 1.5
+    if r1 == "neutral" and r2 == "enemy":   return 0.5
+    if r1 == "enemy"   and r2 == "neutral": return 0.5
+    return 0  # both enemies
 
 def score_gana(nak1, nak2):
     idx1 = get_nakshatra_index(nak1)
@@ -151,8 +184,10 @@ def score_bhakoot(rashi1, rashi2):
     idx2 = get_rashi_index(rashi2)
     if idx1 == -1 or idx2 == -1:
         return 0
-    distance = abs(idx1 - idx2)
-    if distance in [2, 6, 8]:
+    # Use 1-indexed directional forward count (traditional inclusive counting)
+    # Bhakoot dosha: 2/12 relationship (forward=2 or 12) and 6/8 relationship (forward=6 or 8)
+    forward = (idx2 - idx1) % 12 + 1
+    if forward in [2, 6, 8, 12]:
         return 0
     return 7
 

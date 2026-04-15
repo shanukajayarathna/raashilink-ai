@@ -87,7 +87,7 @@ const CompatibilityScores: React.FC<CompatibilityScoresProps> = ({ overallScore,
   const badge = getStatusBadge(overallScore);
 
   return (
-    <Box sx={{ mt: 6 }}>
+    <Box>
       {/* Overall Score Section */}
       <Grid container spacing={4} alignItems="center" sx={{ mb: 8 }}>
         <Grid size={{ xs: 12, md: 5 }} sx={{ display: 'flex', justifyContent: 'center' }}>
@@ -174,7 +174,20 @@ const CompatibilityScores: React.FC<CompatibilityScoresProps> = ({ overallScore,
                 alignItems: 'center',
                 gap: 3
               }}>
-                <Avatar src={user.photo} sx={{ width: 64, height: 64, border: `2px solid ${COLORS.secondary}` }} />
+                <Avatar
+                  src={user.photo || undefined}
+                  alt={user.name}
+                  sx={{
+                    width: 64, height: 64,
+                    border: `2px solid ${COLORS.secondary}`,
+                    bgcolor: `${COLORS.primary}22`,
+                    color: COLORS.primary,
+                    fontWeight: 800,
+                    fontSize: '1.2rem',
+                  }}
+                >
+                  {!user.photo && user.name ? user.name.slice(0, 2).toUpperCase() : null}
+                </Avatar>
                 <Box>
                   <Typography variant="subtitle1" sx={{ fontWeight: 800, color: COLORS.primary }}>{user.name}</Typography>
                   <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>{user.sign} Moon Sign</Typography>

@@ -64,7 +64,7 @@ export const calculateCompatibility = createAsyncThunk(
   async ({ userAId, userBId }: { userAId: string; userBId: string }, { rejectWithValue }) => {
     try {
       const response = await horoscopeService.calculateCompatibility(userAId, userBId);
-      return { data: response.data, cacheKey: `${userAId}:${userBId}` };
+      return { data: response, cacheKey: `${userAId}:${userBId}` };
     } catch (error: any) {
       return rejectWithValue(error.response?.data?.message || 'Failed to calculate compatibility');
     }

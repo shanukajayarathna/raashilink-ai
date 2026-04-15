@@ -14,6 +14,7 @@ import {
   Divider,
   Alert,
   Chip,
+  Avatar,
   Dialog,
   DialogContent,
   DialogTitle,
@@ -33,12 +34,21 @@ import {
   CakeOutlined,
   AccessTimeOutlined,
   PlaceOutlined,
+  WbSunny,
+  NightsStay,
+  FlashOn,
+  Favorite,
+  Palette,
+  CalendarMonth,
+  Psychology,
+  Bolt,
+  Spa,
 } from '@mui/icons-material';
 import { motion, AnimatePresence } from 'motion/react';
 import { useSelector, useDispatch } from 'react-redux';
 import { RootState } from '@/app/store/store';
 import { AppDispatch } from '@/app/store/store';
-import { fetchMyChart, calculateCompatibility } from '../store/horoscopeSlice';
+import { fetchMyChart, calculateCompatibility, clearCompatibility } from '../store/horoscopeSlice';
 import { fetchProfile, updateUser } from '@/features/auth/store/authSlice';
 import { setLanguage } from '@/app/store/uiSlice';
 import BirthChartWheel from '../components/BirthChartWheel';
@@ -63,6 +73,32 @@ const COLORS = {
   accent: '#1A6B72',
   background: '#FAF7F2',
   textSecondary: '#555555',
+};
+
+const RULING_PLANETS: Record<string, string> = {
+  Aries: 'Mars', Taurus: 'Venus', Gemini: 'Mercury', Cancer: 'Moon',
+  Leo: 'Sun', Virgo: 'Mercury', Libra: 'Venus', Scorpio: 'Mars',
+  Sagittarius: 'Jupiter', Capricorn: 'Saturn', Aquarius: 'Saturn', Pisces: 'Jupiter',
+};
+
+const ZODIAC_SYMBOLS_MAP: Record<string, string> = {
+  Aries: '♈', Taurus: '♉', Gemini: '♊', Cancer: '♋',
+  Leo: '♌', Virgo: '♍', Libra: '♎', Scorpio: '♏',
+  Sagittarius: '♐', Capricorn: '♑', Aquarius: '♒', Pisces: '♓',
+};
+
+const INSIGHT_ACCENTS = ['#8B1A2E', '#1A6B72', '#C9A84C', '#4A148C', '#1565C0', '#2E7D32'] as const;
+const INSIGHT_ICONS   = [AutoAwesome, WbSunny, NightsStay, Bolt, Favorite, Spa, FlashOn, Psychology] as const;
+
+const HEX_COLOR_NAMES: Record<string, string> = {
+  '#E53935': 'Red',       '#FF7043': 'Deep Orange', '#43A047': 'Green',
+  '#8D6E63': 'Brown',     '#FDD835': 'Yellow',      '#29B6F6': 'Sky Blue',
+  '#90CAF9': 'Pale Blue', '#F8BBD0': 'Blush Pink',  '#FB8C00': 'Orange',
+  '#66BB6A': 'Mint',      '#26A69A': 'Teal',        '#EC407A': 'Pink',
+  '#AB47BC': 'Violet',    '#8E24AA': 'Purple',       '#D32F2F': 'Crimson',
+  '#1E88E5': 'Blue',      '#FFA726': 'Amber',        '#546E7A': 'Slate',
+  '#26C6DA': 'Cyan',      '#5C6BC0': 'Indigo',       '#42A5F5': 'Light Blue',
+  '#7E57C2': 'Lavender',  '#8B1A2E': 'Maroon',       '#C9A84C': 'Gold',
 };
 
 const formatAccuracyMessage = (missingFields: string[], language: HoroscopeLanguage) => {
@@ -138,7 +174,9 @@ const HoroscopeView = () => {
     birthPlace: '',
     knowsBirthTime: true,
   });
+  const [compatibilityError, setCompatibilityError] = useState<string | null>(null);
   const lastAutoFetchKeyRef = useRef('');
+  const compatibilityResultsRef = useRef<HTMLDivElement>(null);
 
   const chartSummary = myChart?.summary;
   const chartDetails = myChart?.details;
@@ -274,13 +312,14 @@ const HoroscopeView = () => {
     const fetchMatches = async () => {
       setLoadingMatches(true);
       try {
-        const matchesRes = await matchService.getRecommendations();
+        const matchesRes = await matchService.getMutualMatches();
         setMatches(
           (matchesRes.data.items || []).map((match: any) => ({
             id: match.id,
             name: match.name,
-            photo: match.img,
+            photo: match.img || null,
             sign: match.moonSign,
+            initials: match.initials || match.name?.slice(0, 2).toUpperCase() || '??',
           }))
         );
       } catch (err) {
@@ -295,7 +334,21 @@ const HoroscopeView = () => {
 
   const handleCalculate = async () => {
     if (!selectedMatch || !user) return;
-    dispatch(calculateCompatibility({ userAId: String(user._id), userBId: selectedMatch.id }));
+    setCompatibilityError(null);
+    try {
+      await dispatch(calculateCompatibility({ userAId: String(user._id), userBId: selectedMatch.id })).unwrap();
+      setTimeout(() => {
+        compatibilityResultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 150);
+    } catch (err: any) {
+      setCompatibilityError(typeof err === 'string' ? err : err?.message || 'Failed to calculate compatibility');
+    }
+  };
+
+  const handleReset = () => {
+    dispatch(clearCompatibility());
+    setSelectedMatch(null);
+    setCompatibilityError(null);
   };
 
   const handleLanguageChange = (nextLanguage: HoroscopeLanguage) => {
@@ -659,14 +712,38 @@ const HoroscopeView = () => {
                   <Autocomplete
                     options={matches}
                     loading={loadingMatches}
+                    value={selectedMatch}
                     getOptionLabel={(option) => option.name}
-                    onChange={(_, newValue) => setSelectedMatch(newValue)}
+                    onChange={(_, newValue) => { setSelectedMatch(newValue); setCompatibilityError(null); dispatch(clearCompatibility()); }}
                     renderOption={(props, option) => (
-                      <Box component="li" {...props} sx={{ display: 'flex', gap: 2, p: 1 }}>
-                        <Box component="img" src={option.photo} sx={{ width: 40, height: 40, borderRadius: '50%' }} />
-                        <Box>
-                          <Typography variant="body2" sx={{ fontWeight: 700 }}>{option.name}</Typography>
-                          <Typography variant="caption" sx={{ color: COLORS.textSecondary, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>{translateHoroscopeValue(option.sign, language)} · {texts.moonSign}</Typography>
+                      <Box component="li" {...props} sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 1.5, py: 1 }}>
+                        <Avatar
+                          src={option.photo || undefined}
+                          alt={option.name}
+                          sx={{
+                            width: 44, height: 44, flexShrink: 0,
+                            bgcolor: alpha(COLORS.primary, 0.15),
+                            color: COLORS.primary,
+                            fontWeight: 800, fontSize: '0.85rem',
+                            border: `2px solid ${alpha(COLORS.secondary, 0.5)}`,
+                          }}
+                        >
+                          {option.initials}
+                        </Avatar>
+                        <Box sx={{ minWidth: 0 }}>
+                          <Stack direction="row" alignItems="center" spacing={0.75}>
+                            <Typography variant="body2" sx={{ fontWeight: 700 }} noWrap>{option.name}</Typography>
+                            <Chip
+                              label="Mutual"
+                              size="small"
+                              sx={{ height: 16, fontSize: '0.6rem', fontWeight: 800,
+                                bgcolor: alpha(COLORS.accent, 0.12), color: COLORS.accent,
+                                borderRadius: '5px', px: 0.5 }}
+                            />
+                          </Stack>
+                          <Typography variant="caption" sx={{ color: COLORS.textSecondary, fontFamily: LANGUAGE_FONT_FAMILY[language] }} noWrap>
+                            {translateHoroscopeValue(option.sign, language)} · {texts.moonSign}
+                          </Typography>
                         </Box>
                       </Box>
                     )}
@@ -714,9 +791,58 @@ const HoroscopeView = () => {
                 >
                   {isCalculating ? <CircularProgress size={24} color="inherit" /> : texts.calculateCompatibility}
                 </Button>
+
+                {compatibilityError && (
+                  <Alert severity="error" sx={{ borderRadius: '12px' }}>
+                    {compatibilityError}
+                  </Alert>
+                )}
               </Stack>
             </Paper>
           </Grid>
+
+          <AnimatePresence>
+            {compatibility?.dimensions?.length > 0 && (
+              <Grid size={{ xs: 12 }}>
+                <motion.div
+                  ref={compatibilityResultsRef}
+                  initial={{ opacity: 0, y: 24 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 24 }}
+                  transition={{ duration: 0.5 }}
+                >
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+                    <Typography variant="h5" sx={{ fontFamily: LANGUAGE_FONT_FAMILY[language], fontWeight: 700, color: COLORS.primary }}>
+                      Compatibility Results
+                    </Typography>
+                    <Button
+                      variant="outlined"
+                      startIcon={<Close />}
+                      onClick={handleReset}
+                      sx={{ borderRadius: '12px', borderColor: COLORS.primary, color: COLORS.primary, fontWeight: 700 }}
+                    >
+                      Compare Another
+                    </Button>
+                  </Box>
+                  <CompatibilityScores
+                    overallScore={compatibility.overallScore}
+                    dimensions={compatibility.dimensions}
+                    userA={{
+                      name: compatibility.userA?.name || user?.name || 'You',
+                      photo: compatibility.userA?.photo || (user as any)?.profilePic || null,
+                      sign: compatibility.userA?.sign || '',
+                    }}
+                    userB={{
+                      name: compatibility.userB?.name || selectedMatch?.name || 'Match',
+                      photo: compatibility.userB?.photo || selectedMatch?.photo || null,
+                      sign: compatibility.userB?.sign || selectedMatch?.sign || '',
+                    }}
+                    explanation={compatibility.explanation}
+                  />
+                </motion.div>
+              </Grid>
+            )}
+          </AnimatePresence>
 
           <Grid size={{ xs: 12 }}>
             <Grid container spacing={4}>
@@ -796,95 +922,257 @@ const HoroscopeView = () => {
                     p: 3,
                     borderRadius: '28px',
                     bgcolor: 'white',
-                    boxShadow: '0 10px 32px rgba(139,26,46,0.05)',
+                    boxShadow: '0 10px 32px rgba(139,26,46,0.06)',
                     border: '1px solid',
                     borderColor: COLORS.background,
                     height: '100%',
                   }}
                 >
-                  <Typography variant="h6" sx={{ fontWeight: 800, color: COLORS.primary, mb: 2, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>
-                    {texts.readingHighlights}
-                  </Typography>
-                  <Stack spacing={1.25}>
+                  {/* ── Header row with ruling-planet badge ── */}
+                  <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.5 }}>
+                    <Typography variant="h6" sx={{ fontWeight: 800, color: COLORS.primary, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>
+                      ✨ {texts.readingHighlights}
+                    </Typography>
+                    {chartSummary?.ascendant && RULING_PLANETS[chartSummary.ascendant] && (
+                      <Chip
+                        icon={<WbSunny sx={{ fontSize: '13px !important' }} />}
+                        label={`${RULING_PLANETS[chartSummary.ascendant]} Ruled`}
+                        size="small"
+                        sx={{
+                          bgcolor: alpha(COLORS.primary, 0.08),
+                          color: COLORS.primary,
+                          fontWeight: 800,
+                          fontSize: '0.68rem',
+                          borderRadius: '10px',
+                          border: `1px solid ${alpha(COLORS.primary, 0.18)}`,
+                        }}
+                      />
+                    )}
+                  </Stack>
+
+                  {/* ── Panchanga mini-row (Tithi · Yoga) ── */}
+                  {(chartDetails?.tithi || chartDetails?.yoga) && (
+                    <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mb: 2, mt: 1.25 }}>
+                      {chartDetails?.tithi && (
+                        <Chip
+                          icon={<NightsStay sx={{ fontSize: '13px !important' }} />}
+                          label={chartDetails.tithi}
+                          size="small"
+                          variant="outlined"
+                          sx={{ borderColor: alpha(COLORS.accent, 0.4), color: COLORS.accent, fontWeight: 700, fontSize: '0.7rem', borderRadius: '9px' }}
+                        />
+                      )}
+                      {chartDetails?.yoga && (
+                        <Chip
+                          icon={<Spa sx={{ fontSize: '13px !important' }} />}
+                          label={chartDetails.yoga}
+                          size="small"
+                          variant="outlined"
+                          sx={{ borderColor: alpha(COLORS.secondary, 0.5), color: '#7A6020', fontWeight: 700, fontSize: '0.7rem', borderRadius: '9px' }}
+                        />
+                      )}
+                      {chartDetails?.karana && (
+                        <Chip
+                          icon={<Bolt sx={{ fontSize: '13px !important' }} />}
+                          label={chartDetails.karana}
+                          size="small"
+                          variant="outlined"
+                          sx={{ borderColor: alpha('#4A148C', 0.35), color: '#4A148C', fontWeight: 700, fontSize: '0.7rem', borderRadius: '9px' }}
+                        />
+                      )}
+                    </Stack>
+                  )}
+
+                  {/* ── Insight cards (staggered animation) ── */}
+                  <Stack spacing={1.25}
+                    sx={{
+                      mt: chartDetails?.tithi || chartDetails?.yoga ? 0 : 2,
+                      maxHeight: 340,
+                      overflowY: 'auto',
+                      pr: 0.5,
+                      '&::-webkit-scrollbar': { width: '4px' },
+                      '&::-webkit-scrollbar-thumb': { bgcolor: alpha(COLORS.primary, 0.2), borderRadius: '4px' },
+                    }}
+                  >
                     {readingHighlights.length ? (
-                      readingHighlights.map((insight: string, index: number) => (
-                        <Alert
-                          key={`${index}-${insight.slice(0, 12)}`}
-                          icon={<AutoAwesome fontSize="inherit" />}
-                          severity="info"
-                          sx={{ borderRadius: '14px', '& .MuiAlert-message': { fontFamily: LANGUAGE_FONT_FAMILY[language] } }}
-                        >
-                          {insight}
-                        </Alert>
-                      ))
-                    ) : (
-                      <Alert severity="info" sx={{ borderRadius: '14px', '& .MuiAlert-message': { fontFamily: LANGUAGE_FONT_FAMILY[language] } }}>
-                        {accuracyNotice || texts.pending}
-                      </Alert>
-                    )}
-
-                    {!!luckyColors.length && (
-                      <Box sx={{ mt: 1.5 }}>
-                        <Typography variant="caption" sx={{ display: 'block', color: COLORS.textSecondary, fontWeight: 700, mb: 0.75, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>
-                          Lucky Colors
-                        </Typography>
-                        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                          {luckyColors.map((color: string) => (
+                      readingHighlights.map((insight: string, index: number) => {
+                        const accent  = INSIGHT_ACCENTS[index % INSIGHT_ACCENTS.length];
+                        const IconEl  = INSIGHT_ICONS[index % INSIGHT_ICONS.length];
+                        return (
+                          <motion.div
+                            key={`${index}-${insight.slice(0, 12)}`}
+                            initial={{ opacity: 0, x: -14 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: index * 0.07, duration: 0.4, ease: 'easeOut' }}
+                          >
                             <Box
-                              key={color}
                               sx={{
-                                width: 24,
-                                height: 24,
-                                borderRadius: '999px',
-                                bgcolor: color,
-                                border: '2px solid #fff',
-                                boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
+                                p: '12px 14px',
+                                borderRadius: '16px',
+                                background: `linear-gradient(135deg, ${alpha(accent, 0.07)} 0%, ${alpha(accent, 0.02)} 100%)`,
+                                borderLeft: `4px solid ${accent}`,
+                                display: 'flex',
+                                gap: 1.5,
+                                alignItems: 'flex-start',
                               }}
-                            />
-                          ))}
-                        </Stack>
-                      </Box>
-                    )}
-
-                    {!!auspiciousDays.length && (
-                      <Box sx={{ mt: 1.5 }}>
-                        <Typography variant="caption" sx={{ display: 'block', color: COLORS.textSecondary, fontWeight: 700, mb: 0.75, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>
-                          Auspicious Days
-                        </Typography>
-                        <Stack direction="row" spacing={0.8} flexWrap="wrap" useFlexGap>
-                          {auspiciousDays.map((day: string) => (
-                            <Chip key={day} label={day} size="small" sx={{ bgcolor: alpha(COLORS.accent, 0.12), color: COLORS.accent, fontWeight: 700 }} />
-                          ))}
-                        </Stack>
-                      </Box>
-                    )}
-
-                    {!!favorablePartners.length && (
-                      <Box sx={{ mt: 1.5 }}>
-                        <Typography variant="caption" sx={{ display: 'block', color: COLORS.textSecondary, fontWeight: 700, mb: 0.75, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>
-                          Favorable Signs
-                        </Typography>
+                            >
+                              <Box
+                                sx={{
+                                  width: 30, height: 30,
+                                  borderRadius: '9px',
+                                  bgcolor: alpha(accent, 0.13),
+                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                  flexShrink: 0, mt: '1px',
+                                }}
+                              >
+                                <IconEl sx={{ fontSize: 15, color: accent }} />
+                              </Box>
+                              <Typography
+                                variant="body2"
+                                sx={{ color: '#2C2C2C', lineHeight: 1.7, fontWeight: 500, fontFamily: LANGUAGE_FONT_FAMILY[language] }}
+                              >
+                                {insight}
+                              </Typography>
+                            </Box>
+                          </motion.div>
+                        );
+                      })
+                    ) : (
+                      <Box sx={{ p: 2, borderRadius: '14px', bgcolor: alpha(COLORS.primary, 0.04), borderLeft: `4px solid ${alpha(COLORS.primary, 0.35)}` }}>
                         <Typography variant="body2" sx={{ color: COLORS.textSecondary, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>
-                          {favorablePartners.join(', ')}
+                          {accuracyNotice || texts.pending}
                         </Typography>
-                      </Box>
-                    )}
-
-                    {!!profileFacts.length && (
-                      <Box sx={{ mt: 1.5 }}>
-                        <Typography variant="caption" sx={{ display: 'block', color: COLORS.textSecondary, fontWeight: 700, mb: 0.75, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>
-                          Personal Horoscope Facts
-                        </Typography>
-                        <Stack spacing={0.8}>
-                          {profileFacts.map((fact: string, index: number) => (
-                            <Typography key={`${fact}-${index}`} variant="body2" sx={{ color: COLORS.textSecondary, lineHeight: 1.55, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>
-                              • {fact}
-                            </Typography>
-                          ))}
-                        </Stack>
                       </Box>
                     )}
                   </Stack>
+
+                  <Divider sx={{ my: 2, borderColor: alpha(COLORS.primary, 0.06) }} />
+
+                  {/* ── Lucky Colours ── */}
+                  {!!luckyColors.length && (
+                    <Box sx={{ mb: 2.25 }}>
+                      <Stack direction="row" alignItems="center" spacing={0.75} sx={{ mb: 1 }}>
+                        <Palette sx={{ fontSize: 14, color: COLORS.textSecondary }} />
+                        <Typography variant="caption" sx={{ color: COLORS.textSecondary, fontWeight: 700, letterSpacing: '0.5px', fontFamily: LANGUAGE_FONT_FAMILY[language] }}>
+                          LUCKY COLOURS
+                        </Typography>
+                      </Stack>
+                      <Stack direction="row" spacing={1.5} flexWrap="wrap" useFlexGap>
+                        {luckyColors.map((color: string) => (
+                          <Stack key={color} alignItems="center" spacing={0.5}>
+                            <Box
+                              sx={{
+                                width: 38, height: 38,
+                                borderRadius: '12px',
+                                bgcolor: color,
+                                boxShadow: `0 4px 14px ${color}77`,
+                                border: '3px solid #fff',
+                                transition: 'transform 0.2s',
+                                '&:hover': { transform: 'scale(1.18)' },
+                              }}
+                            />
+                            <Typography
+                              variant="caption"
+                              sx={{ fontSize: '0.62rem', fontWeight: 700, color: COLORS.textSecondary, lineHeight: 1.1, textAlign: 'center' }}
+                            >
+                              {HEX_COLOR_NAMES[color] ?? color}
+                            </Typography>
+                          </Stack>
+                        ))}
+                      </Stack>
+                    </Box>
+                  )}
+
+                  {/* ── Auspicious Days ── */}
+                  {!!auspiciousDays.length && (
+                    <Box sx={{ mb: 2.25 }}>
+                      <Stack direction="row" alignItems="center" spacing={0.75} sx={{ mb: 1 }}>
+                        <CalendarMonth sx={{ fontSize: 14, color: COLORS.accent }} />
+                        <Typography variant="caption" sx={{ color: COLORS.textSecondary, fontWeight: 700, letterSpacing: '0.5px', fontFamily: LANGUAGE_FONT_FAMILY[language] }}>
+                          AUSPICIOUS DAYS
+                        </Typography>
+                      </Stack>
+                      <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+                        {auspiciousDays.map((day: string) => (
+                          <Chip
+                            key={day}
+                            label={day}
+                            size="small"
+                            sx={{
+                              bgcolor: alpha(COLORS.accent, 0.1),
+                              color: COLORS.accent,
+                              fontWeight: 800,
+                              fontSize: '0.72rem',
+                              borderRadius: '10px',
+                              border: `1px solid ${alpha(COLORS.accent, 0.28)}`,
+                            }}
+                          />
+                        ))}
+                      </Stack>
+                    </Box>
+                  )}
+
+                  {/* ── Favorable Signs ── */}
+                  {!!favorablePartners.length && (
+                    <Box sx={{ mb: 2.25 }}>
+                      <Stack direction="row" alignItems="center" spacing={0.75} sx={{ mb: 1 }}>
+                        <Favorite sx={{ fontSize: 14, color: COLORS.primary }} />
+                        <Typography variant="caption" sx={{ color: COLORS.textSecondary, fontWeight: 700, letterSpacing: '0.5px', fontFamily: LANGUAGE_FONT_FAMILY[language] }}>
+                          FAVORABLE SIGNS
+                        </Typography>
+                      </Stack>
+                      <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+                        {favorablePartners.map((sign: string) => (
+                          <Chip
+                            key={sign}
+                            label={`${ZODIAC_SYMBOLS_MAP[sign] ?? ''} ${sign}`}
+                            size="small"
+                            sx={{
+                              bgcolor: alpha(COLORS.primary, 0.07),
+                              color: COLORS.primary,
+                              fontWeight: 800,
+                              fontSize: '0.72rem',
+                              borderRadius: '10px',
+                              border: `1px solid ${alpha(COLORS.primary, 0.15)}`,
+                            }}
+                          />
+                        ))}
+                      </Stack>
+                    </Box>
+                  )}
+
+                  {/* ── Personal Horoscope Facts ── */}
+                  {!!profileFacts.length && (
+                    <Box>
+                      <Stack direction="row" alignItems="center" spacing={0.75} sx={{ mb: 1 }}>
+                        <Psychology sx={{ fontSize: 14, color: '#7A6020' }} />
+                        <Typography variant="caption" sx={{ color: COLORS.textSecondary, fontWeight: 700, letterSpacing: '0.5px', fontFamily: LANGUAGE_FONT_FAMILY[language] }}>
+                          PERSONAL HOROSCOPE FACTS
+                        </Typography>
+                      </Stack>
+                      <Stack spacing={0.9}>
+                        {profileFacts.map((fact: string, index: number) => (
+                          <Stack key={`${fact}-${index}`} direction="row" spacing={1.25} alignItems="flex-start">
+                            <Box
+                              sx={{
+                                minWidth: 22, height: 22,
+                                borderRadius: '7px',
+                                background: `linear-gradient(135deg, ${alpha(COLORS.secondary, 0.35)}, ${alpha(COLORS.secondary, 0.15)})`,
+                                color: COLORS.primary,
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                fontSize: '10px', fontWeight: 900, flexShrink: 0,
+                              }}
+                            >
+                              {index + 1}
+                            </Box>
+                            <Typography variant="body2" sx={{ color: '#3C3C3C', lineHeight: 1.65, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>
+                              {fact}
+                            </Typography>
+                          </Stack>
+                        ))}
+                      </Stack>
+                    </Box>
+                  )}
                 </Paper>
               </Grid>
             </Grid>
@@ -1015,19 +1303,7 @@ const HoroscopeView = () => {
         </DialogContent>
       </Dialog>
 
-      <AnimatePresence>
-        {compatibility?.dimensions?.length > 0 && (
-          <motion.div initial={{ opacity: 0, y: 40 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 40 }} transition={{ duration: 0.8 }}>
-            <CompatibilityScores
-              overallScore={compatibility.overallScore}
-              dimensions={compatibility.dimensions}
-              userA={compatibility.userA || { name: user?.name || 'You' }}
-              userB={compatibility.userB || { name: 'Match' }}
-              explanation={compatibility.explanation}
-            />
-          </motion.div>
-        )}
-      </AnimatePresence>
+
     </Box>
   );
 };

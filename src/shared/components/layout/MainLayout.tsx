@@ -179,7 +179,6 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
     { name: 'Vendors', path: '/vendors', icon: Search },
     { name: 'Budget', path: '/budget', icon: Calculator },
     { name: 'Honeymoon', path: '/honeymoon', icon: MapPin },
-    { name: 'RaashiBot', path: '/chat', icon: MessageSquare },
   ];
   const coupleNavItems = [
     { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
@@ -188,7 +187,6 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
     { name: 'Vendors', path: '/vendors', icon: Search },
     { name: 'Budget', path: '/budget', icon: Calculator },
     { name: 'Honeymoon', path: '/honeymoon', icon: MapPin },
-    { name: 'RaashiBot', path: '/chat', icon: MessageSquare },
   ];
   const navItems = isCouple ? coupleNavItems : partnerNavItems;
 
@@ -315,7 +313,7 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
         <div className="flex items-center gap-4">
           <button 
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-            className="p-2 hover:bg-primary/5 rounded-lg md:hidden"
+            className="p-2 hover:bg-primary/5 rounded-lg lg:hidden"
           >
             <Menu className="w-6 h-6 text-primary" />
           </button>
@@ -328,8 +326,8 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
         </div>
 
         <div className="flex items-center gap-2 md:gap-4">
-          <div className="hidden md:flex items-center gap-1">
-            {navItems.slice(0, isLargeScreen ? 7 : 4).map((item) => (
+          <div className="hidden lg:flex items-center gap-1">
+            {navItems.map((item) => (
               <Link 
                 key={item.path}
                 to={item.path}
@@ -422,13 +420,13 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setIsSidebarOpen(false)}
-              className="fixed inset-0 bg-black/20 backdrop-blur-sm z-[60] md:hidden"
+              className="fixed inset-0 bg-black/20 backdrop-blur-sm z-[60] lg:hidden"
             />
             <motion.aside 
               initial={{ x: '-100%' }}
               animate={{ x: 0 }}
               exit={{ x: '-100%' }}
-              className="fixed top-0 left-0 bottom-0 w-72 bg-white z-[70] md:hidden shadow-2xl flex flex-col"
+              className="fixed top-0 left-0 bottom-0 w-72 bg-white z-[70] lg:hidden shadow-2xl flex flex-col"
             >
               <div className="p-6 flex items-center justify-between border-b border-primary/5">
                 <div className="flex items-center gap-2">
