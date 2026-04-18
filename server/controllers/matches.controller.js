@@ -14,6 +14,7 @@ import logger from '../utils/logger.js';
 import Notification from '../models/Notification.js';
 import { resolvePythonCommand } from '../utils/pythonRuntime.js';
 import { emitToUser } from '../lib/socket.js';
+import { deriveGanaFromNakshatra } from '../utils/gana.js';
 
 function escapeRegex(value = '') {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -163,11 +164,15 @@ function fallbackInitials(name = '') {
 }
 
 function mainPhoto(user) {
+  const allPhotos = [
+    ...(user.personalInfo?.photos || []),
+    ...(user.photos || []),
+  ].filter((p) => p?.url);
   return (
-    user.photos?.find((photo) => photo.isMain)?.url ||
-    user.personalInfo?.photos?.find((photo) => photo.isMain)?.url ||
-    user.profilePic ||
+    allPhotos.find((p) => p.isMain)?.url ||
+    allPhotos[0]?.url ||
     user.personalInfo?.profilePic ||
+    user.profilePic ||
     null
   );
 }
@@ -226,6 +231,7 @@ async function persistMatch(userAId, userBId, compatibility, mutualInterest = fa
     {
       $set: {
         compatibilityScore: compatibility.overallScore,
+        calculationVersion: Number(compatibility.calculationVersion || 2),
         dimensionScores: {
           astro: compatibility.astroScore,
           personality: compatibility.personalityScore,
@@ -258,6 +264,7 @@ function buildCard(user, compatibility, mutualMatch) {
     compatibility,
     mutualMatch,
     moonSign: user.horoscopeData?.moonSign || user.horoscopeData?.rashi || user.horoscope?.moonSign || user.horoscope?.rashi || 'Pending',
+    ascendant: user.horoscopeData?.ascendant || user.horoscope?.ascendant || 'Pending',
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
   };
@@ -297,6 +304,7 @@ function buildDetail(user, compatibility, mutualMatch) {
     horoscope: {
       rashi: user.horoscopeData?.rashi || user.horoscopeData?.moonSign || user.horoscope?.rashi || user.horoscope?.moonSign || 'Pending',
       nakshatra: user.horoscopeData?.nakshatra || user.horoscope?.nakshatra || 'Pending',
+      gana: user.horoscopeData?.gana || deriveGanaFromNakshatra(user.horoscopeData?.nakshatra || user.horoscope?.nakshatra) || 'Pending',
       ascendant: user.horoscopeData?.ascendant || user.horoscopeData?.moonSign || user.horoscope?.moonSign || 'Pending',
     },
     lifestyle: {
@@ -407,9 +415,8 @@ export const getRecommendations = asyncHandler(async (req, res) => {
         'personalInfo.location',
         'personalInfo.bio',
         'personalInfo.height',
-        // NOTE: personalInfo.profilePic and personalInfo.photos intentionally excluded
-        // — fetching base64-encoded images (~5MB) makes this query 50x slower.
-        // Cards show initials; full photos load on the detail page.
+        'personalInfo.profilePic',
+        'personalInfo.photos',
         'personality.openness',
         'personality.conscientiousness',
         'personality.extraversion',
@@ -434,6 +441,7 @@ export const getRecommendations = asyncHandler(async (req, res) => {
         'horoscopeData.moonSign',
         'horoscopeData.rashi',
         'horoscopeData.nakshatra',
+        'horoscopeData.ascendant',
         'createdAt',
         'updatedAt',
       ].join(' '))
@@ -878,6 +886,7 @@ export const getPendingInterests = asyncHandler(async (req, res) => {
     'personalInfo.age', 'personalInfo.location', 'personalInfo.profilePic',
     'personalInfo.height',
     'lifestyle.professionType', 'lifestyle.careerAmbitions', 'lifestyle.educationLevel',
+    'horoscopeData.moonSign', 'horoscopeData.rashi', 'horoscopeData.ascendant',
     'photos',
   ].join(' ');
 
@@ -902,6 +911,8 @@ export const getPendingInterests = asyncHandler(async (req, res) => {
       job: normalizeDisplayValue(u.lifestyle?.professionType || u.lifestyle?.careerAmbitions),
       education: normalizeDisplayValue(u.lifestyle?.educationLevel),
       img: mainPhoto(u),
+      moonSign: u.horoscopeData?.moonSign || u.horoscopeData?.rashi || 'Pending',
+      ascendant: u.horoscopeData?.ascendant || 'Pending',
     };
   };
 
@@ -945,7 +956,7 @@ export const getMutualMatches = asyncHandler(async (req, res) => {
       .select([
         '_id', 'personalInfo.firstName', 'personalInfo.lastName', 'personalInfo.age',
         'personalInfo.location', 'personalInfo.bio', 'personalInfo.profilePic',
-        'personality', 'lifestyle', 'horoscopeData', 'photos', 'createdAt',
+        'personalInfo.photos', 'personality', 'lifestyle', 'horoscopeData', 'createdAt',
       ].join(' '))
       .lean(),
     User.findById(userId).lean(),

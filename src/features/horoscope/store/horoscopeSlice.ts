@@ -61,9 +61,12 @@ export const fetchMyChart = createAsyncThunk(
 // Async thunk for calculating compatibility between two users
 export const calculateCompatibility = createAsyncThunk(
   'horoscope/calculateCompatibility',
-  async ({ userAId, userBId }: { userAId: string; userBId: string }, { rejectWithValue }) => {
+  async (
+    { userAId, userBId, forceRefresh = false }: { userAId: string; userBId: string; forceRefresh?: boolean },
+    { rejectWithValue }
+  ) => {
     try {
-      const response = await horoscopeService.calculateCompatibility(userAId, userBId);
+      const response = await horoscopeService.calculateCompatibility(userAId, userBId, forceRefresh);
       return { data: response, cacheKey: `${userAId}:${userBId}` };
     } catch (error: any) {
       return rejectWithValue(error.response?.data?.message || 'Failed to calculate compatibility');

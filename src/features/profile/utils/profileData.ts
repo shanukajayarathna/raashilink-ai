@@ -146,6 +146,92 @@ function normalizePersonality(profile: any) {
   });
 }
 
+export function computeProfileCompletion(profile: any): number {
+  const personalInfo = profile?.personalInfo || {};
+  const lifestyle = profile?.lifestyle || {};
+  const astrology = profile?.astrology || {};
+  const photos = Array.isArray(profile?.photos) ? profile.photos : [];
+
+  const PLACEHOLDERS = new Set(['not provided', 'unknown', 'building a meaningful future through shared values.', 'sri lanka']);
+  const isSet = (v: any) => {
+    if (!v) return false;
+    if (typeof v === 'string') return !PLACEHOLDERS.has(v.trim().toLowerCase());
+    if (Array.isArray(v)) return v.filter((x: any) => x && !PLACEHOLDERS.has(String(x).trim().toLowerCase())).length > 0;
+    return Boolean(v);
+  };
+
+  const hasPhoto = Boolean(profile?.profilePic) || photos.some((p: any) => p?.url);
+  const hasHoroscope = isSet(astrology.rashi) || isSet(astrology.nakshatra);
+
+  const checks = [
+    hasPhoto,
+    isSet(personalInfo.firstName),
+    isSet(personalInfo.lastName),
+    isSet(profile?.location),
+    isSet(profile?.bio),
+    isSet(profile?.tagline),
+    isSet(profile?.height),
+    isSet(personalInfo.ethnicity),
+    isSet(profile?.birthDate),
+    isSet(profile?.birthPlace),
+    hasHoroscope,
+    isSet(profile?.education) || isSet(personalInfo.education),
+    isSet(profile?.occupation) || isSet(personalInfo.occupation),
+    isSet(profile?.religion) || isSet(personalInfo.religion),
+    isSet(lifestyle.diet),
+    isSet(lifestyle.smoking),
+    isSet(lifestyle.drinking),
+    isSet(personalInfo.languages),
+    isSet(lifestyle.hobbies),
+    Boolean(profile?.verification?.emailVerified),
+    Boolean(profile?.verification?.phoneVerified),
+  ];
+
+  return Math.round((checks.filter(Boolean).length / checks.length) * 100);
+}
+
+export function computeMissingItems(profile: any): string[] {
+  const personalInfo = profile?.personalInfo || {};
+  const lifestyle = profile?.lifestyle || {};
+  const astrology = profile?.astrology || {};
+  const photos = Array.isArray(profile?.photos) ? profile.photos : [];
+
+  // Treat server-side placeholder strings as empty
+  const PLACEHOLDERS = new Set(['not provided', 'unknown', 'building a meaningful future through shared values.', 'sri lanka']);
+  const isSet = (v: any) => {
+    if (!v) return false;
+    if (typeof v === 'string') return !PLACEHOLDERS.has(v.trim().toLowerCase());
+    if (Array.isArray(v)) return v.filter((x: any) => x && !PLACEHOLDERS.has(String(x).trim().toLowerCase())).length > 0;
+    return Boolean(v);
+  };
+
+  const hasPhoto = Boolean(profile?.profilePic) || photos.some((p: any) => p?.url);
+  const hasHoroscope =
+    (isSet(astrology.rashi)) || (isSet(astrology.nakshatra));
+
+  const items: string[] = [];
+  if (!hasPhoto) items.push('Add Profile Photo');
+  if (!isSet(profile?.bio)) items.push('Add Short Bio');
+  if (!isSet(profile?.tagline)) items.push('Add Tagline');
+  if (!isSet(profile?.location)) items.push('Add Location');
+  if (!isSet(profile?.height)) items.push('Add Height');
+  if (!isSet(personalInfo.ethnicity)) items.push('Add Ethnicity');
+  if (!isSet(profile?.birthDate)) items.push('Add Date of Birth');
+  if (!isSet(profile?.birthPlace)) items.push('Add Birth Place');
+  if (!hasHoroscope) items.push('Generate Horoscope');
+  if (!isSet(profile?.education) && !isSet(personalInfo.education)) items.push('Add Education');
+  if (!isSet(profile?.occupation) && !isSet(personalInfo.occupation)) items.push('Add Profession');
+  if (!isSet(profile?.religion) && !isSet(personalInfo.religion)) items.push('Add Religion');
+  if (!isSet(lifestyle.diet)) items.push('Add Diet');
+  if (!isSet(lifestyle.smoking)) items.push('Add Smoking Habit');
+  if (!isSet(lifestyle.drinking)) items.push('Add Drinking Habit');
+  if (!isSet(personalInfo.languages)) items.push('Add Languages');
+  if (!isSet(lifestyle.hobbies)) items.push('Add Hobbies');
+  if (!profile?.verification?.emailVerified) items.push('Verify Email');
+  if (!profile?.verification?.phoneVerified) items.push('Verify Phone');
+  return items;
+}
+
 export function normalizeProfileData(profile: any) {
   const personalInfo = profile?.personalInfo || {};
   const lifestyle = profile?.lifestyle || {};
@@ -161,8 +247,9 @@ export function normalizeProfileData(profile: any) {
   const ethnicity = normalizeString(personalInfo.ethnicity ?? profile?.ethnicity);
   const personality = normalizePersonality(profile);
   const personalityAnswers = derivePersonalityAnswers(profile);
+  const photos = Array.isArray(profile?.photos) ? profile.photos : [];
 
-  return {
+  const normalized = {
     ...profile,
     name: normalizeString(profile?.name),
     bio: normalizeString(profile?.bio),
@@ -223,8 +310,13 @@ export function normalizeProfileData(profile: any) {
     personality,
     personalityAnswers,
     privacy,
-    photos: Array.isArray(profile?.photos) ? profile.photos : [],
+    photos,
   };
+
+  // Recompute completion from the normalized fields so the displayed percentage
+  // is always accurate regardless of cached server values.
+  normalized.completion = computeProfileCompletion(normalized);
+  return normalized;
 }
 
 export function buildProfileUpdatePayload(source: any) {

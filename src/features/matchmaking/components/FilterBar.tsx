@@ -244,7 +244,7 @@ export default function FilterBar({ onFilterChange, onReset }: FilterBarProps) {
   return (
     <Box sx={{ 
       background: 'linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(250,247,242,0.9) 100%)', 
-      p: { xs: 1.5, md: 2 }, 
+      p: { xs: 2, md: 3 }, 
       borderRadius: 4, 
       border: '1px solid',
       borderColor: 'divider',

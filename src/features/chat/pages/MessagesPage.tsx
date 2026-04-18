@@ -11,6 +11,7 @@ import { RootState } from '@/app/store/store';
 import api from '@/shared/config/axiosConfig';
 import { markSentPreview } from '@/shared/lib/sentMsgTracker';
 import { useLocation } from 'react-router-dom';
+import { useRealtimeUpdates } from '@/shared/hooks/useRealtimeUpdates';
 
 interface Conversation {
   id: string;
@@ -44,7 +45,12 @@ export default function MessagesPage() {
   const deepLinkUserId = (location.state as any)?.openUserId as string | undefined;
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [mutualMatches, setMutualMatches] = useState<MutualMatch[]>([]);
+  // All mutual matches — full list regardless of whether a conversation exists
+  const [allMutualMatches, setAllMutualMatches] = useState<MutualMatch[]>([]);
+  // Derived: mutual matches that don't have an active conversation (eligible to start chat)
+  const eligibleMatches = allMutualMatches.filter(
+    (m) => !conversations.some((c) => c.otherUserId === m.id),
+  );
   const [selectedConv, setSelectedConv] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
@@ -92,16 +98,14 @@ export default function MessagesPage() {
 
       // Build mutual matches list — only those without an existing conversation
       const rawMatches: any[] = matchRes.data?.data?.items || [];
-      const convUserIds = new Set(items.map((c) => c.otherUserId));
-      const contacts: MutualMatch[] = rawMatches
-        .filter((m: any) => !convUserIds.has(m.id))
-        .map((m: any) => ({
-          id: m.id,
-          name: m.name,
-          initials: m.initials || m.name?.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2) || '??',
-          img: m.img || null,
-        }));
-      setMutualMatches(contacts);
+      const contacts: MutualMatch[] = rawMatches.map((m: any) => ({
+        id: m.id,
+        name: m.name,
+        initials: m.initials || m.name?.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2) || '??',
+        img: m.img || null,
+      }));
+      // Store full list — eligibleMatches derived state handles filtering
+      setAllMutualMatches(contacts);
 
       // ── Auto-select from navigation state ──
       if (deepLinkConvId) {
@@ -120,8 +124,6 @@ export default function MessagesPage() {
             const r: any = await api.post('/chat/conversations/open', { userId: deepLinkUserId });
             const conv: Conversation = r.data.data.conversation;
             setConversations((prev) => prev.some((c) => c.id === conv.id) ? prev : [conv, ...prev]);
-            // Remove from contacts list now that it has a conv
-            setMutualMatches((prev) => prev.filter((m) => m.id !== deepLinkUserId));
             setSelectedConv(conv);
             if (isMobile) setShowList(false);
           } catch { /* mutual match may not exist — fail silently */ }
@@ -138,8 +140,7 @@ export default function MessagesPage() {
   const handleStartChat = async (match: MutualMatch) => {
     const conv = await getOrOpenConversation(match.id);
     if (!conv) return;
-    // Remove from contacts section — it now has a conversation
-    setMutualMatches((prev) => prev.filter((m) => m.id !== match.id));
+    // No need to remove from allMutualMatches — eligibleMatches derived state handles exclusion
     setSelectedConv(conv);
     if (isMobile) setShowList(false);
   };
@@ -191,6 +192,8 @@ export default function MessagesPage() {
     setDeleting(true);
     try {
       await api.delete(`/chat/conversations/${deleteTarget.id}`);
+      // Removing from conversations automatically re-exposes the user in eligibleMatches
+      // if they are still a mutual match — no extra state manipulation needed
       setConversations((prev) => prev.filter((c) => c.id !== deleteTarget.id));
       if (selectedConv?.id === deleteTarget.id) {
         setSelectedConv(null);
@@ -246,6 +249,26 @@ export default function MessagesPage() {
     }
   };
 
+  // Real-time: add new mutual match to allMutualMatches so they appear under Eligible Chats
+  useRealtimeUpdates({
+    onMutualMatch: (data) => {
+      if (!data.fromUserId) return;
+      setAllMutualMatches((prev) => {
+        if (prev.some((m) => m.id === data.fromUserId)) return prev;
+        const name = data.fromUserName || 'Mutual Match';
+        return [
+          ...prev,
+          {
+            id: data.fromUserId,
+            name,
+            initials: name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2),
+            img: data.fromUserProfilePic || null,
+          },
+        ];
+      });
+    },
+  });
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -275,7 +298,7 @@ export default function MessagesPage() {
         <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <CircularProgress size={28} />
         </Box>
-      ) : conversations.length === 0 && mutualMatches.length === 0 ? (
+      ) : conversations.length === 0 && eligibleMatches.length === 0 ? (
         <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', p: 4, gap: 2 }}>
           <MessageCircle size={48} color="#ccc" />
           <Typography variant="body2" color="text.secondary" textAlign="center">
@@ -329,16 +352,16 @@ export default function MessagesPage() {
           </List>
 
           {/* ── Mutual Matches without a chat yet ── */}
-          {mutualMatches.length > 0 && (
+          {eligibleMatches.length > 0 && (
             <Box sx={{ mt: 'auto', borderTop: '1px solid', borderColor: 'divider' }}>
               <Box sx={{ px: 2, pt: 1.5, pb: 0.5, display: 'flex', alignItems: 'center', gap: 1 }}>
                 <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary', letterSpacing: '0.06em' }}>
-                  MUTUAL MATCHES
+                  ELIGIBLE CHATS
                 </Typography>
-                <Chip label={mutualMatches.length} size="small" color="primary" sx={{ height: 16, fontSize: '0.65rem' }} />
+                <Chip label={eligibleMatches.length} size="small" color="primary" sx={{ height: 16, fontSize: '0.65rem' }} />
               </Box>
               <List disablePadding>
-                {mutualMatches.map((match) => (
+                {eligibleMatches.map((match) => (
                   <ListItemButton
                     key={match.id}
                     onClick={() => handleStartChat(match)}

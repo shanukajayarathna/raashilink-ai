@@ -46,9 +46,9 @@ YONI_ENEMIES = {
 
 # Gana by nakshatra
 GANA_GROUPS = [
-    "Deva", "Manushya", "Rakshasa", "Deva", "Manushya", "Rakshasa", "Deva", "Manushya", "Rakshasa",
-    "Deva", "Manushya", "Rakshasa", "Deva", "Manushya", "Rakshasa", "Deva", "Manushya", "Rakshasa",
-    "Deva", "Manushya", "Rakshasa", "Deva", "Manushya", "Rakshasa", "Deva", "Manushya", "Rakshasa"
+    "Deva", "Manushya", "Rakshasa", "Manushya", "Deva", "Manushya", "Deva", "Deva", "Rakshasa",
+    "Rakshasa", "Manushya", "Manushya", "Deva", "Rakshasa", "Deva", "Rakshasa", "Deva", "Rakshasa",
+    "Rakshasa", "Manushya", "Manushya", "Deva", "Rakshasa", "Rakshasa", "Manushya", "Manushya", "Deva"
 ]
 
 # Nadi by nakshatra

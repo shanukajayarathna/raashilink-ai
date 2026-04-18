@@ -43,6 +43,11 @@ import {
   Psychology,
   Bolt,
   Spa,
+  Print,
+  Warning,
+  CheckCircle,
+  AccessTime,
+  NavigateNext,
 } from '@mui/icons-material';
 import { motion, AnimatePresence } from 'motion/react';
 import { useSelector, useDispatch } from 'react-redux';
@@ -234,7 +239,7 @@ const HoroscopeView = () => {
       !generatedFrom ||
       String(chartMeta?.userId || '') !== String(user?._id || '') ||
       (generatedFrom.birthDate || '') !== (storedBirthDate || '') ||
-      Number(chartMeta?.calculationVersion || 1) < 3 ||
+      Number(chartMeta?.calculationVersion || 1) < 4 ||
       normalizedGeneratedBirthPlace !== normalizedStoredBirthPlace ||
       Boolean(generatedFrom.knownBirthTime !== false) !== Boolean(storedKnownBirthTime) ||
       (storedKnownBirthTime && (generatedFrom.birthTime || '') !== (storedBirthTime || ''))
@@ -336,7 +341,7 @@ const HoroscopeView = () => {
     if (!selectedMatch || !user) return;
     setCompatibilityError(null);
     try {
-      await dispatch(calculateCompatibility({ userAId: String(user._id), userBId: selectedMatch.id })).unwrap();
+      await dispatch(calculateCompatibility({ userAId: String(user._id), userBId: selectedMatch.id, forceRefresh: true })).unwrap();
       setTimeout(() => {
         compatibilityResultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }, 150);
@@ -388,13 +393,13 @@ const HoroscopeView = () => {
       });
 
       dispatch(updateUser(updatedProfile));
+      setEditorOpen(false);
       await dispatch(fetchMyChart({ force: true })).unwrap();
 
       setBirthFeedback({
         type: birthForm.knowsBirthTime ? 'success' : 'warning',
         message: birthForm.knowsBirthTime ? texts.refreshSuccess : texts.refreshApproximate,
       });
-      setEditorOpen(false);
     } catch (saveError: any) {
       setBirthFormError(saveError?.response?.data?.message || saveError?.message || 'Unable to update your birth details right now.');
     } finally {
@@ -402,7 +407,7 @@ const HoroscopeView = () => {
     }
   };
 
-  if (isLoading) {
+  if (isLoading || isChartDataSettling) {
     return (
       <Box sx={{ p: 4 }}>
         <Skeleton variant="text" width={400} height={60} sx={{ mb: 4 }} />
@@ -432,9 +437,10 @@ const HoroscopeView = () => {
         <Stack
           spacing={1.5}
           alignItems={{ xs: 'stretch', md: 'flex-end' }}
-          sx={{ width: { xs: '100%', md: 'auto' }, minWidth: { md: 460 }, flexShrink: 0 }}
+          sx={{ width: { xs: '100%', md: 'auto' }, flexShrink: 0 }}
         >
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+          {/* Action buttons */}
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} justifyContent={{ xs: 'flex-start', md: 'flex-end' }}>
             <Button
               variant="outlined"
               startIcon={<Refresh />}
@@ -444,8 +450,6 @@ const HoroscopeView = () => {
                 borderColor: COLORS.secondary,
                 color: COLORS.secondary,
                 fontFamily: LANGUAGE_FONT_FAMILY[language],
-                width: { xs: '100%', sm: 220 },
-                justifyContent: 'center',
                 whiteSpace: 'nowrap',
               }}
             >
@@ -458,14 +462,28 @@ const HoroscopeView = () => {
                 borderRadius: '12px',
                 bgcolor: COLORS.primary,
                 fontFamily: LANGUAGE_FONT_FAMILY[language],
-                width: { xs: '100%', sm: 220 },
-                justifyContent: 'center',
                 whiteSpace: 'nowrap',
               }}
             >
               {texts.shareChart}
             </Button>
+            <Button
+              variant="outlined"
+              startIcon={<Print />}
+              onClick={() => window.print()}
+              sx={{
+                borderRadius: '12px',
+                borderColor: COLORS.textSecondary,
+                color: COLORS.textSecondary,
+                fontFamily: LANGUAGE_FONT_FAMILY[language],
+                whiteSpace: 'nowrap',
+              }}
+            >
+              Print / Save PDF
+            </Button>
           </Stack>
+
+          {/* Language selector */}
           <Stack
             direction="row"
             spacing={1}
@@ -474,7 +492,6 @@ const HoroscopeView = () => {
             sx={{
               flexWrap: 'nowrap',
               overflowX: 'auto',
-              pb: 0.5,
               '&::-webkit-scrollbar': { display: 'none' },
             }}
           >
@@ -598,8 +615,52 @@ const HoroscopeView = () => {
         </Paper>
       )}
 
+      {/* ── Chart Grade Banner ── */}
+      {chartSummary?.chartGrade && (
+        <Box
+          sx={{
+            mb: 3, p: 2.5, borderRadius: '20px',
+            background: chartSummary.chartGrade.grade === 'Excellent'
+              ? `linear-gradient(135deg, ${alpha(COLORS.accent, 0.12)}, ${alpha(COLORS.accent, 0.05)})`
+              : chartSummary.chartGrade.grade === 'Good'
+              ? `linear-gradient(135deg, ${alpha(COLORS.secondary, 0.14)}, ${alpha(COLORS.secondary, 0.05)})`
+              : chartSummary.chartGrade.grade === 'Moderate'
+              ? `linear-gradient(135deg, ${alpha('#FF6F00', 0.1)}, ${alpha('#FF6F00', 0.03)})`
+              : `linear-gradient(135deg, ${alpha('#D32F2F', 0.08)}, ${alpha('#D32F2F', 0.02)})`,
+            border: `1.5px solid ${
+              chartSummary.chartGrade.grade === 'Excellent' ? alpha(COLORS.accent, 0.4)
+              : chartSummary.chartGrade.grade === 'Good' ? alpha(COLORS.secondary, 0.4)
+              : chartSummary.chartGrade.grade === 'Moderate' ? alpha('#FF6F00', 0.35)
+              : alpha('#D32F2F', 0.3)
+            }`,
+          }}
+        >
+          <Stack direction={{ xs: 'column', sm: 'row' }} alignItems={{ xs: 'flex-start', sm: 'center' }} justifyContent="space-between" spacing={1.5} flexWrap="wrap">
+            <Stack direction="row" alignItems="center" spacing={1.5}>
+              {chartSummary.chartGrade.grade === 'Excellent' || chartSummary.chartGrade.grade === 'Good'
+                ? <CheckCircle sx={{ color: chartSummary.chartGrade.grade === 'Excellent' ? COLORS.accent : COLORS.secondary, fontSize: 28 }} />
+                : <Warning sx={{ color: chartSummary.chartGrade.grade === 'Moderate' ? '#E65100' : '#D32F2F', fontSize: 28 }} />}
+              <Box>
+                <Typography variant="overline" sx={{ fontWeight: 800, letterSpacing: 1.5, color: COLORS.textSecondary, fontSize: '0.62rem' }}>CHART QUALITY FOR MARRIAGE</Typography>
+                <Typography variant="h6" sx={{ fontWeight: 900, color: COLORS.primary, lineHeight: 1.2, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>
+                  {chartSummary.chartGrade.grade} &mdash; {chartSummary.chartGrade.summary}
+                </Typography>
+              </Box>
+            </Stack>
+            <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+              {chartSummary.chartGrade.strengths?.map((s: string) => (
+                <Chip key={s} label={s} size="small" sx={{ bgcolor: alpha(COLORS.accent, 0.12), color: COLORS.accent, fontWeight: 700, fontSize: '0.65rem', borderRadius: '8px', border: `1px solid ${alpha(COLORS.accent, 0.3)}` }} />
+              ))}
+              {chartSummary.chartGrade.issues?.map((s: string) => (
+                <Chip key={s} label={s} size="small" sx={{ bgcolor: alpha('#D32F2F', 0.08), color: '#C62828', fontWeight: 700, fontSize: '0.65rem', borderRadius: '8px', border: `1px solid ${alpha('#D32F2F', 0.25)}` }} />
+              ))}
+            </Stack>
+          </Stack>
+        </Box>
+      )}
+
       {chartSummary && (
-        <Grid container spacing={6}>
+        <Grid container spacing={6} alignItems="flex-start">
           <Grid size={{ xs: 12, lg: 6 }}>
             <Paper
               sx={{
@@ -615,16 +676,18 @@ const HoroscopeView = () => {
 
               <Grid container spacing={2} sx={{ mt: 4 }}>
                 {[
-                  { label: texts.moonSign, value: translateHoroscopeValue(chartSummary?.moonSign || texts.pending, language) },
-                  { label: texts.nakshatra, value: translateHoroscopeValue(chartSummary?.nakshatra || texts.pending, language) },
-                  { label: texts.ascendant, value: translateHoroscopeValue(chartSummary?.ascendant || texts.pending, language) },
-                  { label: texts.sunSign, value: translateHoroscopeValue(chartSummary?.sunSign || texts.pending, language) },
+                  { label: texts.moonSign, value: translateHoroscopeValue(chartSummary?.moonSign || texts.pending, language), highlight: false },
+                  { label: texts.nakshatra, value: translateHoroscopeValue(chartSummary?.nakshatra || texts.pending, language), highlight: false },
+                  { label: texts.gana, value: translateHoroscopeValue(chartSummary?.gana || texts.pending, language), highlight: false },
+                  { label: texts.nakshatraPada, value: chartSummary?.nakshatraPada ? `Pada ${chartSummary.nakshatraPada}` : texts.pending, highlight: false },
+                  { label: texts.ascendant, value: translateHoroscopeValue(chartSummary?.ascendant || texts.pending, language), highlight: true },
+                  { label: texts.sunSign, value: translateHoroscopeValue(chartSummary?.sunSign || texts.pending, language), highlight: false },
                 ].map((pill) => (
                   <Grid size={{ xs: 6 }} key={pill.label}>
                     <Box
                       sx={{
                         p: 2,
-                        bgcolor: COLORS.background,
+                        bgcolor: pill.highlight ? COLORS.primary : COLORS.background,
                         borderRadius: '16px',
                         textAlign: 'center',
                         minHeight: 96,
@@ -632,12 +695,23 @@ const HoroscopeView = () => {
                         display: 'flex',
                         flexDirection: 'column',
                         justifyContent: 'center',
+                        boxShadow: pill.highlight ? '0 4px 16px rgba(139,26,46,0.25)' : 'none',
+                        position: 'relative',
+                        overflow: 'hidden',
+                        '&::after': pill.highlight ? {
+                          content: '"✦"',
+                          position: 'absolute',
+                          top: 6,
+                          right: 10,
+                          fontSize: '10px',
+                          color: 'rgba(255,255,255,0.5)',
+                        } : {},
                       }}
                     >
                       <Typography
                         variant="caption"
                         sx={{
-                          color: COLORS.textSecondary,
+                          color: pill.highlight ? 'rgba(255,255,255,0.75)' : COLORS.textSecondary,
                           fontWeight: 700,
                           display: 'flex',
                           alignItems: 'center',
@@ -654,7 +728,7 @@ const HoroscopeView = () => {
                         variant="body1"
                         sx={{
                           fontWeight: 800,
-                          color: COLORS.primary,
+                          color: pill.highlight ? '#fff' : COLORS.primary,
                           fontFamily: LANGUAGE_FONT_FAMILY[language],
                           minHeight: 24,
                           display: 'flex',
@@ -670,41 +744,419 @@ const HoroscopeView = () => {
                 ))}
               </Grid>
 
+              {/* ── Rajju / Nadi / Yoni / Rasi Lord chips ── */}
+              {(chartSummary?.rajju || chartSummary?.nadi || chartSummary?.yoni) && (
+                <Box sx={{ mt: 2.5 }}>
+                  <Typography variant="caption" sx={{ fontWeight: 700, color: COLORS.textSecondary, letterSpacing: '0.5px', display: 'block', mb: 1 }}>PORUTHAM IDENTIFIERS</Typography>
+                  <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                    {chartSummary.rajju && (
+                      <Box sx={{ flex: 1, minWidth: 100, p: 1.5, borderRadius: '12px', bgcolor: alpha(COLORS.primary, 0.06), border: `1px solid ${alpha(COLORS.primary, 0.15)}`, textAlign: 'center' }}>
+                        <Typography variant="caption" sx={{ display: 'block', fontWeight: 700, color: COLORS.textSecondary, fontSize: '0.6rem', letterSpacing: '0.5px' }}>RAJJU</Typography>
+                        <Typography variant="body2" sx={{ fontWeight: 900, color: COLORS.primary }}>{chartSummary.rajju}</Typography>
+                        <Typography variant="caption" sx={{ fontSize: '0.58rem', color: COLORS.textSecondary }}>Same Rajju = prohibited</Typography>
+                      </Box>
+                    )}
+                    {chartSummary.nadi && (
+                      <Box sx={{ flex: 1, minWidth: 100, p: 1.5, borderRadius: '12px', bgcolor: alpha('#1565C0', 0.06), border: `1px solid ${alpha('#1565C0', 0.2)}`, textAlign: 'center' }}>
+                        <Typography variant="caption" sx={{ display: 'block', fontWeight: 700, color: '#1565C0', fontSize: '0.6rem', letterSpacing: '0.5px' }}>NADI</Typography>
+                        <Typography variant="body2" sx={{ fontWeight: 900, color: '#1565C0' }}>{chartSummary.nadi}</Typography>
+                        <Typography variant="caption" sx={{ fontSize: '0.58rem', color: COLORS.textSecondary }}>Same Nadi = prohibited</Typography>
+                      </Box>
+                    )}
+                    {chartSummary.yoni && (
+                      <Box sx={{ flex: 1, minWidth: 100, p: 1.5, borderRadius: '12px', bgcolor: alpha('#AD1457', 0.05), border: `1px solid ${alpha('#AD1457', 0.2)}`, textAlign: 'center' }}>
+                        <Typography variant="caption" sx={{ display: 'block', fontWeight: 700, color: '#AD1457', fontSize: '0.6rem', letterSpacing: '0.5px' }}>YONI</Typography>
+                        <Typography variant="body2" sx={{ fontWeight: 900, color: '#AD1457' }}>{chartSummary.yoni}</Typography>
+                        <Typography variant="caption" sx={{ fontSize: '0.58rem', color: COLORS.textSecondary }}>Animal symbol</Typography>
+                      </Box>
+                    )}
+                    {chartSummary.rasiLord && (
+                      <Box sx={{ flex: 1, minWidth: 100, p: 1.5, borderRadius: '12px', bgcolor: alpha(COLORS.secondary, 0.08), border: `1px solid ${alpha(COLORS.secondary, 0.3)}`, textAlign: 'center' }}>
+                        <Typography variant="caption" sx={{ display: 'block', fontWeight: 700, color: '#7A6020', fontSize: '0.6rem', letterSpacing: '0.5px' }}>RASI LORD</Typography>
+                        <Typography variant="body2" sx={{ fontWeight: 900, color: '#7A6020' }}>{chartSummary.rasiLord}</Typography>
+                        <Typography variant="caption" sx={{ fontSize: '0.58rem', color: COLORS.textSecondary }}>Moon sign ruler</Typography>
+                      </Box>
+                    )}
+                  </Stack>
+                </Box>
+              )}
+
+              {/* ── Manglik + Kala Sarpa Dosha badges ── */}
+              {(chartSummary?.manglik || chartSummary?.kalaSarpaDosha?.present) && (
+                <Stack direction="row" spacing={1.5} flexWrap="wrap" useFlexGap sx={{ mt: 3 }}>
+                  {chartSummary?.manglik && chartSummary.manglik !== 'Pending' && (
+                    <Box
+                      sx={{
+                        flex: 1,
+                        minWidth: 160,
+                        p: 2,
+                        borderRadius: '16px',
+                        border: `2px solid ${chartSummary.manglikPresent ? '#D32F2F' : alpha(COLORS.accent, 0.4)}`,
+                        bgcolor: chartSummary.manglikPresent ? alpha('#D32F2F', 0.06) : alpha(COLORS.accent, 0.06),
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 1.5,
+                      }}
+                    >
+                      {chartSummary.manglikPresent
+                        ? <Warning sx={{ color: '#D32F2F', fontSize: 22, flexShrink: 0 }} />
+                        : <CheckCircle sx={{ color: COLORS.accent, fontSize: 22, flexShrink: 0 }} />}
+                      <Box>
+                        <Typography variant="caption" sx={{ fontWeight: 700, color: COLORS.textSecondary, display: 'block', lineHeight: 1.2, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>Manglik / Kuja Dosha</Typography>
+                        <Stack direction="row" alignItems="center" spacing={0.75} flexWrap="wrap">
+                          <Typography variant="body2" sx={{ fontWeight: 800, color: chartSummary.manglikPresent ? '#D32F2F' : COLORS.accent, lineHeight: 1.3 }}>{chartSummary.manglik}</Typography>
+                          {chartSummary.manglikSeverity && (
+                            <Chip
+                              label={chartSummary.manglikSeverity}
+                              size="small"
+                              sx={{
+                                height: 16, fontSize: '0.6rem', fontWeight: 800, borderRadius: '5px', px: 0.5,
+                                bgcolor: chartSummary.manglikSeverity === 'Full' ? alpha('#D32F2F', 0.15) : chartSummary.manglikSeverity === 'High' ? alpha('#FF6F00', 0.15) : alpha('#F57F17', 0.15),
+                                color: chartSummary.manglikSeverity === 'Full' ? '#D32F2F' : chartSummary.manglikSeverity === 'High' ? '#E65100' : '#F57F17',
+                              }}
+                            />
+                          )}
+                        </Stack>
+                        {chartSummary.manglikPresent && (
+                          <Typography variant="caption" sx={{ color: COLORS.textSecondary, fontSize: '0.65rem' }}>Match with another Manglik to cancel dosha</Typography>
+                        )}
+                      </Box>
+                    </Box>
+                  )}
+                  {chartSummary?.kalaSarpaDosha?.present && (
+                    <Box
+                      sx={{
+                        flex: 1,
+                        minWidth: 160,
+                        p: 2,
+                        borderRadius: '16px',
+                        border: `2px solid ${alpha('#7B1FA2', 0.5)}`,
+                        bgcolor: alpha('#7B1FA2', 0.06),
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 1.5,
+                      }}
+                    >
+                      <Warning sx={{ color: '#7B1FA2', fontSize: 22, flexShrink: 0 }} />
+                      <Box>
+                        <Typography variant="caption" sx={{ fontWeight: 700, color: COLORS.textSecondary, display: 'block', lineHeight: 1.2, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>Kala Sarpa Dosha</Typography>
+                        <Typography variant="body2" sx={{ fontWeight: 800, color: '#7B1FA2', lineHeight: 1.3 }}>{chartSummary.kalaSarpaDosha.name} ({texts.ascendant}: {chartSummary.kalaSarpaDosha.rahuHouse})</Typography>
+                        <Typography variant="caption" sx={{ color: COLORS.textSecondary, fontSize: '0.65rem' }}>All planets between Rahu-Ketu axis</Typography>
+                      </Box>
+                    </Box>
+                  )}
+                  {chartSummary?.sadeSati?.present && (
+                    <Box
+                      sx={{
+                        flex: 1,
+                        minWidth: 160,
+                        p: 2,
+                        borderRadius: '16px',
+                        border: `2px solid ${alpha('#1565C0', 0.5)}`,
+                        bgcolor: alpha('#1565C0', 0.05),
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 1.5,
+                      }}
+                    >
+                      <Warning sx={{ color: '#1565C0', fontSize: 22, flexShrink: 0 }} />
+                      <Box>
+                        <Typography variant="caption" sx={{ fontWeight: 700, color: COLORS.textSecondary, display: 'block', lineHeight: 1.2, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>Sade Sati</Typography>
+                        <Typography variant="body2" sx={{ fontWeight: 800, color: '#1565C0', lineHeight: 1.3 }}>{chartSummary.sadeSati.phase} Phase</Typography>
+                        <Typography variant="caption" sx={{ color: COLORS.textSecondary, fontSize: '0.65rem' }}>Saturn transiting {chartSummary.sadeSati.saturnTransitSign} — consult astrologer for timing</Typography>
+                      </Box>
+                    </Box>
+                  )}
+                  {chartSummary?.sadeSati?.ashtamaShani && !chartSummary?.sadeSati?.present && (
+                    <Box
+                      sx={{
+                        flex: 1,
+                        minWidth: 160,
+                        p: 2,
+                        borderRadius: '16px',
+                        border: `2px solid ${alpha('#FF6F00', 0.4)}`,
+                        bgcolor: alpha('#FF6F00', 0.05),
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 1.5,
+                      }}
+                    >
+                      <Warning sx={{ color: '#FF6F00', fontSize: 22, flexShrink: 0 }} />
+                      <Box>
+                        <Typography variant="caption" sx={{ fontWeight: 700, color: COLORS.textSecondary, display: 'block', lineHeight: 1.2, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>Ashtama Shani</Typography>
+                        <Typography variant="body2" sx={{ fontWeight: 800, color: '#FF6F00', lineHeight: 1.3 }}>Saturn in 8th from Moon</Typography>
+                        <Typography variant="caption" sx={{ color: COLORS.textSecondary, fontSize: '0.65rem' }}>Caution advised for marriage timing</Typography>
+                      </Box>
+                    </Box>
+                  )}
+                </Stack>
+              )}
+
               <Box sx={{ mt: 4 }}>
                 <Typography variant="subtitle2" sx={{ fontWeight: 800, color: 'text.primary', mb: 2, display: 'flex', alignItems: 'center', gap: 1, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>
                   <TrendingUp sx={{ fontSize: 18, color: COLORS.accent }} /> {texts.planetaryPositions}
                 </Typography>
-                <Box sx={{ maxHeight: 200, overflowY: 'auto', pr: 1 }}>
-                  {chartPositions.map((position: any, index: number) => (
-                    <Box key={index} sx={{ display: 'flex', justifyContent: 'space-between', py: 1, borderBottom: `1px solid ${COLORS.background}` }}>
-                      <Typography variant="body2" sx={{ fontWeight: 600, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>{translatePlanetName(position.planet, language)}</Typography>
-                      <Typography variant="body2" sx={{ color: COLORS.textSecondary, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>
-                        {translateHoroscopeValue(position.sign, language)} | {translateHouseLabel(position.house, language)} | {position.degree}
-                      </Typography>
-                    </Box>
-                  ))}
+                <Box sx={{ pr: 0.5 }}>
+                  {chartPositions.map((position: any, index: number) => {
+                    const dignityColor: Record<string, string> = { Exalted: COLORS.accent, Debilitated: '#D32F2F', 'Own Sign': COLORS.secondary };
+                    const dc = dignityColor[position.dignity] || 'transparent';
+                    return (
+                      <Box key={index} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: 0.9, borderBottom: `1px solid ${COLORS.background}`, gap: 1 }}>
+                        <Stack direction="row" alignItems="center" spacing={0.75}>
+                          <Typography variant="body2" sx={{ fontWeight: 600, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>{translatePlanetName(position.planet, language)}</Typography>
+                          {position.retrograde && (
+                            <Typography component="span" sx={{ fontSize: '0.65rem', fontWeight: 900, color: '#E53935', lineHeight: 1 }} title="Retrograde">℞</Typography>
+                          )}
+                          {position.dignity && position.dignity !== 'Normal' && (
+                            <Chip label={position.dignity} size="small" sx={{ height: 16, fontSize: '0.6rem', fontWeight: 800, bgcolor: alpha(dc, 0.12), color: dc, borderRadius: '5px', px: 0.5 }} />
+                          )}
+                        </Stack>
+                        <Stack direction="row" alignItems="center" spacing={0.5}>
+                          {position.navamsha && (
+                            <Typography variant="caption" sx={{ color: alpha(COLORS.textSecondary, 0.7), fontSize: '0.65rem', fontStyle: 'italic' }}>D9:{position.navamsha.slice(0,3)}</Typography>
+                          )}
+                          <Typography variant="body2" sx={{ color: COLORS.textSecondary, fontFamily: LANGUAGE_FONT_FAMILY[language], fontSize: '0.78rem' }}>
+                            {translateHoroscopeValue(position.sign, language)} | {translateHouseLabel(position.house, language)} | {position.degree}
+                          </Typography>
+                        </Stack>
+                      </Box>
+                    );
+                  })}
                 </Box>
               </Box>
             </Paper>
           </Grid>
 
           <Grid size={{ xs: 12, lg: 6 }}>
+            <Stack spacing={3}>
+
+            {/* ── Dasa / Mahadasa Panel ── */}
+            {chartDetails?.dasaInfo?.current && (
+              <Paper sx={{ p: 3, borderRadius: '28px', bgcolor: 'white', boxShadow: '0 6px 24px rgba(139,26,46,0.06)', border: '1px solid', borderColor: COLORS.background }}>
+                <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
+                  <AccessTime sx={{ fontSize: 18, color: COLORS.secondary }} />
+                  <Typography variant="subtitle1" sx={{ fontWeight: 800, color: COLORS.primary, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>Vimshottari Dasha</Typography>
+                  <Chip label="Marriage Timing" size="small" sx={{ ml: 'auto', bgcolor: alpha(COLORS.secondary, 0.12), color: '#7A6020', fontWeight: 700, fontSize: '0.62rem', borderRadius: '8px' }} />
+                </Stack>
+                <Box sx={{ p: 2, borderRadius: '16px', bgcolor: alpha(COLORS.primary, 0.06), border: `2px solid ${alpha(COLORS.primary, 0.18)}`, mb: 2 }}>
+                  <Typography variant="caption" sx={{ color: COLORS.textSecondary, fontWeight: 700, display: 'block', mb: 0.5, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>CURRENT MAHADASA</Typography>
+                  <Stack direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={1}>
+                    <Typography variant="h5" sx={{ fontWeight: 900, color: COLORS.primary, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>{chartDetails.dasaInfo.current.lord} Dasha</Typography>
+                    <Chip label={`${chartDetails.dasaInfo.current.yearsRemaining} yrs remaining`} size="small" sx={{ bgcolor: COLORS.primary, color: 'white', fontWeight: 800, borderRadius: '10px' }} />
+                  </Stack>
+                  <Typography variant="caption" sx={{ color: COLORS.textSecondary, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>
+                    {chartDetails.dasaInfo.current.start} – {chartDetails.dasaInfo.current.end}
+                  </Typography>
+                </Box>
+                {chartDetails.dasaInfo.upcoming?.length > 0 && (
+                  <Stack direction="row" spacing={1}>
+                    {chartDetails.dasaInfo.upcoming.map((d: any, i: number) => (
+                      <Box key={i} sx={{ flex: 1, p: 1.5, borderRadius: '12px', bgcolor: COLORS.background, textAlign: 'center' }}>
+                        <Stack direction="row" alignItems="center" justifyContent="center" spacing={0.5}><NavigateNext sx={{ fontSize: 14, color: COLORS.textSecondary }} /><Typography variant="caption" sx={{ fontWeight: 700, color: COLORS.textSecondary, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>Next</Typography></Stack>
+                        <Typography variant="body2" sx={{ fontWeight: 800, color: COLORS.primary }}>{d.lord}</Typography>
+                        <Typography variant="caption" sx={{ color: COLORS.textSecondary }}>{d.years} yrs</Typography>
+                      </Box>
+                    ))}
+                  </Stack>
+                )}
+
+                {/* ── Antardasha Sub-period ── */}
+                {chartDetails?.antardasha?.current && (
+                  <Box sx={{ mt: 2, p: 2, borderRadius: '14px', bgcolor: alpha(COLORS.secondary, 0.07), border: `1px solid ${alpha(COLORS.secondary, 0.3)}` }}>
+                    <Typography variant="caption" sx={{ fontWeight: 700, color: '#7A6020', display: 'block', mb: 0.75, letterSpacing: '0.5px' }}>CURRENT ANTARDASHA (SUB-PERIOD)</Typography>
+                    <Stack direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={0.75}>
+                      <Typography variant="body1" sx={{ fontWeight: 900, color: COLORS.primary }}>
+                        {chartDetails.dasaInfo.current.lord}/{chartDetails.antardasha.current.lord}
+                      </Typography>
+                      <Chip label={`${chartDetails.antardasha.current.daysRemaining}d left`} size="small" sx={{ bgcolor: alpha(COLORS.secondary, 0.2), color: '#7A6020', fontWeight: 800, borderRadius: '8px', height: 18, fontSize: '0.62rem' }} />
+                    </Stack>
+                    <Typography variant="caption" sx={{ color: COLORS.textSecondary }}>{chartDetails.antardasha.current.start} – {chartDetails.antardasha.current.end}</Typography>
+                    {chartDetails.antardasha.next && (
+                      <Typography variant="caption" sx={{ display: 'block', mt: 0.5, color: alpha(COLORS.textSecondary, 0.8) }}>Next: {chartDetails.antardasha.next.lord} Antardasha from {chartDetails.antardasha.next.start}</Typography>
+                    )}
+                  </Box>
+                )}
+
+                {/* ── Muhurtha Readiness ── */}
+                {(() => {
+                  const AUSPICIOUS_LORDS = new Set(['Venus', 'Jupiter', 'Moon', 'Mercury']);
+                  const CAUTION_LORDS = new Set(['Saturn', 'Rahu', 'Ketu', 'Mars']);
+                  const lord = chartDetails.dasaInfo.current?.lord;
+                  const isAuspicious = AUSPICIOUS_LORDS.has(lord);
+                  const isCaution = CAUTION_LORDS.has(lord);
+                  return (
+                    <Box sx={{
+                      mt: 2, p: 2, borderRadius: '14px',
+                      bgcolor: isAuspicious ? alpha(COLORS.accent, 0.08) : isCaution ? alpha('#D32F2F', 0.05) : alpha(COLORS.primary, 0.05),
+                      border: `1.5px solid ${isAuspicious ? alpha(COLORS.accent, 0.4) : isCaution ? alpha('#D32F2F', 0.3) : alpha(COLORS.primary, 0.2)}`,
+                    }}>
+                      <Typography variant="caption" sx={{ fontWeight: 700, color: COLORS.textSecondary, display: 'block', mb: 0.5, letterSpacing: '0.5px' }}>MUHURTHA READINESS</Typography>
+                      <Stack direction="row" alignItems="center" spacing={1}>
+                        {isAuspicious
+                          ? <CheckCircle sx={{ color: COLORS.accent, fontSize: 18 }} />
+                          : <Warning sx={{ color: isCaution ? '#D32F2F' : '#FF6F00', fontSize: 18 }} />}
+                        <Typography variant="body2" sx={{ fontWeight: 800, color: isAuspicious ? COLORS.accent : isCaution ? '#D32F2F' : '#FF6F00' }}>
+                          {isAuspicious ? `${lord} Dasha — Auspicious for marriage` : isCaution ? `${lord} Dasha — Consult astrologer before fixing wedding date` : `${lord} Dasha — Neutral period`}
+                        </Typography>
+                      </Stack>
+                    </Box>
+                  );
+                })()}
+              </Paper>
+            )}
+
+            {/* ── Marriage Window Panel ── */}
+            {chartSummary?.marriageWindow?.length > 0 && (
+              <Paper sx={{ p: 3, borderRadius: '28px', bgcolor: 'white', boxShadow: '0 6px 24px rgba(139,26,46,0.06)', border: '1px solid', borderColor: COLORS.background }}>
+                <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
+                  <Favorite sx={{ fontSize: 18, color: COLORS.accent }} />
+                  <Typography variant="subtitle1" sx={{ fontWeight: 800, color: COLORS.primary, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>Auspicious Marriage Window</Typography>
+                  <Chip label="Dasha-based" size="small" sx={{ ml: 'auto', bgcolor: alpha(COLORS.accent, 0.1), color: COLORS.accent, fontWeight: 700, fontSize: '0.62rem', borderRadius: '8px' }} />
+                </Stack>
+                <Stack spacing={1}>
+                  {chartSummary.marriageWindow.map((w: any, i: number) => (
+                    <Box key={i} sx={{ p: 2, borderRadius: '14px', bgcolor: i === 0 ? alpha(COLORS.accent, 0.07) : alpha(COLORS.background, 0.6), border: `1.5px solid ${i === 0 ? alpha(COLORS.accent, 0.35) : alpha(COLORS.primary, 0.1)}` }}>
+                      <Stack direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={0.75}>
+                        <Stack direction="row" alignItems="center" spacing={1}>
+                          <Chip label={w.note} size="small" sx={{ height: 16, fontSize: '0.58rem', fontWeight: 800, borderRadius: '5px', bgcolor: i === 0 ? COLORS.accent : alpha(COLORS.primary, 0.12), color: i === 0 ? 'white' : COLORS.primary }} />
+                          <Typography variant="body2" sx={{ fontWeight: 900, color: COLORS.primary }}>{w.lord} Dasha</Typography>
+                        </Stack>
+                        <Typography variant="caption" sx={{ color: COLORS.textSecondary, fontWeight: 600 }}>{w.start} – {w.end}</Typography>
+                      </Stack>
+                    </Box>
+                  ))}
+                </Stack>
+                <Typography variant="caption" sx={{ display: 'block', mt: 1.5, color: COLORS.textSecondary, fontSize: '0.65rem' }}>Based on Vimshottari Dasha sequence. Consult an astrologer to confirm Muhurtha.</Typography>
+              </Paper>
+            )}
+
+            {/* ── 7th House Lord + Venus/Jupiter Panel ── */}
+            {(chartSummary?.seventhHouseAnalysis || chartSummary?.venusSummary || chartSummary?.jupiterSummary) && (
+              <Paper sx={{ p: 3, borderRadius: '28px', bgcolor: 'white', boxShadow: '0 6px 24px rgba(139,26,46,0.06)', border: '1px solid', borderColor: COLORS.background }}>
+                <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
+                  <Favorite sx={{ fontSize: 18, color: COLORS.primary }} />
+                  <Typography variant="subtitle1" sx={{ fontWeight: 800, color: COLORS.primary, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>Marriage Significators</Typography>
+                  <Chip label="Key for match" size="small" sx={{ ml: 'auto', bgcolor: alpha(COLORS.primary, 0.08), color: COLORS.primary, fontWeight: 700, fontSize: '0.62rem', borderRadius: '8px' }} />
+                </Stack>
+
+                <Stack spacing={1.5}>
+                  {/* 7th House Lord */}
+                  {chartSummary?.seventhHouseAnalysis && (
+                    <Box sx={{ p: 2, borderRadius: '14px', bgcolor: alpha(COLORS.secondary, 0.08), border: `1.5px solid ${alpha(COLORS.secondary, 0.35)}` }}>
+                      <Typography variant="caption" sx={{ fontWeight: 700, color: '#7A6020', display: 'block', mb: 0.75, letterSpacing: '0.5px' }}>7TH HOUSE (MARRIAGE) LORD</Typography>
+                      <Stack direction="row" alignItems="flex-start" justifyContent="space-between" flexWrap="wrap" gap={1}>
+                        <Box>
+                          <Typography variant="body1" sx={{ fontWeight: 900, color: COLORS.primary }}>
+                            {chartSummary.seventhHouseAnalysis.lord}
+                            {chartSummary.seventhHouseAnalysis.lordRetrograde && (
+                              <Typography component="span" sx={{ fontSize: '0.75rem', fontWeight: 900, color: '#E53935', ml: 0.5 }}>℞</Typography>
+                            )}
+                          </Typography>
+                          <Typography variant="caption" sx={{ color: COLORS.textSecondary }}>
+                            7th sign: {translateHoroscopeValue(chartSummary.seventhHouseAnalysis.sign, language)}
+                          </Typography>
+                        </Box>
+                        <Stack alignItems="flex-end" spacing={0.5}>
+                          <Typography variant="caption" sx={{ fontWeight: 700, color: COLORS.textSecondary }}>
+                            Placed in {chartSummary.seventhHouseAnalysis.lordHouse ? `House ${chartSummary.seventhHouseAnalysis.lordHouse}` : '—'} · {translateHoroscopeValue(chartSummary.seventhHouseAnalysis.lordSign || '', language)}
+                          </Typography>
+                          {chartSummary.seventhHouseAnalysis.lordDignity && chartSummary.seventhHouseAnalysis.lordDignity !== 'Normal' && (
+                            <Chip
+                              label={chartSummary.seventhHouseAnalysis.lordDignity}
+                              size="small"
+                              sx={{
+                                height: 17, fontSize: '0.62rem', fontWeight: 800, borderRadius: '6px',
+                                bgcolor: chartSummary.seventhHouseAnalysis.lordDignity === 'Exalted' ? alpha(COLORS.accent, 0.15) : alpha('#D32F2F', 0.12),
+                                color: chartSummary.seventhHouseAnalysis.lordDignity === 'Exalted' ? COLORS.accent : '#D32F2F',
+                              }}
+                            />
+                          )}
+                        </Stack>
+                      </Stack>
+                    </Box>
+                  )}
+
+                  {/* Venus (marriage significator for men, love for women) */}
+                  {chartSummary?.venusSummary && (
+                    <Box sx={{ p: 2, borderRadius: '14px', bgcolor: alpha('#EC407A', 0.05), border: `1.5px solid ${alpha('#EC407A', 0.3)}` }}>
+                      <Typography variant="caption" sx={{ fontWeight: 700, color: '#AD1457', display: 'block', mb: 0.75, letterSpacing: '0.5px' }}>VENUS — MARRIAGE &amp; LOVE SIGNIFICATOR</Typography>
+                      <Stack direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={1}>
+                        <Stack direction="row" alignItems="center" spacing={0.75}>
+                          <Typography variant="body1" sx={{ fontWeight: 900, color: '#AD1457' }}>
+                            {translateHoroscopeValue(chartSummary.venusSummary.sign, language)}
+                          </Typography>
+                          {chartSummary.venusSummary.retrograde && (
+                            <Typography component="span" sx={{ fontSize: '0.75rem', fontWeight: 900, color: '#E53935' }}>℞</Typography>
+                          )}
+                        </Stack>
+                        <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap">
+                          <Chip label={`H${chartSummary.venusSummary.house}`} size="small" sx={{ height: 17, fontSize: '0.62rem', fontWeight: 800, borderRadius: '6px', bgcolor: alpha('#EC407A', 0.1), color: '#AD1457' }} />
+                          {chartSummary.venusSummary.dignity && chartSummary.venusSummary.dignity !== 'Normal' && (
+                            <Chip label={chartSummary.venusSummary.dignity} size="small" sx={{ height: 17, fontSize: '0.62rem', fontWeight: 800, borderRadius: '6px', bgcolor: chartSummary.venusSummary.dignity === 'Exalted' ? alpha(COLORS.accent, 0.15) : alpha('#D32F2F', 0.12), color: chartSummary.venusSummary.dignity === 'Exalted' ? COLORS.accent : '#D32F2F' }} />
+                          )}
+                          {chartSummary.venusSummary.navamsha && (
+                            <Chip label={`D9: ${chartSummary.venusSummary.navamsha}`} size="small" sx={{ height: 17, fontSize: '0.62rem', fontWeight: 700, borderRadius: '6px', bgcolor: 'transparent', border: `1px solid ${alpha('#EC407A', 0.4)}`, color: '#AD1457' }} />
+                          )}
+                        </Stack>
+                      </Stack>
+                    </Box>
+                  )}
+
+                  {/* Jupiter (husband significator for women, blessings for men) */}
+                  {chartSummary?.jupiterSummary && (
+                    <Box sx={{ p: 2, borderRadius: '14px', bgcolor: alpha('#F57F17', 0.05), border: `1.5px solid ${alpha('#F57F17', 0.3)}` }}>
+                      <Typography variant="caption" sx={{ fontWeight: 700, color: '#E65100', display: 'block', mb: 0.75, letterSpacing: '0.5px' }}>JUPITER (GURU) — HUSBAND &amp; BLESSINGS SIGNIFICATOR</Typography>
+                      <Stack direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={1}>
+                        <Stack direction="row" alignItems="center" spacing={0.75}>
+                          <Typography variant="body1" sx={{ fontWeight: 900, color: '#E65100' }}>
+                            {translateHoroscopeValue(chartSummary.jupiterSummary.sign, language)}
+                          </Typography>
+                          {chartSummary.jupiterSummary.retrograde && (
+                            <Typography component="span" sx={{ fontSize: '0.75rem', fontWeight: 900, color: '#E53935' }}>℞</Typography>
+                          )}
+                        </Stack>
+                        <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap">
+                          <Chip label={`H${chartSummary.jupiterSummary.house}`} size="small" sx={{ height: 17, fontSize: '0.62rem', fontWeight: 800, borderRadius: '6px', bgcolor: alpha('#F57F17', 0.12), color: '#E65100' }} />
+                          {chartSummary.jupiterSummary.dignity && chartSummary.jupiterSummary.dignity !== 'Normal' && (
+                            <Chip label={chartSummary.jupiterSummary.dignity} size="small" sx={{ height: 17, fontSize: '0.62rem', fontWeight: 800, borderRadius: '6px', bgcolor: chartSummary.jupiterSummary.dignity === 'Exalted' ? alpha(COLORS.accent, 0.15) : alpha('#D32F2F', 0.12), color: chartSummary.jupiterSummary.dignity === 'Exalted' ? COLORS.accent : '#D32F2F' }} />
+                          )}
+                          {chartSummary.jupiterSummary.navamsha && (
+                            <Chip label={`D9: ${chartSummary.jupiterSummary.navamsha}`} size="small" sx={{ height: 17, fontSize: '0.62rem', fontWeight: 700, borderRadius: '6px', bgcolor: 'transparent', border: `1px solid ${alpha('#F57F17', 0.4)}`, color: '#E65100' }} />
+                          )}
+                        </Stack>
+                      </Stack>
+                    </Box>
+                  )}
+
+                  {/* Navamsha (D9) ascendant note */}
+                  {chartSummary?.ascendantNavamsha && (
+                    <Box sx={{ p: 1.5, borderRadius: '12px', bgcolor: alpha(COLORS.primary, 0.04), border: `1px dashed ${alpha(COLORS.primary, 0.25)}` }}>
+                      <Typography variant="caption" sx={{ color: COLORS.textSecondary, fontWeight: 700, letterSpacing: '0.5px' }}>NAVAMSHA (D9) ASCENDANT</Typography>
+                      <Typography variant="body2" sx={{ fontWeight: 800, color: COLORS.primary, mt: 0.25 }}>{translateHoroscopeValue(chartSummary.ascendantNavamsha, language)}</Typography>
+                      <Typography variant="caption" sx={{ color: COLORS.textSecondary, fontSize: '0.65rem' }}>Used in marriage chart analysis (D9 Lagna)</Typography>
+                    </Box>
+                  )}
+                </Stack>
+              </Paper>
+            )}
+
             <Paper
               sx={{
-                p: 4,
+                p: 3,
                 borderRadius: '40px',
                 bgcolor: 'white',
                 boxShadow: '0 10px 40px rgba(139,26,46,0.05)',
                 border: '1px solid',
                 borderColor: COLORS.background,
-                height: '100%',
               }}
             >
-              <Typography variant="h5" sx={{ fontFamily: LANGUAGE_FONT_FAMILY[language], fontWeight: 700, mb: 4, color: COLORS.primary }}>
-                {texts.checkCompatibilityWith}
-              </Typography>
+              <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
+                <Typography variant="h5" sx={{ fontFamily: LANGUAGE_FONT_FAMILY[language], fontWeight: 700, color: COLORS.primary }}>
+                  {texts.checkCompatibilityWith}
+                </Typography>
+              </Stack>
 
-              <Stack spacing={4}>
+              <Stack spacing={2}>
                 <Box>
                   <Typography variant="body2" sx={{ fontWeight: 700, mb: 1, color: COLORS.textSecondary, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>
                     {texts.selectFromMatches}
@@ -799,6 +1251,7 @@ const HoroscopeView = () => {
                 )}
               </Stack>
             </Paper>
+            </Stack>{/* end right-column Stack */}
           </Grid>
 
           <AnimatePresence>
@@ -831,11 +1284,15 @@ const HoroscopeView = () => {
                       name: compatibility.userA?.name || user?.name || 'You',
                       photo: compatibility.userA?.photo || (user as any)?.profilePic || null,
                       sign: compatibility.userA?.sign || '',
+                      gana: compatibility.userA?.gana || 'Pending',
+                      manglik: compatibility.userA?.manglik || 'Pending',
                     }}
                     userB={{
                       name: compatibility.userB?.name || selectedMatch?.name || 'Match',
                       photo: compatibility.userB?.photo || selectedMatch?.photo || null,
                       sign: compatibility.userB?.sign || selectedMatch?.sign || '',
+                      gana: compatibility.userB?.gana || 'Pending',
+                      manglik: compatibility.userB?.manglik || 'Pending',
                     }}
                     explanation={compatibility.explanation}
                   />
@@ -863,6 +1320,7 @@ const HoroscopeView = () => {
 
                   <Grid container spacing={1.5}>
                     {[
+                      { label: texts.gana, value: translateHoroscopeValue(chartDetails?.gana || texts.pending, language) },
                       { label: texts.nakshatraPada, value: formatNakshatraPada(chartDetails?.nakshatraPada, language) },
                       { label: texts.ascendant, value: `${translateHoroscopeValue(chartSummary?.ascendant || texts.pending, language)}${chartDetails?.ascendantDegree && chartDetails.ascendantDegree !== 'Pending' ? ` • ${chartDetails.ascendantDegree}` : ''}` },
                       { label: texts.tithi, value: translateHoroscopeValue(chartDetails?.tithi || texts.pending, language) },
@@ -887,16 +1345,57 @@ const HoroscopeView = () => {
                     ))}
                   </Grid>
 
+                  {/* ── Porutham Self-Profile ── */}
+                  {(chartSummary?.rajju || chartSummary?.nadi || chartSummary?.yoni) && (
+                    <Box sx={{ mt: 3, p: 2.5, borderRadius: '18px', bgcolor: alpha(COLORS.secondary, 0.06), border: `1.5px solid ${alpha(COLORS.secondary, 0.3)}` }}>
+                      <Typography variant="overline" sx={{ fontWeight: 800, letterSpacing: 1.5, color: '#7A6020', fontSize: '0.65rem', display: 'block', mb: 1.5 }}>PORUTHAM SELF REFERENCE</Typography>
+                      <Grid container spacing={1.25}>
+                        {[
+                          { label: 'Gana', value: chartDetails?.gana || '—', note: 'Personality class' },
+                          { label: 'Rajju', value: chartSummary.rajju, note: 'Same = prohibited' },
+                          { label: 'Nadi', value: chartSummary.nadi, note: 'Same = prohibited' },
+                          { label: 'Yoni', value: chartSummary.yoni, note: 'Animal symbol' },
+                        ].map((row) => (
+                          <Grid size={{ xs: 6 }} key={row.label}>
+                            <Box sx={{ p: 1.5, borderRadius: '12px', bgcolor: alpha(COLORS.secondary, 0.08), textAlign: 'center' }}>
+                              <Typography variant="caption" sx={{ display: 'block', fontWeight: 800, color: '#7A6020', fontSize: '0.62rem', letterSpacing: '0.5px' }}>{row.label}</Typography>
+                              <Typography variant="body2" sx={{ fontWeight: 900, color: COLORS.primary, mt: 0.25 }}>{row.value}</Typography>
+                              <Typography variant="caption" sx={{ fontSize: '0.58rem', color: COLORS.textSecondary }}>{row.note}</Typography>
+                            </Box>
+                          </Grid>
+                        ))}
+                      </Grid>
+                      <Typography variant="caption" sx={{ display: 'block', mt: 1.5, color: COLORS.textSecondary, fontSize: '0.62rem' }}>Share these values when checking partner Porutham compatibility.</Typography>
+                    </Box>
+                  )}
+
                   {!!chartHouses.length && (
                     <Box sx={{ mt: 3 }}>
-                      <Typography variant="subtitle2" sx={{ fontWeight: 800, color: 'text.primary', mb: 1.5, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>
-                        {texts.houseOverview}
-                      </Typography>
+                      <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5 }}>
+                        <Typography variant="subtitle2" sx={{ fontWeight: 800, color: 'text.primary', fontFamily: LANGUAGE_FONT_FAMILY[language] }}>
+                          {texts.houseOverview}
+                        </Typography>
+                        <Chip label="★ Marriage-relevant" size="small" sx={{ height: 16, fontSize: '0.6rem', fontWeight: 800, bgcolor: alpha(COLORS.secondary, 0.15), color: '#7A6020', borderRadius: '6px' }} />
+                      </Stack>
                       <Grid container spacing={1.25}>
-                        {chartHouses.map((house: any) => (
+                        {chartHouses.map((house: any) => {
+                          const MARRIAGE_HOUSES = new Set([1, 5, 7, 8]);
+                          const isMarriage = MARRIAGE_HOUSES.has(Number(house.house));
+                          const MARRIAGE_LABELS: Record<number, string> = { 1: 'Self', 5: 'Romance', 7: 'Marriage', 8: 'Longevity' };
+                          return (
                           <Grid size={{ xs: 12, sm: 6, md: 4 }} key={`${house.house}-${house.sign}`}>
-                            <Box sx={{ p: 1.5, borderRadius: '14px', border: '1px solid rgba(139,26,46,0.08)', height: '100%' }}>
-                              <Typography variant="caption" sx={{ display: 'block', color: COLORS.textSecondary, fontWeight: 700, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>
+                            <Box sx={{
+                              p: 1.5, borderRadius: '14px', height: '100%',
+                              border: isMarriage ? `2px solid ${alpha(COLORS.secondary, 0.6)}` : '1px solid rgba(139,26,46,0.08)',
+                              bgcolor: isMarriage ? alpha(COLORS.secondary, 0.06) : 'transparent',
+                              position: 'relative',
+                            }}>
+                              {isMarriage && (
+                                <Chip label={MARRIAGE_LABELS[Number(house.house)]} size="small"
+                                  sx={{ position: 'absolute', top: 5, right: 5, height: 14, fontSize: '0.55rem', fontWeight: 900,
+                                    bgcolor: COLORS.secondary, color: COLORS.primary, borderRadius: '5px', px: 0.25 }} />
+                              )}
+                              <Typography variant="caption" sx={{ display: 'block', color: isMarriage ? '#7A6020' : COLORS.textSecondary, fontWeight: 700, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>
                                 {translateHouseLabel(house.house, language)}
                               </Typography>
                               <Typography variant="body2" sx={{ color: COLORS.primary, fontWeight: 800, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>
@@ -909,7 +1408,8 @@ const HoroscopeView = () => {
                               </Typography>
                             </Box>
                           </Grid>
-                        ))}
+                          );
+                        })}
                       </Grid>
                     </Box>
                   )}
@@ -984,16 +1484,7 @@ const HoroscopeView = () => {
                   )}
 
                   {/* ── Insight cards (staggered animation) ── */}
-                  <Stack spacing={1.25}
-                    sx={{
-                      mt: chartDetails?.tithi || chartDetails?.yoga ? 0 : 2,
-                      maxHeight: 340,
-                      overflowY: 'auto',
-                      pr: 0.5,
-                      '&::-webkit-scrollbar': { width: '4px' },
-                      '&::-webkit-scrollbar-thumb': { bgcolor: alpha(COLORS.primary, 0.2), borderRadius: '4px' },
-                    }}
-                  >
+                  <Stack spacing={1.25} sx={{ mt: chartDetails?.tithi || chartDetails?.yoga ? 0 : 2 }}>
                     {readingHighlights.length ? (
                       readingHighlights.map((insight: string, index: number) => {
                         const accent  = INSIGHT_ACCENTS[index % INSIGHT_ACCENTS.length];
@@ -1061,6 +1552,8 @@ const HoroscopeView = () => {
                         {luckyColors.map((color: string) => (
                           <Stack key={color} alignItems="center" spacing={0.5}>
                             <Box
+                              role="img"
+                              aria-label={`Lucky colour: ${HEX_COLOR_NAMES[color] ?? color}`}
                               sx={{
                                 width: 38, height: 38,
                                 borderRadius: '12px',

@@ -31,8 +31,8 @@ const horoscopeService = {
    * @param {string} userBId - ID of the second user to calculate compatibility with.
    * @returns {Promise<object>} - Compatibility score, dimension breakdown, and explanation.
    */
-  calculateCompatibility: async (userAId: string, userBId: string) => {
-    const response = await axiosInstance.post('/horoscope/compatibility', { userAId, userBId });
+  calculateCompatibility: async (userAId: string, userBId: string, forceRefresh = false) => {
+    const response = await axiosInstance.post('/horoscope/compatibility', { userAId, userBId, forceRefresh });
     return unwrapResponse(response);
   },
 
@@ -48,5 +48,4 @@ const horoscopeService = {
 };
 
 export default horoscopeService;
-
 

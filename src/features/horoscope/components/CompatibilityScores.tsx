@@ -62,8 +62,8 @@ interface Dimension {
 interface CompatibilityScoresProps {
   overallScore: number;
   dimensions: Dimension[];
-  userA: { name: string; photo: string; sign: string };
-  userB: { name: string; photo: string; sign: string };
+  userA: { name: string; photo: string; sign: string; gana?: string; manglik?: string };
+  userB: { name: string; photo: string; sign: string; gana?: string; manglik?: string };
   explanation?: string;
 }
 
@@ -192,8 +192,8 @@ const CompatibilityScores: React.FC<CompatibilityScoresProps> = ({ overallScore,
                   <Typography variant="subtitle1" sx={{ fontWeight: 800, color: COLORS.primary }}>{user.name}</Typography>
                   <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>{user.sign} Moon Sign</Typography>
                   <Box sx={{ mt: 1, display: 'flex', gap: 1 }}>
-                    <Chip label="Manglik: No" size="small" sx={{ fontSize: '10px', height: 20 }} />
-                    <Chip label="Gana: Deva" size="small" sx={{ fontSize: '10px', height: 20 }} />
+                    <Chip label={`Manglik: ${user.manglik || 'Pending'}`} size="small" sx={{ fontSize: '10px', height: 20 }} />
+                    <Chip label={`Gana: ${user.gana || 'Pending'}`} size="small" sx={{ fontSize: '10px', height: 20 }} />
                   </Box>
                 </Box>
               </Paper>
@@ -311,4 +311,3 @@ const CompatibilityScores: React.FC<CompatibilityScoresProps> = ({ overallScore,
 };
 
 export default CompatibilityScores;
-

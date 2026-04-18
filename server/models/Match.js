@@ -17,6 +17,7 @@ const matchSchema = new Schema(
     userAId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     userBId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     compatibilityScore: { type: Number, required: true, min: 0, max: 100, index: true },
+    calculationVersion: { type: Number, default: 2, index: true },
     dimensionScores: { type: dimensionScoresSchema, required: true },
     mutualInterest: { type: Boolean, default: false, index: true },
     explanation: { type: String, trim: true, maxlength: 4000 },

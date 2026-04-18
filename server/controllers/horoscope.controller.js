@@ -9,6 +9,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { redisClient } from '../lib/redis.js';
 import { resolvePythonCommand } from '../utils/pythonRuntime.js';
+import { deriveGanaFromNakshatra } from '../utils/gana.js';
 
 const PLANET_SYMBOLS = {
   Sun: 'Su',
@@ -33,6 +34,8 @@ const PLANET_COLORS = {
   Rahu: '#1A6B72',
   Ketu: '#8B1A2E',
 };
+
+const MANGLIK_HOUSES = new Set([1, 2, 4, 7, 8, 12]);
 
 const SIGNS = [
   'Aries', 'Taurus', 'Gemini', 'Cancer', 'Leo', 'Virgo',
@@ -288,6 +291,15 @@ function buildHouseDetails(ascendant, positionsSource = []) {
   });
 }
 
+function deriveManglikLabelFromUser(user = {}) {
+  const positions = user?.horoscopeData?.planetaryPositions || user?.horoscope?.planetaryPositions || [];
+  const mars = Array.isArray(positions) ? positions.find((position) => position?.planet === 'Mars') : null;
+  const marsHouse = Number(mars?.house);
+
+  if (!Number.isFinite(marsHouse)) return 'Pending';
+  return MANGLIK_HOUSES.has(marsHouse) ? `Yes (Mars in House ${marsHouse})` : `No (Mars in House ${marsHouse})`;
+}
+
 function buildReadingHighlights(horoscopeData = {}, positionsSource = [], accuracyMeta) {
   const moonSign = horoscopeData.moonSign || horoscopeData.rashi;
   const ascendant = horoscopeData.ascendant;
@@ -361,6 +373,7 @@ function buildChartData(user) {
   const horoscopeData = user.horoscopeData || {};
   const accuracyMeta = getBirthAccuracyMeta(user);
   const moonSign = horoscopeData.moonSign || horoscopeData.rashi || 'Pending';
+  const gana = horoscopeData.gana || deriveGanaFromNakshatra(horoscopeData.nakshatra) || 'Pending';
   const positionsSource = Array.isArray(horoscopeData.planetaryPositions) && horoscopeData.planetaryPositions.length > 0
     ? horoscopeData.planetaryPositions
     : [
@@ -371,18 +384,42 @@ function buildChartData(user) {
 
   const auspiciousTime = calculateAuspiciousTime(horoscopeData, user);
 
+  // Manglik label — prefer stored value, fall back to live derivation
+  const manglikStored = horoscopeData.manglik;
+  const manglikLabel = manglikStored?.label ||
+    (manglikStored?.present != null
+      ? (manglikStored.present ? `Yes (Mars in House ${manglikStored.marsHouse})` : `No (Mars in House ${manglikStored.marsHouse})`)
+      : deriveManglikLabelFromUser({ horoscopeData }));
+
   return {
     summary: {
       moonSign,
       nakshatra: horoscopeData.nakshatra || 'Pending',
+      gana,
       nakshatraPada: horoscopeData.nakshatraPada || null,
       ascendant: horoscopeData.ascendant || 'Pending',
       ascendantDegree: horoscopeData.ascendantDegree ? formatDegree(horoscopeData.ascendantDegree) : 'Pending',
       sunSign: horoscopeData.zodiacSign || sunPosition?.sign || 'Pending',
       auspiciousTime: auspiciousTime.time,
       auspiciousTimeReason: auspiciousTime.reason,
+      manglik: manglikLabel,
+      manglikPresent: manglikStored?.present ?? null,
+      manglikSeverity: manglikStored?.severity ?? null,
+      kalaSarpaDosha: horoscopeData.kalaSarpaDosha || null,
+      seventhHouseAnalysis: horoscopeData.seventhHouseAnalysis || null,
+      sadeSati: horoscopeData.sadeSati || null,
+      venusSummary: horoscopeData.venusSummary || null,
+      jupiterSummary: horoscopeData.jupiterSummary || null,
+      ascendantNavamsha: horoscopeData.ascendantNavamsha || null,
+      rajju: horoscopeData.rajju || null,
+      nadi: horoscopeData.nadi || null,
+      yoni: horoscopeData.yoni || null,
+      rasiLord: horoscopeData.rasiLord || null,
+      chartGrade: horoscopeData.chartGrade || null,
+      marriageWindow: horoscopeData.marriageWindow || [],
     },
     details: {
+      gana,
       nakshatraPada: horoscopeData.nakshatraPada || null,
       ascendantDegree: horoscopeData.ascendantDegree ? formatDegree(horoscopeData.ascendantDegree) : 'Pending',
       tithi: horoscopeData.tithi || 'Pending',
@@ -393,6 +430,8 @@ function buildChartData(user) {
       ayanamsa: horoscopeData.ayanamsa || 'Lahiri',
       timezone: horoscopeData.timezone || user?.birthData?.placeOfBirth?.timezone || 'Asia/Colombo',
       chartType: 'Sri Lankan Vedic / Sidereal',
+      dasaInfo: horoscopeData.dasaInfo || null,
+      antardasha: horoscopeData.antardasha || null,
     },
     planets: positionsSource.map((position) => ({
       name: position.planet,
@@ -407,6 +446,9 @@ function buildChartData(user) {
       sign: position.sign || 'Pending',
       house: Number(position.house) || 1,
       degree: formatDegree(position.degree),
+      dignity: position.dignity || null,
+      retrograde: position.retrograde || false,
+      navamsha: position.navamsha || null,
     })),
     houses: buildHouseDetails(horoscopeData.ascendant, positionsSource),
     insights: buildReadingHighlights(horoscopeData, positionsSource, accuracyMeta),
@@ -435,6 +477,7 @@ function buildChartData(user) {
 
 function deriveProfileAstrologyDetails(horoscopeData = {}) {
   const sign = horoscopeData.moonSign || horoscopeData.rashi || horoscopeData.zodiacSign || '';
+  const gana = horoscopeData.gana || deriveGanaFromNakshatra(horoscopeData.nakshatra);
   const luckyColors = LUCKY_COLORS_BY_SIGN[sign] || ['#8B1A2E', '#C9A84C'];
   const favorablePartners = FAVORABLE_PARTNERS_BY_SIGN[sign] || [];
 
@@ -453,6 +496,7 @@ function deriveProfileAstrologyDetails(horoscopeData = {}) {
     horoscopeData.nakshatra
       ? `${horoscopeData.nakshatra}${horoscopeData.nakshatraPada ? ` (Pada ${horoscopeData.nakshatraPada})` : ''} shapes your instinctive decision-making style.`
       : '',
+    gana ? `${gana} gana indicates your core temperament in traditional nakshatra matching.` : '',
     horoscopeData.ascendant
       ? `Ascendant in ${horoscopeData.ascendant} suggests ${ASCENDANT_TRAITS[horoscopeData.ascendant] || 'a distinctive life approach'}.`
       : '',
@@ -543,7 +587,7 @@ export async function generateAndPersistHoroscope(user, { force = false } = {}) 
   if (
     !force &&
     hasGeneratedChart(user) &&
-    Number(user?.horoscopeData?.calculationVersion || 1) >= 3 &&
+    Number(user?.horoscopeData?.calculationVersion || 1) >= 4 &&
     !hasBirthPayloadChanged(user)
   ) {
     return user;
@@ -622,6 +666,7 @@ export async function generateAndPersistHoroscope(user, { force = false } = {}) 
     moonSign: result.moonSign || result.rashi,
     rashi: result.rashi,
     nakshatra: result.nakshatra,
+    gana: result.gana || deriveGanaFromNakshatra(result.nakshatra),
     nakshatraPada: result.nakshatraPada,
     ascendant: result.ascendant,
     ascendantDegree: result.ascendantDegree,
@@ -633,12 +678,27 @@ export async function generateAndPersistHoroscope(user, { force = false } = {}) 
     ayanamsa: result.ayanamsa || 'Lahiri',
     planetaryPositions: result.planetaryPositions,
     timezone: payload.timezone || 'Asia/Colombo',
-    calculationVersion: 3,
+    calculationVersion: 4,
     gunaScore: 0,
     luckyColors: profileDetails.luckyColors,
     auspiciousDays: profileDetails.auspiciousDays,
     favorablePartners: profileDetails.favorablePartners,
     profileFacts: profileDetails.profileFacts,
+    dasaInfo: result.dasaInfo || null,
+    kalaSarpaDosha: result.kalaSarpaDosha || { present: false },
+    manglik: result.manglik || null,
+    seventhHouseAnalysis: result.seventhHouseAnalysis || null,
+    sadeSati: result.sadeSati || null,
+    venusSummary: result.venusSummary || null,
+    jupiterSummary: result.jupiterSummary || null,
+    ascendantNavamsha: result.ascendantNavamsha || null,
+    rajju: result.rajju || null,
+    nadi: result.nadi || null,
+    yoni: result.yoni || null,
+    rasiLord: result.rasiLord || null,
+    antardasha: result.antardasha || null,
+    marriageWindow: result.marriageWindow || [],
+    chartGrade: result.chartGrade || null,
     generatedFrom: {
       birthDate: payload.birthDate,
       birthTime: payload.birthTime,
@@ -687,6 +747,12 @@ function buildCompatibilityPayload(currentUser, partner, result) {
     userA: {
       name: currentUser.name,
       photo: currentUser.profilePic || currentUser.photos?.[0]?.url || null,
+      gana:
+        result.userAInsights?.gana ||
+        currentUser.horoscopeData?.gana ||
+        deriveGanaFromNakshatra(currentUser.horoscopeData?.nakshatra || currentUser.horoscope?.nakshatra) ||
+        'Pending',
+      manglik: result.userAInsights?.manglik || deriveManglikLabelFromUser(currentUser),
       sign:
         currentUser.horoscopeData?.moonSign ||
         currentUser.horoscopeData?.rashi ||
@@ -697,6 +763,12 @@ function buildCompatibilityPayload(currentUser, partner, result) {
     userB: {
       name: partner.name,
       photo: partner.profilePic || partner.photos?.[0]?.url || null,
+      gana:
+        result.userBInsights?.gana ||
+        partner.horoscopeData?.gana ||
+        deriveGanaFromNakshatra(partner.horoscopeData?.nakshatra || partner.horoscope?.nakshatra) ||
+        'Pending',
+      manglik: result.userBInsights?.manglik || deriveManglikLabelFromUser(partner),
       sign:
         partner.horoscopeData?.moonSign ||
         partner.horoscopeData?.rashi ||
@@ -731,8 +803,8 @@ function buildCompatibilityPayload(currentUser, partner, result) {
       {
         id: 'personality',
         name: 'AI Personality Analysis',
-        score: Math.round(result.personalityScore * 0.2),
-        max: 20,
+        score: Math.round(result.personalityScore * 0.25),
+        max: 25,
         explanation: 'This score reflects Big Five similarity and relational style alignment.',
       },
       {
@@ -745,8 +817,8 @@ function buildCompatibilityPayload(currentUser, partner, result) {
       {
         id: 'family',
         name: 'Family Values',
-        score: Math.round(result.familyScore * 0.2),
-        max: 20,
+        score: Math.round(result.familyScore * 0.15),
+        max: 15,
         explanation: 'This score reflects long-term family expectations and value fit.',
       },
     ],
@@ -763,6 +835,7 @@ async function syncHoroscopeDocument(user) {
         zodiacSign: user.horoscopeData?.zodiacSign || user.horoscope?.zodiacSign || 'Unknown',
         rashi: user.horoscopeData?.rashi || user.horoscope?.rashi || user.horoscope?.moonSign || 'Unknown',
         nakshatra: user.horoscopeData?.nakshatra || user.horoscope?.nakshatra || 'Unknown',
+        gana: user.horoscopeData?.gana || deriveGanaFromNakshatra(user.horoscopeData?.nakshatra || user.horoscope?.nakshatra) || 'Unknown',
         nakshatraPada: user.horoscopeData?.nakshatraPada,
         ascendant: user.horoscopeData?.ascendant || user.horoscope?.ascendant || 'Unknown',
         ascendantDegree: user.horoscopeData?.ascendantDegree,
@@ -804,6 +877,7 @@ async function persistMatchResult(userAId, userBId, result) {
     {
       $set: {
         compatibilityScore: result.overallScore,
+        calculationVersion: Number(result.calculationVersion || 2),
         dimensionScores: {
           astro: result.astroScore,
           personality: result.personalityScore,
@@ -881,7 +955,7 @@ export const calculateCompatibility = asyncHandler(async (req, res) => {
   const [first, second] = [String(userAId), String(userBId)].sort();
   const existingMatch = forceRefresh ? null : await Match.findOne({ userAId: first, userBId: second }).lean();
 
-  if (existingMatch) {
+  if (existingMatch && Number(existingMatch.calculationVersion || 1) >= 2) {
     // Return cached DB result
     const explanationText = (existingMatch.explanation || '').toUpperCase();
     const result = {

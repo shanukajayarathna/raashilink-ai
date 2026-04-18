@@ -28,6 +28,7 @@ const horoscopeSchema = new Schema(
     zodiacSign: { type: String, required: true, trim: true, maxlength: 30 },
     rashi: { type: String, required: true, trim: true, maxlength: 30 },
     nakshatra: { type: String, required: true, trim: true, maxlength: 30 },
+    gana: { type: String, trim: true, maxlength: 20 },
     nakshatraPada: { type: Number, min: 1, max: 4 },
     ascendant: { type: String, required: true, trim: true, maxlength: 30 },
     ascendantDegree: { type: Number, min: 0, max: 360 },

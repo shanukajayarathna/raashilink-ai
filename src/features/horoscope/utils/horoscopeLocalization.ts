@@ -31,6 +31,7 @@ export const HOROSCOPE_TEXT: Record<
     birthPlaceNeeded: string;
     moonSign: string;
     nakshatra: string;
+    gana: string;
     nakshatraPada: string;
     ascendant: string;
     sunSign: string;
@@ -91,6 +92,7 @@ export const HOROSCOPE_TEXT: Record<
     birthPlaceNeeded: 'Birth place needed',
     moonSign: 'Moon Sign (Rashi)',
     nakshatra: 'Nakshatra',
+    gana: 'Gana',
     nakshatraPada: 'Nakshatra Pada',
     ascendant: 'Ascendant',
     sunSign: 'Sun Sign (Sidereal)',
@@ -153,6 +155,7 @@ export const HOROSCOPE_TEXT: Record<
     birthPlaceNeeded: 'උපන් ස්ථානය අවශ්‍යයි',
     moonSign: 'චන්ද්‍ර රාශිය (Moon Sign)',
     nakshatra: 'නැකත',
+    gana: 'ගණය',
     nakshatraPada: 'නැකත් පාදය',
     ascendant: 'ලග්නය (Ascendant)',
     sunSign: 'සූර්ය රාශිය (Sidereal)',
@@ -213,6 +216,7 @@ export const HOROSCOPE_TEXT: Record<
     birthPlaceNeeded: 'பிறந்த இடம் தேவை',
     moonSign: 'சந்திர ராசி (Moon Sign)',
     nakshatra: 'நட்சத்திரம்',
+    gana: 'கணம்',
     nakshatraPada: 'நட்சத்திர பாதம்',
     ascendant: 'லக்னம் (Ascendant)',
     sunSign: 'சூரிய ராசி (Sidereal)',

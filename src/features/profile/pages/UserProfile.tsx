@@ -65,7 +65,7 @@ import {
   Eye,
   EyeOff
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
 import { RootState } from '@/app/store/store';
 import { logout, updateUser } from '@/features/auth/store/authSlice';
@@ -117,6 +117,14 @@ const EXERCISE_OPTIONS = ['Daily', 'Regularly', 'Occasionally', 'Rarely', 'Never
 const DIET_OPTIONS = ['Vegetarian', 'Non-veg', 'Vegan', 'Pescatarian', 'Other'];
 const SMOKING_OPTIONS = ['Never', 'Occasionally', 'Regularly'];
 const DRINKING_OPTIONS = ['Never', 'Occasionally', 'Regularly'];
+const HOBBIES_SUGGESTIONS = [
+  'Reading', 'Writing', 'Cooking', 'Baking', 'Travel', 'Photography', 'Painting', 'Drawing',
+  'Music', 'Playing Guitar', 'Singing', 'Dancing', 'Yoga', 'Meditation', 'Fitness', 'Running',
+  'Cycling', 'Swimming', 'Hiking', 'Trekking', 'Cricket', 'Football', 'Badminton', 'Tennis',
+  'Chess', 'Gaming', 'Gardening', 'Volunteering', 'Movies', 'Theatre', 'Poetry', 'Blogging',
+  'Coding', 'DIY Crafts', 'Pottery', 'Embroidery', 'Bird Watching', 'Astronomy', 'Fishing',
+  'Surfing', 'Martial Arts', 'Skating', 'Calligraphy', 'Fashion', 'Interior Design', 'Astrology',
+];
 const PERSONALITY_QUIZ_QUESTIONS = [
   'I enjoy meeting new people',
   'I prefer organized plans',
@@ -263,11 +271,16 @@ function buildPersonalityChartFromAnswers(answers: any[], fallbackData: any[]) {
 
 export default function UserProfile() {
   const navigate = useNavigate();
-  const { user, token } = useSelector((state: RootState) => state.auth);  const dispatch = useDispatch();  const [tabValue, setTabValue] = useState(0);
+  const location = useLocation();
+  const { user, token } = useSelector((state: RootState) => state.auth);  const dispatch = useDispatch();
+  const searchParams = new URLSearchParams(location.search);
+  const initialTab = parseInt(searchParams.get('tab') || '0', 10);
+  const initialEdit = searchParams.get('edit') === 'true';
+  const [tabValue, setTabValue] = useState(isNaN(initialTab) ? 0 : Math.min(initialTab, 4));
   const [loading, setLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [profileData, setProfileData] = useState<any>(null);
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState(initialEdit);
   const [editData, setEditData] = useState<any>({});
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [uploadingCover, setUploadingCover] = useState(false);
@@ -438,6 +451,7 @@ export default function UserProfile() {
             birthPlace: 'Not provided',
             rashi: 'Not provided',
             nakshatra: 'Not provided',
+            gana: 'Not provided',
             ascendant: 'Not provided',
             sunSign: 'Not provided',
             luckyColors: ['#8B1A2E', '#C9A84C'],
@@ -641,6 +655,12 @@ export default function UserProfile() {
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const handleStartEdit = () => {
+    if (!profileData) return;
+    setEditData(normalizeProfileData(profileData));
+    setEditing(true);
   };
 
   const handleCancelEdit = () => {
@@ -1017,7 +1037,7 @@ export default function UserProfile() {
                 ) : (
                   <Button 
                     variant="contained" 
-                    onClick={() => navigate('/profile/edit')}
+                    onClick={handleStartEdit}
                     startIcon={<Edit3 size={18} />}
                     sx={{ 
                       bgcolor: COLORS.primary, 
@@ -1224,7 +1244,7 @@ export default function UserProfile() {
                       {[
                         { label: 'Age', value: profileData.age, key: 'age', icon: <Calendar size={18} /> },
                         { label: 'Gender', value: formatGenderDisplay(profileData.personalInfo.gender), key: 'personalInfo.gender', icon: <User size={18} /> },
-                        { label: 'Height', value: profileData.personalInfo.height, key: 'personalInfo.height', icon: <Activity size={18} /> },
+                        { label: 'Height', value: (() => { const h = profileData.personalInfo.height; if (!h || h === 'Not provided') return h; const n = String(h).replace(/\s*cm$/i, '').trim(); return n ? `${n} cm` : h; })(), key: 'personalInfo.height', icon: <Activity size={18} /> },
                         { label: 'Education', value: profileData.personalInfo.education, key: 'personalInfo.education', icon: <GraduationCap size={18} /> },
                         { label: 'Occupation', value: profileData.personalInfo.occupation, key: 'personalInfo.occupation', icon: <Briefcase size={18} /> },
                         { label: 'Religion', value: profileData.personalInfo.religion, key: 'personalInfo.religion', icon: <Heart size={18} /> },
@@ -1275,12 +1295,12 @@ export default function UserProfile() {
                                     fullWidth
                                     size="small"
                                     type="number"
-                                    value={editData.personalInfo?.height || ''}
+                                    value={String(editData.personalInfo?.height || '').replace(/\s*cm$/i, '').trim()}
                                     onChange={(e) => setEditData({
                                       ...editData,
                                       personalInfo: {
                                         ...editData.personalInfo,
-                                        height: e.target.value,
+                                        height: e.target.value ? `${e.target.value} cm` : '',
                                       },
                                     })}
                                     inputProps={{ min: HEIGHT_MIN_CM, max: HEIGHT_MAX_CM, step: 1 }}
@@ -1560,6 +1580,7 @@ export default function UserProfile() {
                     {[
                       { label: 'Rashi (Moon Sign)', value: profileData.astrology.rashi },
                       { label: 'Nakshatra', value: profileData.astrology.nakshatra },
+                      { label: 'Gana', value: profileData.astrology.gana || 'Not provided' },
                       { label: 'Ascendant', value: profileData.astrology.ascendant },
                       { label: 'Sun Sign', value: profileData.astrology.sunSign },
                     ].map((item, i) => (
@@ -1639,19 +1660,39 @@ export default function UserProfile() {
                 <Paper sx={{ p: 4, borderRadius: '24px', boxShadow: '0 2px 16px rgba(0,0,0,0.03)' }}>
                   <Typography variant="h6" sx={{ mb: 3, fontWeight: 800, color: COLORS.primary }}>Hobbies & Interests</Typography>
                   {editing ? (
-                    <TextField
-                      fullWidth
-                      multiline
-                      rows={2}
-                      value={editData.lifestyle?.hobbies?.join(', ') || ''}
-                      onChange={(e) => setEditData({
+                    <Autocomplete
+                      multiple
+                      freeSolo
+                      options={HOBBIES_SUGGESTIONS}
+                      value={editData.lifestyle?.hobbies || []}
+                      onChange={(_e, newValue) => setEditData({
                         ...editData,
                         lifestyle: {
                           ...editData.lifestyle,
-                          hobbies: e.target.value.split(',').map((h: string) => h.trim()).filter(Boolean)
+                          hobbies: newValue.map((v: string) => v.trim()).filter(Boolean),
                         }
                       })}
-                      placeholder="e.g., Music, Cooking, Travel, Reading"
+                      renderTags={(value, getTagProps) =>
+                        value.map((option: string, index: number) => {
+                          const tagProps = getTagProps({ index });
+                          return (
+                            <Chip
+                              key={option}
+                              label={option}
+                              size="small"
+                              {...tagProps}
+                              sx={{ bgcolor: 'rgba(139,26,46,0.08)', color: COLORS.primary, fontWeight: 700 }}
+                            />
+                          );
+                        })
+                      }
+                      renderInput={(params) => (
+                        <TextField
+                          {...params}
+                          placeholder="Type or select hobbies..."
+                          helperText="Type a hobby and press Enter, or pick from suggestions"
+                        />
+                      )}
                       sx={{ mb: 3 }}
                     />
                   ) : (
@@ -2264,5 +2305,3 @@ export default function UserProfile() {
     </>
   );
 }
-
-

@@ -7,6 +7,7 @@ import {
   Avatar, 
   Button, 
   Chip, 
+  CircularProgress,
   LinearProgress, 
   IconButton, 
   Drawer, 
@@ -72,6 +73,7 @@ import { showToast } from '@/app/store/uiSlice';
 import { updateUser } from '@/features/auth/store/authSlice';
 import CoupleDashboard from '@/features/dashboard/pages/CoupleDashboard';
 import { translateZodiacSign } from '@/features/horoscope/utils/horoscopeLocalization';
+import { computeMissingItems } from '@/features/profile/utils/profileData';
 import { useRealtimeUpdates } from '@/shared/hooks/useRealtimeUpdates';
 
 // Design System Constants
@@ -103,6 +105,7 @@ function formatTopMatch(match: any) {
   if (!match) return null;
 
   return {
+    id: match.id || match._id,
     name: match.name,
     age: match.age,
     location: match.location,
@@ -179,7 +182,30 @@ const WidgetHeader = ({ title, action }: { title: string; action?: React.ReactNo
 
 // --- Sub-Components ---
 
-const ProfileCompletionRing = ({ percentage, missingItems }: { percentage: number; missingItems: string[] }) => {
+// Map missing item label → profile tab index and optional section hint
+const MISSING_ITEM_NAV: Record<string, { tab: number }> = {
+  'Add Profile Photo':   { tab: 0 },
+  'Add Short Bio':       { tab: 0 },
+  'Add Tagline':         { tab: 0 },
+  'Add Location':        { tab: 0 },
+  'Add Height':          { tab: 0 },
+  'Add Ethnicity':       { tab: 0 },
+  'Add Date of Birth':   { tab: 1 },
+  'Add Birth Place':     { tab: 1 },
+  'Generate Horoscope':  { tab: 1 },
+  'Add Education':       { tab: 0 },
+  'Add Profession':      { tab: 0 },
+  'Add Religion':        { tab: 0 },
+  'Add Diet':            { tab: 2 },
+  'Add Smoking Habit':   { tab: 2 },
+  'Add Drinking Habit':  { tab: 2 },
+  'Add Languages':       { tab: 0 },
+  'Add Hobbies':         { tab: 2 },
+  'Verify Email':        { tab: 0 },
+  'Verify Phone':        { tab: 0 },
+};
+
+const ProfileCompletionRing = ({ percentage, missingItems, onNavigate }: { percentage: number; missingItems: string[]; onNavigate: (tab: number) => void }) => {
   const radius = 36;
   const circumference = 2 * Math.PI * radius;
   const offset = circumference - (percentage / 100) * circumference;
@@ -218,21 +244,25 @@ const ProfileCompletionRing = ({ percentage, missingItems }: { percentage: numbe
             Complete your profile for better matches
           </Typography>
           <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-            {missingItems.map((item, index) => (
-              <Chip 
-                key={index} 
-                label={item} 
-                size="small" 
-                onClick={() => {}} 
-                sx={{ 
-                  bgcolor: 'rgba(139,26,46,0.05)', 
-                  color: COLORS.primary, 
-                  fontSize: '0.65rem',
-                  fontWeight: 700,
-                  '&:hover': { bgcolor: 'rgba(139,26,46,0.1)' }
-                }} 
-              />
-            ))}
+            {missingItems.map((item, index) => {
+              const nav = MISSING_ITEM_NAV[item];
+              return (
+                <Chip
+                  key={index}
+                  label={item}
+                  size="small"
+                  onClick={() => nav && onNavigate(nav.tab)}
+                  sx={{
+                    bgcolor: 'rgba(139,26,46,0.05)',
+                    color: COLORS.primary,
+                    fontSize: '0.65rem',
+                    fontWeight: 700,
+                    cursor: nav ? 'pointer' : 'default',
+                    '&:hover': { bgcolor: 'rgba(139,26,46,0.1)' }
+                  }}
+                />
+              );
+            })}
           </Stack>
         </Box>
       </Box>
@@ -240,7 +270,8 @@ const ProfileCompletionRing = ({ percentage, missingItems }: { percentage: numbe
   );
 };
 
-const TopMatchCard = ({ match, loading }: { match: any; loading?: boolean }) => {
+const TopMatchCard = ({ match, loading, onViewMatch, onExpressInterest }: { match: any; loading?: boolean; onViewMatch?: (id: string) => void; onExpressInterest?: (id: string) => Promise<void> }) => {
+  const [expressingInterest, setExpressingInterest] = React.useState(false);
   if (loading) {
     return (
       <MotionPaper
@@ -355,7 +386,8 @@ const TopMatchCard = ({ match, loading }: { match: any; loading?: boolean }) => 
       <Stack direction="row" spacing={2} sx={{ mt: 3 }}>
         <Button 
           fullWidth 
-          variant="contained" 
+          variant="contained"
+          onClick={() => match?.id && onViewMatch?.(match.id)}
           sx={{ 
             bgcolor: COLORS.primary, 
             borderRadius: '12px', 
@@ -368,7 +400,13 @@ const TopMatchCard = ({ match, loading }: { match: any; loading?: boolean }) => 
         <Button 
           fullWidth 
           variant="outlined" 
-          startIcon={<Favorite />}
+          startIcon={expressingInterest ? <CircularProgress size={14} color="inherit" /> : <Favorite />}
+          disabled={expressingInterest}
+          onClick={async () => {
+            if (!match?.id || !onExpressInterest) return;
+            setExpressingInterest(true);
+            try { await onExpressInterest(match.id); } finally { setExpressingInterest(false); }
+          }}
           sx={{ 
             borderColor: COLORS.primary, 
             color: COLORS.primary, 
@@ -413,8 +451,8 @@ const MatchStats = ({ stats, loading }: { stats: any; loading?: boolean }) => {
       <Grid container spacing={2}>
         {[
           { label: "Today's Matches", value: stats.todayMatches, color: COLORS.primary },
-          { label: "Mutual Interests", value: stats.mutualInterests, color: COLORS.secondary },
-          { label: "Profile Views", value: stats.profileViews, color: COLORS.accent }
+          { label: "Mutual Matches", value: stats.mutualInterests, color: COLORS.secondary },
+          { label: "Interests Received", value: stats.interestReceived ?? 0, color: COLORS.accent }
         ].map((stat, idx) => (
           <Grid size={{ xs: 4 }} key={idx} sx={{ textAlign: 'center' }}>
             <motion.div
@@ -809,6 +847,7 @@ export default function UserDashboard() {
       summary: {
         name: userData.firstName || userData.name || 'User',
         nakshatra: 'Pending',
+        gana: 'Pending',
         ascendant: 'Pending',
         auspiciousTime: 'Calculating...',
         profileCompletion: 75,
@@ -919,10 +958,13 @@ export default function UserDashboard() {
             ...prev.summary,
             name: user?.firstName || profile?.name || 'User',
             nakshatra: chartSummary?.nakshatra || profile?.astrology?.nakshatra || 'Pending',
+            gana: chartSummary?.gana || profile?.astrology?.gana || prev.summary.gana || 'Pending',
             ascendant: chartSummary?.ascendant || profile?.astrology?.ascendant || prev.summary.ascendant || 'Pending',
             auspiciousTime: chartSummary?.auspiciousTime || prev.summary.auspiciousTime || 'Calculating...',
             profileCompletion: profile?.completion || prev.summary.profileCompletion,
-            missingItems: profile?.verification?.missingItems || prev.summary.missingItems,
+            missingItems: profile
+              ? computeMissingItems({ ...profile, profilePic: nextProfilePic || profile?.profilePic })
+              : prev.summary.missingItems,
           },
           profilePic: nextProfilePic || prev.profilePic || null,
           email: user?.email || profile?.email || '',
@@ -956,8 +998,23 @@ export default function UserDashboard() {
         if (mutualRes.status === 'fulfilled')
           setMutualMatches(mutualRes.value.data?.data?.items || []);
         if (pendingRes.status === 'fulfilled') {
-          setPendingSent(pendingRes.value.data?.data?.sent || []);
-          setPendingReceived(pendingRes.value.data?.data?.received || []);
+          const sent = pendingRes.value.data?.data?.sent || [];
+          const received = pendingRes.value.data?.data?.received || [];
+          setPendingSent(sent);
+          setPendingReceived(received);
+          setData((prev: any) => ({
+            ...prev,
+            summary: {
+              ...prev.summary,
+              matchStats: {
+                ...prev.summary.matchStats,
+                mutualInterests: mutualRes.status === 'fulfilled'
+                  ? (mutualRes.value.data?.data?.items || []).length
+                  : prev.summary.matchStats.mutualInterests,
+                interestReceived: received.length,
+              },
+            },
+          }));
         }
       } catch { /* silent */ } finally {
         if (mounted) {
@@ -1010,8 +1067,8 @@ export default function UserDashboard() {
             ...prev.summary,
             matchStats: {
               todayMatches: recommendationItems.length,
-              mutualInterests,
-              profileViews: 0,
+              mutualInterests: prev.summary.matchStats.mutualInterests,
+              interestReceived: prev.summary.matchStats.interestReceived ?? 0,
               weeklyActivity: buildWeeklyActivity(recommendationItems.length),
             },
           },
@@ -1206,6 +1263,11 @@ export default function UserDashboard() {
             </Typography>
             <Chip label={`${data.summary.nakshatra} Nakshatra`} size="small" sx={{ bgcolor: COLORS.secondary, color: COLORS.primary, fontWeight: 700, height: 24 }} />
             <Chip
+              label={`Gana: ${data.summary.gana}`}
+              size="small"
+              sx={{ bgcolor: alpha(COLORS.accent, 0.12), color: COLORS.accent, fontWeight: 800, height: 24 }}
+            />
+            <Chip
               label={`ලග්නය (Ascendant): ${
                 data.summary.ascendant && data.summary.ascendant !== 'Pending'
                   ? `${translateZodiacSign(data.summary.ascendant, 'si')} (${data.summary.ascendant})`
@@ -1257,10 +1319,27 @@ export default function UserDashboard() {
         )}
         {/* Row 1 */}
         <Grid size={{ xs: 12, md: 4 }}>
-          <ProfileCompletionRing percentage={data.summary.profileCompletion} missingItems={data.summary.missingItems} />
+          <ProfileCompletionRing
+            percentage={data.summary.profileCompletion}
+            missingItems={data.summary.missingItems}
+            onNavigate={(tab) => navigate(`/profile?tab=${tab}&edit=true`)}
+          />
         </Grid>
         <Grid size={{ xs: 12, md: 4 }}>
-          <TopMatchCard match={data.todayMatch} loading={widgetLoading} />
+          <TopMatchCard
+            match={data.todayMatch}
+            loading={widgetLoading}
+            onViewMatch={(id) => navigate(`/matches?view=${id}`)}
+            onExpressInterest={async (id) => {
+              try {
+                await matchService.expressInterest(id);
+                dispatch(showToast({ type: 'success', message: 'Interest expressed! 💌' }));
+                void refreshPendingInterests();
+              } catch (err: any) {
+                dispatch(showToast({ type: 'error', message: err.response?.data?.message || 'Failed to express interest.' }));
+              }
+            }}
+          />
         </Grid>
         <Grid size={{ xs: 12, md: 4 }}>
           <MatchStats stats={data.summary.matchStats} loading={widgetLoading} />

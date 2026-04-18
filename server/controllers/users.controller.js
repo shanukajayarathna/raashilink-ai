@@ -12,6 +12,7 @@ import ApiError from '../utils/ApiError.js';
 import bcrypt from 'bcrypt';
 import logger from '../utils/logger.js';
 import { resolveBirthPlace } from '../utils/birthLocation.js';
+import { deriveGanaFromNakshatra } from '../utils/gana.js';
 
 const OTP_EXPIRY_MINUTES = 10;
 const SRI_LANKA_MOBILE_REGEX = /^7\d{8}$/;
@@ -94,8 +95,10 @@ async function verifyOtp({ identifier, purpose, otp }) {
 }
 
 function getProfileCompletion(user) {
+  const hasPhoto = Boolean(user.personalInfo?.profilePic) ||
+    (Array.isArray(user.personalInfo?.photos) && user.personalInfo.photos.length > 0);
   const checks = [
-    Boolean(user.personalInfo?.profilePic),
+    hasPhoto,
     Boolean(user.personalInfo?.firstName),
     Boolean(user.personalInfo?.lastName),
     Boolean(user.personalInfo?.location),
@@ -123,13 +126,28 @@ function getProfileCompletion(user) {
 
 function getMissingItems(user) {
   const items = [];
+  const hasPhoto = Boolean(user.personalInfo?.profilePic) ||
+    (Array.isArray(user.personalInfo?.photos) && user.personalInfo.photos.length > 0);
 
-  if (!user.personalInfo?.profilePic) items.push('Add Profile Photo');
+  if (!hasPhoto) items.push('Add Profile Photo');
   if (!user.personalInfo?.bio) items.push('Add Short Bio');
-  if (!user.birthData?.dateOfBirth) items.push('Complete Birth Details');
+  if (!user.personalInfo?.tagline) items.push('Add Tagline');
+  if (!user.personalInfo?.location) items.push('Add Location');
+  if (!user.personalInfo?.height) items.push('Add Height');
+  if (!user.personalInfo?.ethnicity) items.push('Add Ethnicity');
+  if (!user.birthData?.dateOfBirth) items.push('Add Date of Birth');
+  if (!user.birthData?.placeOfBirth?.city) items.push('Add Birth Place');
   if (!(user.horoscopeData?.nakshatra || user.horoscopeData?.rashi || user.horoscopeData?.moonSign)) {
-    items.push('Generate Horoscope Data');
+    items.push('Generate Horoscope');
   }
+  if (!user.lifestyle?.educationLevel) items.push('Add Education');
+  if (!user.lifestyle?.professionType) items.push('Add Profession');
+  if (!user.lifestyle?.religion) items.push('Add Religion');
+  if (!user.lifestyle?.diet) items.push('Add Diet');
+  if (!user.lifestyle?.smoking) items.push('Add Smoking Habit');
+  if (!user.lifestyle?.drinking) items.push('Add Drinking Habit');
+  if (!(Array.isArray(user.lifestyle?.languages) && user.lifestyle.languages.length > 0)) items.push('Add Languages');
+  if (!(Array.isArray(user.lifestyle?.hobbies) && user.lifestyle.hobbies.length > 0)) items.push('Add Hobbies');
   if (!user.verification?.emailVerified) items.push('Verify Email');
   if (!user.verification?.phoneVerified && user.personalInfo?.phone) items.push('Verify Phone');
 
@@ -307,6 +325,7 @@ function mapProfile(user, { includeMedia = true } = {}) {
       birthPlace: user.birthData?.placeOfBirth?.city || user.location || 'Not provided',
       rashi: user.horoscopeData?.rashi || user.horoscopeData?.moonSign || 'Not provided',
       nakshatra: user.horoscopeData?.nakshatra || 'Not provided',
+      gana: user.horoscopeData?.gana || deriveGanaFromNakshatra(user.horoscopeData?.nakshatra) || 'Not provided',
       ascendant: user.horoscopeData?.ascendant || 'Not provided',
       sunSign: user.horoscopeData?.zodiacSign || 'Not provided',
       luckyColors: Array.isArray(user.horoscopeData?.luckyColors) ? user.horoscopeData.luckyColors : [],
@@ -369,7 +388,7 @@ export const getProfile = asyncHandler(async (req, res) => {
 
   const profileQuery = User.findById(req.user._id);
   if (!includeMedia) {
-    profileQuery.select('-personalInfo.profilePic -personalInfo.coverPhoto -personalInfo.photos');
+    profileQuery.select('-personalInfo.coverPhoto -personalInfo.photos');
   }
 
   const user = await profileQuery.lean({ virtuals: true });

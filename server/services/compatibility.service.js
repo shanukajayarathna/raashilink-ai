@@ -14,10 +14,12 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const SCORER_PATH = path.resolve(__dirname, '../python/compatibility/scorer.py');
 const CACHE_TTL_SECONDS = 60 * 60 * 24;
+const COMPATIBILITY_VERSION = 2;
+const MANGLIK_HOUSES = new Set([1, 2, 4, 7, 8, 12]);
 
 function buildCacheKey(userAId, userBId) {
   const [first, second] = [String(userAId), String(userBId)].sort();
-  return `horoscope:compatibility:${first}:${second}`;
+  return `horoscope:compatibility:v${COMPATIBILITY_VERSION}:${first}:${second}`;
 }
 
 function validateObjectId(id, fieldName) {
@@ -52,8 +54,86 @@ function normalizeScore(score, max = 1) {
   return Math.max(0, Math.min(100, Number(((score / max) * 100).toFixed(2))));
 }
 
+function normalizeText(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function hasMeaningfulValue(value) {
+  const normalized = normalizeText(value);
+  return Boolean(normalized && normalized !== 'pending' && normalized !== 'unknown' && normalized !== 'not provided');
+}
+
+function normalizedArray(value) {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.map((item) => normalizeText(item)).filter(Boolean))];
+}
+
+function exactMatchSimilarity(valueA, valueB) {
+  if (!hasMeaningfulValue(valueA) || !hasMeaningfulValue(valueB)) return null;
+  return normalizeText(valueA) === normalizeText(valueB) ? 1 : 0;
+}
+
+function tokenSimilarity(valueA, valueB) {
+  if (!hasMeaningfulValue(valueA) || !hasMeaningfulValue(valueB)) return null;
+
+  const tokensA = new Set(normalizeText(valueA).split(/[^a-z0-9]+/).filter(Boolean));
+  const tokensB = new Set(normalizeText(valueB).split(/[^a-z0-9]+/).filter(Boolean));
+  if (!tokensA.size || !tokensB.size) return null;
+
+  const intersection = [...tokensA].filter((token) => tokensB.has(token)).length;
+  const union = new Set([...tokensA, ...tokensB]).size;
+  return union ? intersection / union : null;
+}
+
+function setSimilarity(valuesA, valuesB) {
+  const setA = normalizedArray(valuesA);
+  const setB = normalizedArray(valuesB);
+  if (!setA.length || !setB.length) return null;
+
+  const bSet = new Set(setB);
+  const intersection = setA.filter((value) => bSet.has(value)).length;
+  const union = new Set([...setA, ...setB]).size;
+  return union ? intersection / union : null;
+}
+
+function closenessSimilarity(valueA, valueB, maxDelta = 100) {
+  const a = Number(valueA);
+  const b = Number(valueB);
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+  return Math.max(0, 1 - Math.abs(a - b) / maxDelta);
+}
+
+function deriveManglikStatus(user) {
+  const positions = user?.horoscopeData?.planetaryPositions || user?.horoscope?.planetaryPositions || [];
+  const mars = Array.isArray(positions) ? positions.find((position) => position?.planet === 'Mars') : null;
+  const marsHouse = Number(mars?.house);
+
+  if (!Number.isFinite(marsHouse)) {
+    return { value: null, label: 'Pending', marsHouse: null };
+  }
+
+  const isManglik = MANGLIK_HOUSES.has(marsHouse);
+  return {
+    value: isManglik,
+    label: isManglik ? `Yes (Mars in House ${marsHouse})` : `No (Mars in House ${marsHouse})`,
+    marsHouse,
+  };
+}
+
 function calculatePersonalityScore(userA, userB) {
-  const score = cosineSimilarity(toBigFiveVector(userA.personality), toBigFiveVector(userB.personality));
+  const vectorSimilarity = cosineSimilarity(toBigFiveVector(userA.personality), toBigFiveVector(userB.personality));
+  const traitCloseness = [
+    closenessSimilarity(userA.personality?.openness, userB.personality?.openness, 1),
+    closenessSimilarity(userA.personality?.conscientiousness, userB.personality?.conscientiousness, 1),
+    closenessSimilarity(userA.personality?.extraversion, userB.personality?.extraversion, 1),
+    closenessSimilarity(userA.personality?.agreeableness, userB.personality?.agreeableness, 1),
+    closenessSimilarity(userA.personality?.neuroticism, userB.personality?.neuroticism, 1),
+  ].filter((value) => value != null);
+
+  const closenessAverage = traitCloseness.length
+    ? traitCloseness.reduce((sum, value) => sum + value, 0) / traitCloseness.length
+    : 0.5;
+  const score = vectorSimilarity * 0.65 + closenessAverage * 0.35;
   return normalizeScore(score, 1);
 }
 
@@ -61,33 +141,28 @@ function calculateLifestyleScore(userA, userB) {
   const lifestyleA = userA.lifestyle || {};
   const lifestyleB = userB.lifestyle || {};
 
-  const rules = [
-    { key: 'religion', weight: 0.2 },
-    { key: 'diet', weight: 0.15 },
-    { key: 'smoking', weight: 0.15 },
-    { key: 'drinking', weight: 0.15 },
-    { key: 'preferredLocation', weight: 0.15 },
-    { key: 'educationLevel', weight: 0.1 },
-    { key: 'professionType', weight: 0.1 },
-  ];
-
   let weightedScore = 0;
   let totalWeight = 0;
 
-  for (const rule of rules) {
-    const valueA = lifestyleA[rule.key];
-    const valueB = lifestyleB[rule.key];
+  const weightedSimilarities = [
+    { weight: 0.08, similarity: exactMatchSimilarity(lifestyleA.religion, lifestyleB.religion) },
+    { weight: 0.1, similarity: exactMatchSimilarity(lifestyleA.diet, lifestyleB.diet) },
+    { weight: 0.1, similarity: exactMatchSimilarity(lifestyleA.smoking, lifestyleB.smoking) },
+    { weight: 0.1, similarity: exactMatchSimilarity(lifestyleA.drinking, lifestyleB.drinking) },
+    { weight: 0.08, similarity: exactMatchSimilarity(lifestyleA.exercise, lifestyleB.exercise) },
+    { weight: 0.08, similarity: tokenSimilarity(lifestyleA.preferredLocation, lifestyleB.preferredLocation) },
+    { weight: 0.08, similarity: tokenSimilarity(lifestyleA.educationLevel, lifestyleB.educationLevel) },
+    { weight: 0.08, similarity: tokenSimilarity(lifestyleA.professionType, lifestyleB.professionType) },
+    { weight: 0.12, similarity: setSimilarity(lifestyleA.hobbies, lifestyleB.hobbies) },
+    { weight: 0.08, similarity: setSimilarity(lifestyleA.languages, lifestyleB.languages) },
+    { weight: 0.1, similarity: closenessSimilarity(lifestyleA.socialPreference, lifestyleB.socialPreference, 100) },
+  ];
 
-    if (valueA && valueB) {
-      totalWeight += rule.weight;
-      weightedScore += valueA === valueB ? rule.weight : 0;
-    }
+  for (const item of weightedSimilarities) {
+    if (item.similarity == null) continue;
+    totalWeight += item.weight;
+    weightedScore += item.similarity * item.weight;
   }
-
-  const familyDelta = Math.abs((lifestyleA.familyValues ?? 0.5) - (lifestyleB.familyValues ?? 0.5));
-  const familyWeight = 0.2;
-  totalWeight += familyWeight;
-  weightedScore += (1 - Math.min(1, familyDelta)) * familyWeight;
 
   if (!totalWeight) {
     return 50;
@@ -97,9 +172,29 @@ function calculateLifestyleScore(userA, userB) {
 }
 
 function calculateFamilyScore(userA, userB) {
-  const valueA = userA.lifestyle?.familyValues ?? 0.5;
-  const valueB = userB.lifestyle?.familyValues ?? 0.5;
-  return normalizeScore(1 - Math.abs(valueA - valueB), 1);
+  const lifestyleA = userA.lifestyle || {};
+  const lifestyleB = userB.lifestyle || {};
+
+  let weightedScore = 0;
+  let totalWeight = 0;
+
+  const familyValuesSimilarity = closenessSimilarity(lifestyleA.familyValues, lifestyleB.familyValues, 1);
+  if (familyValuesSimilarity != null) {
+    totalWeight += 0.65;
+    weightedScore += familyValuesSimilarity * 0.65;
+  }
+
+  const familyPlansSimilarity = tokenSimilarity(lifestyleA.familyPlans, lifestyleB.familyPlans);
+  if (familyPlansSimilarity != null) {
+    totalWeight += 0.35;
+    weightedScore += familyPlansSimilarity * 0.35;
+  }
+
+  if (!totalWeight) {
+    return 50;
+  }
+
+  return normalizeScore(weightedScore, totalWeight);
 }
 
 function determineBandLabel(overallScore) {
@@ -230,6 +325,9 @@ export async function calculateCompatibility({ userAId, userBId, fastMode = fals
     'horoscopeData.moonSign',
     'horoscopeData.zodiacSign',
     'horoscopeData.ascendant',
+    'horoscopeData.gana',
+    'horoscopeData.rajju',
+    'horoscopeData.planetaryPositions',
     'personality.openness',
     'personality.conscientiousness',
     'personality.extraversion',
@@ -239,10 +337,15 @@ export async function calculateCompatibility({ userAId, userBId, fastMode = fals
     'lifestyle.diet',
     'lifestyle.smoking',
     'lifestyle.drinking',
+    'lifestyle.exercise',
     'lifestyle.preferredLocation',
     'lifestyle.educationLevel',
     'lifestyle.professionType',
     'lifestyle.familyValues',
+    'lifestyle.familyPlans',
+    'lifestyle.socialPreference',
+    'lifestyle.hobbies',
+    'lifestyle.languages',
   ].join(' ');
 
   const [userA, userB] = await Promise.all([
@@ -275,6 +378,8 @@ export async function calculateCompatibility({ userAId, userBId, fastMode = fals
   let astroScore = 50;
   let astroResponse = { totalScore: 18, subScores: {} };
   let astroNotes = [];
+  const manglikA = deriveManglikStatus(userA);
+  const manglikB = deriveManglikStatus(userB);
 
   if (fastMode) {
     astroNotes.push('Using quick compatibility mode for dashboard recommendations.');
@@ -295,6 +400,19 @@ export async function calculateCompatibility({ userAId, userBId, fastMode = fals
         ...astroResponseRaw,
         subScores: astroResponseRaw.gunaDetails ?? astroResponseRaw.subScores ?? {},
       };
+
+      if (manglikA.value != null && manglikB.value != null && manglikA.value !== manglikB.value) {
+        astroScore = Math.max(0, Number((astroScore - 8).toFixed(2)));
+        astroNotes.push('Manglik mismatch detected, lowering astrological compatibility.');
+      }
+
+      // Rajju Dosha: same Rajju = traditionally prohibited in Sri Lankan Vedic matching
+      const rajjuA = userA.horoscopeData?.rajju;
+      const rajjuB = userB.horoscopeData?.rajju;
+      if (rajjuA && rajjuB && rajjuA !== 'Unknown' && rajjuB !== 'Unknown' && rajjuA === rajjuB) {
+        astroScore = Math.max(0, Number((astroScore - 12).toFixed(2)));
+        astroNotes.push(`Rajju Dosha detected (both ${rajjuA}): traditionally prohibited, lowering astrological compatibility.`);
+      }
     } catch (error) {
       logger.error('Horoscope engine failed, using fallback', {
         userAId: String(userAId),
@@ -353,6 +471,15 @@ export async function calculateCompatibility({ userAId, userBId, fastMode = fals
     explanation,
     bandLabel,
     astroBreakdown: astroResponse.subScores,
+    userAInsights: {
+      gana: userA.horoscopeData?.gana || userA.horoscope?.gana || null,
+      manglik: manglikA.label,
+    },
+    userBInsights: {
+      gana: userB.horoscopeData?.gana || userB.horoscope?.gana || null,
+      manglik: manglikB.label,
+    },
+    calculationVersion: COMPATIBILITY_VERSION,
   };
 
   try {
@@ -389,6 +516,8 @@ export function calculateCompatibilityFromData(userA, userB) {
     bandLabel,
     explanation: buildExplanation({ astroScore, personalityScore, lifestyleScore, familyScore, bandLabel }),
     astroBreakdown: {},
+    astroNotes: [],
+    calculationVersion: COMPATIBILITY_VERSION,
   };
 }
 
@@ -506,6 +635,7 @@ export async function calculateFullCompatibility(userAId, userBId) {
     {
       $set: {
         compatibilityScore: result.overallScore,
+        calculationVersion: Number(result.calculationVersion || COMPATIBILITY_VERSION),
         dimensionScores: {
           astro: result.astroScore,
           personality: result.personalityScore,

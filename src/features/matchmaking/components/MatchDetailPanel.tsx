@@ -91,7 +91,7 @@ export default function MatchDetailPanel({
   // Profile details grid items
   const profileDetails = detail ? [
     { icon: <User size={15} />, label: 'Gender', value: val(detail.gender) },
-    { icon: <Ruler size={15} />, label: 'Height', value: val(detail.height) },
+    { icon: <Ruler size={15} />, label: 'Height', value: (() => { const h = val(detail.height); if (h === 'Not provided') return h; const n = String(h).replace(/\s*cm$/i, '').trim(); return n ? `${n} cm` : h; })() },
     { icon: <Globe size={15} />, label: 'Ethnicity', value: val(detail.ethnicity) },
     { icon: <BookOpen size={15} />, label: 'Education', value: val(detail.education) },
     { icon: <Church size={15} />, label: 'Religion', value: val(detail.religion) },
@@ -375,9 +375,10 @@ export default function MatchDetailPanel({
                   {[
                     { label: 'Rashi', value: detail.horoscope.rashi },
                     { label: 'Nakshatra', value: detail.horoscope.nakshatra },
+                    { label: 'Gana', value: detail.horoscope.gana },
                     { label: 'Ascendant', value: detail.horoscope.ascendant },
                   ].map((item) => (
-                    <Grid size={{ xs: 4 }} key={item.label}>
+                    <Grid size={{ xs: 6, md: 3 }} key={item.label}>
                       <Box sx={{ p: 2, bgcolor: 'primary.50', borderRadius: 4, textAlign: 'center' }}>
                         <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 0.5 }}>
                           {item.label}

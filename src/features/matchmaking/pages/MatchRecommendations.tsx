@@ -377,7 +377,7 @@ export default function MatchRecommendations() {
 
       {/* ── Mutual Matches Section ─────────────────────────────────── */}
       {(mutualLoading || mutualMatches.length > 0) && (
-        <Box sx={{ mb: 6 }}>
+        <Box sx={{ mb: 3 }}>
           {/* Section header */}
           <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 3 }}>
             <Box
@@ -517,8 +517,13 @@ export default function MatchRecommendations() {
                             </Typography>
                           </Stack>
                           {match.moonSign && match.moonSign !== 'Pending' && (
-                            <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 1 }}>
+                            <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 0.5 }}>
                               🌙 {match.moonSign}
+                            </Typography>
+                          )}
+                          {match.ascendant && match.ascendant !== 'Pending' && (
+                            <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 1 }}>
+                              ⬆️ {match.ascendant} Lagna
                             </Typography>
                           )}
 
@@ -562,13 +567,12 @@ export default function MatchRecommendations() {
             </Grid>
           )}
 
-          <Divider sx={{ mt: 5, mb: 1, borderColor: 'rgba(201,168,76,0.3)' }} />
         </Box>
       )}
 
       {/* ── Pending Interests Section ─────────────────────────────── */}
       {(pendingLoading || pendingSent.length > 0 || pendingReceived.length > 0) && (
-        <Box sx={{ mb: 6 }}>
+        <Box sx={{ mb: 3 }}>
           {/* Section header */}
           <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 3 }}>
             <Box
@@ -671,6 +675,16 @@ export default function MatchRecommendations() {
                                 </Stack>
                               </Box>
                               <Box sx={{ px: 2.5, py: 1.8 }}>
+                                {match.moonSign && match.moonSign !== 'Pending' && (
+                                  <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 0.5 }}>
+                                    🌙 {match.moonSign}
+                                  </Typography>
+                                )}
+                                {match.ascendant && match.ascendant !== 'Pending' && (
+                                  <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 1 }}>
+                                    ⬆️ {match.ascendant} Lagna
+                                  </Typography>
+                                )}
                                 <Stack direction="row" spacing={1}>
                                   <Button
                                     variant="contained" size="small" fullWidth
@@ -770,6 +784,16 @@ export default function MatchRecommendations() {
                                 </Stack>
                               </Box>
                               <Box sx={{ px: 2.5, py: 1.8 }}>
+                                {match.moonSign && match.moonSign !== 'Pending' && (
+                                  <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 0.5 }}>
+                                    🌙 {match.moonSign}
+                                  </Typography>
+                                )}
+                                {match.ascendant && match.ascendant !== 'Pending' && (
+                                  <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 1 }}>
+                                    ⬆️ {match.ascendant} Lagna
+                                  </Typography>
+                                )}
                                 <Button
                                   variant="outlined" size="small" fullWidth
                                   startIcon={isWithdrawing ? <CircularProgress size={12} color="inherit" /> : <UserMinus size={14} />}
@@ -791,7 +815,6 @@ export default function MatchRecommendations() {
             </Grid>
           )}
 
-          <Divider sx={{ mt: 5, mb: 1, borderColor: 'rgba(26,107,114,0.2)' }} />
         </Box>
       )}
 
