@@ -28,6 +28,10 @@ interface MatchDetailPanelProps {
   onClose: () => void;
   onSendMessage: (id: string) => void;
   onExpressInterest: (id: string) => void;
+  previewImage?: string | null;
+  previewScore?: number | null;
+  previewBand?: string | null;
+  onScoreResolved?: (id: string, score: number, band: string) => void;
 }
 
 export default function MatchDetailPanel({
@@ -36,12 +40,17 @@ export default function MatchDetailPanel({
   onClose,
   onSendMessage,
   onExpressInterest,
+  previewImage,
+  previewScore,
+  previewBand,
+  onScoreResolved,
 }: MatchDetailPanelProps) {
   const [activePhoto, setActivePhoto] = React.useState(0);
   const [detail, setDetail] = React.useState<any>(null);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [imageError, setImageError] = React.useState(false);
+  const [showNotMatchedAlert, setShowNotMatchedAlert] = React.useState(false);
 
   React.useEffect(() => {
     if (!open || !matchId) return;
@@ -58,6 +67,10 @@ export default function MatchDetailPanel({
           setDetail(response.data);
           setActivePhoto(0);
           setImageError(false);
+          // Notify parent so the card in the list updates to the real score
+          if (onScoreResolved && response.data?.score != null && response.data?.band) {
+            onScoreResolved(matchId, response.data.score, response.data.band);
+          }
         }
       } catch (err: any) {
         if (isMounted) {
@@ -80,8 +93,12 @@ export default function MatchDetailPanel({
   if (!matchId) return null;
 
   const validPhotos = (detail?.photos || []).filter(Boolean);
-  const availablePhotos = !imageError && (validPhotos.length ? validPhotos : detail?.profileImage ? [detail.profileImage] : []);
+  const mainPic = detail?.profileImage || detail?.profilePic || previewImage || null;
+  const availablePhotos = !imageError && (validPhotos.length ? validPhotos : mainPic ? [mainPic] : []);
   const hasPhoto = availablePhotos && availablePhotos.length > 0;
+  // Use detail score once loaded, fall back to card's score while loading
+  const displayScore = detail?.score ?? previewScore ?? null;
+  const displayBand = detail?.band ?? previewBand ?? null;
   const hobbies = detail?.lifestyle?.hobbies || [];
   const displayAge = typeof detail?.age === 'number' ? `, ${detail.age}` : '';
 
@@ -133,7 +150,7 @@ export default function MatchDetailPanel({
           </IconButton>
         </Box>
 
-        <Box sx={{ flex: 1, overflowY: 'auto', p: 3, display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <Box sx={{ flex: 1, overflowY: 'auto', p: 3, display: 'flex', flexDirection: 'column', gap: 2.5 }}>
           {loading && (
             <Box sx={{ py: 12, textAlign: 'center' }}>
               <CircularProgress />
@@ -144,10 +161,10 @@ export default function MatchDetailPanel({
 
           {!loading && !error && detail && (
             <>
-              {/* ── Hero: profile photo + name overlay ───────────────── */}
-              <Box sx={{ position: 'relative', borderRadius: 5, overflow: 'hidden', mb: 3 }}>
+              {/* ── Hero: profile photo ───────────────────────────────── */}
+              <Box sx={{ position: 'relative', borderRadius: 5, overflow: 'hidden', width: '100%', aspectRatio: '1 / 0.85', minHeight: 260, bgcolor: 'grey.200' }}>
                 {hasPhoto ? (
-                  <Box sx={{ position: 'relative', pt: '85%' }}>
+                  <>
                     <AnimatePresence mode="wait">
                       <motion.img
                         key={activePhoto}
@@ -155,41 +172,20 @@ export default function MatchDetailPanel({
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
-                        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+                        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top center' }}
                         referrerPolicy="no-referrer"
                         onError={() => setImageError(true)}
                       />
                     </AnimatePresence>
-                    {/* Gradient overlay for readability */}
-                    <Box
-                      sx={{
-                        position: 'absolute', inset: 0,
-                        background: 'linear-gradient(to top, rgba(0,0,0,0.72) 0%, rgba(0,0,0,0) 55%)',
-                      }}
-                    />
-                    {/* Name + location at bottom */}
-                    <Box sx={{ position: 'absolute', bottom: 0, left: 0, right: 0, p: 2.5 }}>
-                      <Typography variant="h5" sx={{ color: '#fff', fontWeight: 800, lineHeight: 1.2 }}>
-                        {detail.name}{displayAge}
-                      </Typography>
-                      {detail.location && detail.location !== 'Not provided' && (
-                        <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mt: 0.5 }}>
-                          <MapPin size={13} color="rgba(255,255,255,0.85)" />
-                          <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.85)' }}>
-                            {detail.location}
-                          </Typography>
-                        </Stack>
-                      )}
-                    </Box>
-                  </Box>
+                  </>
                 ) : (
                   /* No photo — large avatar */
                   <Box
                     sx={{
-                      height: 220,
+                      height: '100%',
                       background: 'linear-gradient(135deg, #8B1A2E 0%, #C9A84C 100%)',
-                      display: 'flex', flexDirection: 'column',
-                      alignItems: 'center', justifyContent: 'center', gap: 1.5,
+                      display: 'flex',
+                      alignItems: 'center', justifyContent: 'center',
                     }}
                   >
                     <Avatar
@@ -202,25 +198,12 @@ export default function MatchDetailPanel({
                     >
                       {detail.initials || 'RL'}
                     </Avatar>
-                    <Box sx={{ textAlign: 'center', px: 2 }}>
-                      <Typography variant="h6" sx={{ color: '#fff', fontWeight: 800 }}>
-                        {detail.name}{displayAge}
-                      </Typography>
-                      {detail.location && detail.location !== 'Not provided' && (
-                        <Stack direction="row" spacing={0.5} alignItems="center" justifyContent="center" sx={{ mt: 0.5 }}>
-                          <MapPin size={13} color="rgba(255,255,255,0.85)" />
-                          <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.85)' }}>
-                            {detail.location}
-                          </Typography>
-                        </Stack>
-                      )}
-                    </Box>
                   </Box>
                 )}
 
                 {/* Photo dots */}
                 {availablePhotos.length > 1 && (
-                  <Box sx={{ position: 'absolute', bottom: 56, left: 0, right: 0, display: 'flex', justifyContent: 'center', gap: 1 }}>
+                  <Box sx={{ position: 'absolute', bottom: 10, left: 0, right: 0, display: 'flex', justifyContent: 'center', gap: 1 }}>
                     {availablePhotos.map((_: string, index: number) => (
                       <Box
                         key={index}
@@ -247,42 +230,60 @@ export default function MatchDetailPanel({
                   }}
                 >
                   <Typography sx={{ fontSize: '1rem', fontWeight: 900, color: '#fff', lineHeight: 1 }}>
-                    {detail.score}
+                    {displayScore ?? '—'}
                   </Typography>
                   <Typography sx={{ fontSize: '0.55rem', color: 'rgba(255,255,255,0.9)' }}>%</Typography>
                 </Box>
               </Box>
 
-              {/* ── Compatibility band + mutual badge ─────────────────── */}
-              <Stack direction="row" spacing={1} sx={{ mb: 3 }}>
-                <Chip
-                  label={detail.band}
-                  size="small"
-                  sx={{ bgcolor: 'secondary.main', color: 'primary.main', fontWeight: 700, fontSize: '0.7rem' }}
-                />
-                {detail.mutualMatch && (
-                  <Chip
-                    icon={<Heart size={12} fill="currentColor" />}
-                    label="Mutual Match"
-                    size="small"
-                    sx={{ bgcolor: '#fce4ec', color: '#c62828', fontWeight: 700, fontSize: '0.7rem' }}
-                  />
+              {/* ── Name, tagline, location + band chips ─────────────── */}
+              <Box>
+                <Typography variant="h5" sx={{ fontWeight: 800, lineHeight: 1.2, color: 'text.primary' }}>
+                  {detail.name}{displayAge}
+                </Typography>
+                {detail.tagline && detail.tagline !== 'Not provided' && (
+                  <Typography variant="body2" sx={{ color: 'text.secondary', fontStyle: 'italic', mt: 0.5 }}>
+                    "{detail.tagline}"
+                  </Typography>
                 )}
-              </Stack>
+                {detail.location && detail.location !== 'Not provided' && (
+                  <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mt: 0.5 }}>
+                    <MapPin size={13} color="text.secondary" />
+                    <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                      {detail.location}
+                    </Typography>
+                  </Stack>
+                )}
+                <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
+                  <Chip
+                    label={displayBand ?? detail.band}
+                    size="small"
+                    sx={{ bgcolor: 'secondary.main', color: 'primary.main', fontWeight: 700, fontSize: '0.7rem' }}
+                  />
+                  {detail.mutualMatch && (
+                    <Chip
+                      icon={<Heart size={12} fill="currentColor" />}
+                      label="Mutual Match"
+                      size="small"
+                      sx={{ bgcolor: '#fce4ec', color: '#c62828', fontWeight: 700, fontSize: '0.7rem' }}
+                    />
+                  )}
+                </Stack>
+              </Box>
 
               {/* ── Bio ────────────────────────────────────────────────── */}
               {detail.bio && detail.bio !== 'Not provided' && (
-                <Box sx={{ mb: 3, p: 2.5, bgcolor: 'primary.50', borderRadius: 4 }}>
+                <Box sx={{ p: 2.5, bgcolor: 'primary.50', borderRadius: 4 }}>
                   <Typography variant="body2" sx={{ color: 'text.secondary', lineHeight: 1.7, fontStyle: 'italic' }}>
                     "{detail.bio}"
                   </Typography>
                 </Box>
               )}
 
-              <Divider sx={{ mb: 3 }} />
+              <Divider />
 
               {/* ── Profile Details grid ───────────────────────────────── */}
-              <Box sx={{ mb: 4 }}>
+              <Box>
                 <Typography
                   variant="subtitle1"
                   sx={{ fontWeight: 700, color: 'primary.main', mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}
@@ -320,10 +321,10 @@ export default function MatchDetailPanel({
                 </Grid>
               </Box>
 
-              <Divider sx={{ mb: 3 }} />
+              <Divider />
 
-              <Box sx={{ mb: 4 }}>
-                <Typography variant="subtitle1" sx={{ fontWeight: 'bold', color: 'primary.main', mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Box>
+                <Typography variant="subtitle1" sx={{ fontWeight: 'bold', color: 'primary.main', mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
                   <Sparkles size={18} /> Compatibility Breakdown
                 </Typography>
                 <Stack spacing={2.5}>
@@ -352,7 +353,7 @@ export default function MatchDetailPanel({
                 </Stack>
               </Box>
 
-              <Box sx={{ mb: 4, bgcolor: 'white', p: 3, borderRadius: 6, border: '1px solid', borderColor: 'divider' }}>
+              <Box sx={{ bgcolor: 'white', p: 3, borderRadius: 6, border: '1px solid', borderColor: 'divider' }}>
                 <Typography variant="subtitle1" sx={{ fontWeight: 'bold', color: 'primary.main', mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
                   <Brain size={18} /> Personality Traits
                 </Typography>
@@ -367,8 +368,8 @@ export default function MatchDetailPanel({
                 </Box>
               </Box>
 
-              <Box sx={{ mb: 4 }}>
-                <Typography variant="subtitle1" sx={{ fontWeight: 'bold', color: 'primary.main', mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Box>
+                <Typography variant="subtitle1" sx={{ fontWeight: 'bold', color: 'primary.main', mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
                   <Star size={18} /> Astrological Profile
                 </Typography>
                 <Grid container spacing={2}>
@@ -392,8 +393,8 @@ export default function MatchDetailPanel({
                 </Grid>
               </Box>
 
-              <Box sx={{ mb: 4 }}>
-                <Typography variant="subtitle1" sx={{ fontWeight: 'bold', color: 'primary.main', mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Box>
+                <Typography variant="subtitle1" sx={{ fontWeight: 'bold', color: 'primary.main', mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
                   <Leaf size={18} /> Lifestyle
                 </Typography>
                 <Stack spacing={2.5}>
@@ -448,6 +449,15 @@ export default function MatchDetailPanel({
         </Box>
 
         <Box sx={{ p: 3, bgcolor: 'white', borderTop: '1px solid', borderColor: 'divider' }}>
+          {showNotMatchedAlert && (
+            <Alert
+              severity="info"
+              onClose={() => setShowNotMatchedAlert(false)}
+              sx={{ mb: 2, borderRadius: 2, fontSize: '0.82rem' }}
+            >
+              You can't message yet — you're not matched. Accept their interest or wait for them to accept yours.
+            </Alert>
+          )}
           <Stack direction="row" spacing={2}>
             <Button
               fullWidth
@@ -470,7 +480,14 @@ export default function MatchDetailPanel({
               fullWidth
               variant="outlined"
               startIcon={<MessageCircle size={18} />}
-              onClick={() => detail && onSendMessage(detail.id)}
+              onClick={() => {
+                if (!detail) return;
+                if (detail.mutualMatch) {
+                  onSendMessage(detail.id);
+                } else {
+                  setShowNotMatchedAlert(true);
+                }
+              }}
               disabled={!detail}
               sx={{
                 borderColor: 'primary.light',

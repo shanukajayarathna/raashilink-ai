@@ -9,6 +9,7 @@ import redisClient from '../lib/redis.js';
 import ApiError from '../utils/ApiError.js';
 import logger from '../utils/logger.js';
 import { resolvePythonCommand } from '../utils/pythonRuntime.js';
+import { calculateGunaMilan } from '../utils/gunaMilan.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -17,7 +18,7 @@ const CACHE_TTL_SECONDS = 60 * 60 * 24;
 const COMPATIBILITY_VERSION = 2;
 const MANGLIK_HOUSES = new Set([1, 2, 4, 7, 8, 12]);
 
-function buildCacheKey(userAId, userBId) {
+export function buildCacheKey(userAId, userBId) {
   const [first, second] = [String(userAId), String(userBId)].sort();
   return `horoscope:compatibility:v${COMPATIBILITY_VERSION}:${first}:${second}`;
 }
@@ -502,7 +503,29 @@ export function calculateCompatibilityFromData(userA, userB) {
   const personalityScore = calculatePersonalityScore(userA, userB);
   const lifestyleScore = calculateLifestyleScore(userA, userB);
   const familyScore = calculateFamilyScore(userA, userB);
-  const astroScore = 50; // baseline — full engine only runs on detail view
+
+  // Use JS Guna Milan for real astroScore using stored nakshatra/rashi data
+  const nakA = userA.horoscopeData?.nakshatra;
+  const rashiA = userA.horoscopeData?.rashi;
+  const nakB = userB.horoscopeData?.nakshatra;
+  const rashiB = userB.horoscopeData?.rashi;
+  const gunaResult = (nakA && rashiA && nakB && rashiB)
+    ? calculateGunaMilan(nakA, rashiA, nakB, rashiB)
+    : null;
+  let astroScore = gunaResult ? gunaResult.astroScore : 50;
+
+  // Apply same Manglik and Rajju Dosha deductions as the full Python path
+  const manglikA = deriveManglikStatus(userA);
+  const manglikB = deriveManglikStatus(userB);
+  if (manglikA.value != null && manglikB.value != null && manglikA.value !== manglikB.value) {
+    astroScore = Math.max(0, Number((astroScore - 8).toFixed(2)));
+  }
+  const rajjuA = userA.horoscopeData?.rajju;
+  const rajjuB = userB.horoscopeData?.rajju;
+  if (rajjuA && rajjuB && rajjuA !== 'Unknown' && rajjuB !== 'Unknown' && rajjuA === rajjuB) {
+    astroScore = Math.max(0, Number((astroScore - 12).toFixed(2)));
+  }
+
   const overallScore = Number(
     (astroScore * 0.4 + personalityScore * 0.25 + lifestyleScore * 0.2 + familyScore * 0.15).toFixed(2)
   );
@@ -515,7 +538,7 @@ export function calculateCompatibilityFromData(userA, userB) {
     familyScore,
     bandLabel,
     explanation: buildExplanation({ astroScore, personalityScore, lifestyleScore, familyScore, bandLabel }),
-    astroBreakdown: {},
+    astroBreakdown: gunaResult?.subScores ?? {},
     astroNotes: [],
     calculationVersion: COMPATIBILITY_VERSION,
   };

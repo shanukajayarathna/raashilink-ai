@@ -198,7 +198,7 @@ export const getConversations = asyncHandler(async (req, res) => {
 
   const users = otherUserIds.length > 0
     ? await User.find({ _id: { $in: otherUserIds } })
-        .select('personalInfo.firstName personalInfo.lastName')
+        .select('personalInfo.firstName personalInfo.lastName personalInfo.profilePic personalInfo.photos')
         .lean()
     : [];
 
@@ -207,6 +207,15 @@ export const getConversations = asyncHandler(async (req, res) => {
       String(user._id),
       [user.personalInfo?.firstName, user.personalInfo?.lastName].filter(Boolean).join(' ').trim() || 'Conversation',
     ])
+  );
+
+  const userImgMap = new Map(
+    users.map((user) => {
+      const photos = Array.isArray(user.personalInfo?.photos) ? user.personalInfo.photos : [];
+      const mainPhoto = photos.find((p) => p?.isMain)?.url || photos[0]?.url || null;
+      const img = user.personalInfo?.profilePic || mainPhoto || null;
+      return [String(user._id), img];
+    })
   );
 
   const items = await Promise.all(
@@ -227,6 +236,7 @@ export const getConversations = asyncHandler(async (req, res) => {
         id: String(conversation._id),
         title,
         otherUserId: otherUserId ? String(otherUserId) : null,
+        img: otherUserId ? (userImgMap.get(String(otherUserId)) || null) : null,
         date: conversation.lastMessageAt
           ? new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(new Date(conversation.lastMessageAt))
           : 'Recently',
@@ -259,12 +269,15 @@ export const openConversation = asyncHandler(async (req, res) => {
   const conversation = await findMutualConversation(req.user._id, userId);
 
   const partner = await User.findById(userId)
-    .select('personalInfo.firstName personalInfo.lastName')
+    .select('personalInfo.firstName personalInfo.lastName personalInfo.profilePic personalInfo.photos')
     .lean();
   const title =
     [partner?.personalInfo?.firstName, partner?.personalInfo?.lastName]
       .filter(Boolean)
       .join(' ') || 'Conversation';
+  const partnerPhotos = Array.isArray(partner?.personalInfo?.photos) ? partner.personalInfo.photos : [];
+  const partnerMainPhoto = partnerPhotos.find((p) => p?.isMain)?.url || partnerPhotos[0]?.url || null;
+  const partnerImg = partner?.personalInfo?.profilePic || partnerMainPhoto || null;
 
   const lastMessage = await Message.findOne({ conversationId: conversation._id })
     .sort({ createdAt: -1 })
@@ -277,6 +290,7 @@ export const openConversation = asyncHandler(async (req, res) => {
         id: String(conversation._id),
         title,
         otherUserId: String(userId),
+        img: partnerImg,
         date: conversation.lastMessageAt
           ? new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(
               new Date(conversation.lastMessageAt)

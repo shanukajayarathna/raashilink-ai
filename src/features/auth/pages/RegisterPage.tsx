@@ -141,6 +141,7 @@ const RegisterPage = () => {
       firstName: '',
       lastName: '',
       gender: '',
+      seekingGender: '',
       email: '',
       phone: '',
       password: '',
@@ -494,6 +495,7 @@ const RegisterPage = () => {
         firstName: formData.firstName.trim(),
         lastName: formData.lastName.trim(),
         gender: formData.gender || undefined,
+        seekingGender: formData.seekingGender || undefined,
         email: formData.email.toLowerCase().trim(),
         phone: `+94${normalizedPhoneInput}`,
         password: formData.password,
@@ -682,6 +684,24 @@ const RegisterPage = () => {
                 <MenuItem value="female">Female</MenuItem>
                 <MenuItem value="non-binary">Non-binary</MenuItem>
                 <MenuItem value="prefer_not_to_say">Prefer not to say</MenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+        )}
+        {formData.role === 'partner' && (
+          <Grid size={{ xs: 12, sm: 6 }}>
+            <FormControl fullWidth sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }}>
+              <InputLabel>I am looking for</InputLabel>
+              <Select
+                value={formData.seekingGender}
+                label="I am looking for"
+                onChange={(e) => setFormData({ ...formData, seekingGender: e.target.value })}
+              >
+                <MenuItem value="">No preference</MenuItem>
+                <MenuItem value="female">Women</MenuItem>
+                <MenuItem value="male">Men</MenuItem>
+                <MenuItem value="non-binary">Non-binary</MenuItem>
+                <MenuItem value="any">Any gender</MenuItem>
               </Select>
             </FormControl>
           </Grid>

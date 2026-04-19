@@ -45,6 +45,9 @@ export default function MatchRecommendations() {
   const [error, setError] = useState<string | null>(null);
   const [didYouMean, setDidYouMean] = useState<string[]>([]);
   const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
+  const [selectedMatchImg, setSelectedMatchImg] = useState<string | null>(null);
+  const [selectedMatchScore, setSelectedMatchScore] = useState<number | null>(null);
+  const [selectedMatchBand, setSelectedMatchBand] = useState<string | null>(null);
   const [detailPanelOpen, setDetailPanelOpen] = useState(false);
   const [messageModalOpen, setMessageModalOpen] = useState(false);
   const [messageRecipient, setMessageRecipient] = useState<{ id: string | null; name: string }>({
@@ -141,7 +144,12 @@ export default function MatchRecommendations() {
       setPendingReceived((prev) => prev.filter((m) => m.id !== data.fromUserId));
       refreshMutualMatches();
     },
-    onMatchRemoved: () => refreshMutualMatches(),
+    onMatchRemoved: (data) => {
+      // Remove from pending lists immediately — they withdrew their interest
+      setPendingReceived((prev) => prev.filter((m) => m.id !== data.byUserId));
+      setPendingSent((prev) => prev.filter((m) => m.id !== data.byUserId));
+      refreshMutualMatches();
+    },
     onInterestAccepted: (data) => {
       setPendingSent((prev) => prev.filter((m) => m.id !== data.fromUserId));
       dispatch(showToast({ type: 'success', message: `${data.fromUserName} accepted your interest! 🎉` }));
@@ -221,7 +229,10 @@ export default function MatchRecommendations() {
     const userId = searchParams.get('user');
     if (userId && userId !== handledUserParam.current && matches.length > 0) {
       handledUserParam.current = userId;
+      const matchData = matches.find((m: any) => m.id === userId);
       setSelectedMatchId(userId);
+      setSelectedMatchScore(matchData?.score ?? null);
+      setSelectedMatchBand(matchData?.band ?? null);
       setDetailPanelOpen(true);
     }
   }, [matches, searchParams]);
@@ -238,8 +249,11 @@ export default function MatchRecommendations() {
     });
   };
 
-  const handleViewProfile = (id: string) => {
+  const handleViewProfile = (id: string, img?: string | null, score?: number | null, band?: string | null) => {
     setSelectedMatchId(id);
+    setSelectedMatchImg(img || null);
+    setSelectedMatchScore(score ?? null);
+    setSelectedMatchBand(band ?? null);
     setDetailPanelOpen(true);
   };
 
@@ -289,7 +303,7 @@ export default function MatchRecommendations() {
   };
 
   const handleOpenMessageModal = (id: string) => {
-    const match = matches.find((entry) => entry.id === id);
+    const match = matches.find((entry) => entry.id === id) || mutualMatches.find((entry) => entry.id === id);
     if (!match) return;
 
     setMessageRecipient({ id: match.id, name: match.name });
@@ -532,7 +546,7 @@ export default function MatchRecommendations() {
                               variant="contained"
                               size="small"
                               startIcon={<MessageCircle size={14} />}
-                              onClick={() => navigate('/messages', { state: { openUserId: match.id, openUserName: match.name } })}
+                              onClick={() => navigate('/messages', { state: { openUserId: match.id, openUserName: match.name, startConversation: true } })}
                               sx={{
                                 flex: 1, borderRadius: 3, fontWeight: 700, fontSize: '0.78rem',
                                 bgcolor: 'primary.main', color: '#fff',
@@ -628,7 +642,7 @@ export default function MatchRecommendations() {
                       const isAccepting = acceptingId === match.id;
                       const isDeclining = decliningId === match.id;
                       return (
-                        <Grid size={{ xs: 12, sm: 6, md: 4 }} key={match.id}>
+                        <Grid size={{ xs: 12, sm: 6, md: 3 }} key={match.id}>
                           <motion.div
                             initial={{ opacity: 0, y: 16 }}
                             animate={{ opacity: 1, y: 0 }}
@@ -644,37 +658,54 @@ export default function MatchRecommendations() {
                                 '&:hover': { boxShadow: '0 6px 24px rgba(139,26,46,0.12)', transform: 'translateY(-2px)' },
                               }}
                             >
-                              <Box sx={{ px: 2.5, pt: 2.5, pb: 2, background: 'linear-gradient(135deg, rgba(139,26,46,0.07) 0%, rgba(201,168,76,0.1) 100%)' }}>
-                                <Stack direction="row" spacing={1.5} alignItems="center">
-                                  <Avatar
-                                    src={match.img || undefined}
-                                    sx={{ width: 52, height: 52, bgcolor: 'primary.main', fontWeight: 700, color: '#fff', border: '2px solid rgba(139,26,46,0.3)' }}
-                                  >
-                                    {initials}
-                                  </Avatar>
-                                  <Box sx={{ flex: 1, minWidth: 0 }}>
-                                    <Typography variant="subtitle2" sx={{ fontWeight: 800, color: 'primary.main' }} noWrap>
-                                      {match.name}{match.age ? `, ${match.age}` : ''}
-                                    </Typography>
-                                    {match.location && match.location !== 'Not provided' && (
-                                      <Stack direction="row" spacing={0.4} alignItems="center">
-                                        <MapPin size={11} color="#888" />
-                                        <Typography variant="caption" sx={{ color: 'text.secondary' }} noWrap>{match.location}</Typography>
-                                      </Stack>
-                                    )}
-                                    {match.job && match.job !== 'Not provided' && (
-                                      <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block' }} noWrap>{match.job}</Typography>
-                                    )}
-                                  </Box>
-                                  <Chip
-                                    label="Interested"
-                                    size="small"
-                                    icon={<Heart size={10} fill="currentColor" />}
-                                    sx={{ bgcolor: '#fce4ec', color: '#c62828', fontWeight: 700, fontSize: '0.65rem', '& .MuiChip-icon': { ml: 0.5 } }}
+                              {/* Hero profile photo */}
+                              <Box sx={{ position: 'relative', width: '100%', pt: '60%', bgcolor: 'primary.50' }}>
+                                {match.img ? (
+                                  <Box
+                                    component="img"
+                                    src={match.img}
+                                    alt={match.name}
+                                    referrerPolicy="no-referrer"
+                                    sx={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top center' }}
                                   />
-                                </Stack>
+                                ) : (
+                                  <Box sx={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, rgba(139,26,46,0.12) 0%, rgba(201,168,76,0.15) 100%)' }}>
+                                    <Avatar sx={{ width: 72, height: 72, bgcolor: 'primary.main', fontWeight: 700, color: '#fff', fontSize: '1.6rem' }}>
+                                      {initials}
+                                    </Avatar>
+                                  </Box>
+                                )}
+                                {/* Gradient overlay */}
+                                <Box sx={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.65) 0%, transparent 55%)' }} />
+                                {/* Name overlay */}
+                                <Box sx={{ position: 'absolute', bottom: 0, left: 0, right: 0, p: 1.5 }}>
+                                  <Stack direction="row" justifyContent="space-between" alignItems="flex-end">
+                                    <Box sx={{ minWidth: 0 }}>
+                                      <Typography variant="subtitle2" sx={{ fontWeight: 800, color: '#fff', lineHeight: 1.2 }} noWrap>
+                                        {match.name}{match.age ? `, ${match.age}` : ''}
+                                      </Typography>
+                                      {match.location && match.location !== 'Not provided' && (
+                                        <Stack direction="row" spacing={0.4} alignItems="center">
+                                          <MapPin size={10} color="rgba(255,255,255,0.85)" />
+                                          <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.85)', fontSize: '0.68rem' }} noWrap>{match.location}</Typography>
+                                        </Stack>
+                                      )}
+                                    </Box>
+                                    <Chip
+                                      label="Interested"
+                                      size="small"
+                                      icon={<Heart size={10} fill="currentColor" />}
+                                      sx={{ bgcolor: 'rgba(252,228,236,0.9)', color: '#c62828', fontWeight: 700, fontSize: '0.62rem', flexShrink: 0, '& .MuiChip-icon': { ml: 0.5 } }}
+                                    />
+                                  </Stack>
+                                </Box>
                               </Box>
-                              <Box sx={{ px: 2.5, py: 1.8 }}>
+                              <Box sx={{ px: 2, py: 1.5 }}>
+                                {match.job && match.job !== 'Not provided' && (
+                                  <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 0.5 }}>
+                                    💼 {match.job}
+                                  </Typography>
+                                )}
                                 {match.moonSign && match.moonSign !== 'Pending' && (
                                   <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 0.5 }}>
                                     🌙 {match.moonSign}
@@ -707,7 +738,7 @@ export default function MatchRecommendations() {
                                 </Stack>
                                 <Button
                                   variant="text" size="small" fullWidth
-                                  onClick={() => handleViewProfile(match.id)}
+                                  onClick={() => handleViewProfile(match.id, match.img, match.score ?? null, match.band ?? null)}
                                   sx={{ borderRadius: 3, fontWeight: 700, fontSize: '0.75rem', color: 'text.secondary', textTransform: 'none', mt: 0.5 }}
                                 >
                                   View Profile
@@ -738,7 +769,7 @@ export default function MatchRecommendations() {
                       const initials = match.initials || '??';
                       const isWithdrawing = withdrawingId === match.id;
                       return (
-                        <Grid size={{ xs: 12, sm: 6, md: 4 }} key={match.id}>
+                        <Grid size={{ xs: 12, sm: 6, md: 3 }} key={match.id}>
                           <motion.div
                             initial={{ opacity: 0, y: 16 }}
                             animate={{ opacity: 1, y: 0 }}
@@ -753,37 +784,50 @@ export default function MatchRecommendations() {
                                 '&:hover': { boxShadow: '0 6px 24px rgba(26,107,114,0.12)', transform: 'translateY(-2px)' },
                               }}
                             >
-                              <Box sx={{ px: 2.5, pt: 2.5, pb: 2, background: 'linear-gradient(135deg, rgba(26,107,114,0.07) 0%, rgba(201,168,76,0.1) 100%)' }}>
-                                <Stack direction="row" spacing={1.5} alignItems="center">
-                                  <Avatar
-                                    src={match.img || undefined}
-                                    sx={{ width: 52, height: 52, bgcolor: '#1A6B72', fontWeight: 700, color: '#fff', border: '2px solid rgba(26,107,114,0.3)' }}
-                                  >
-                                    {initials}
-                                  </Avatar>
-                                  <Box sx={{ flex: 1, minWidth: 0 }}>
-                                    <Typography variant="subtitle2" sx={{ fontWeight: 800, color: '#1A6B72' }} noWrap>
-                                      {match.name}{match.age ? `, ${match.age}` : ''}
-                                    </Typography>
-                                    {match.location && match.location !== 'Not provided' && (
-                                      <Stack direction="row" spacing={0.4} alignItems="center">
-                                        <MapPin size={11} color="#888" />
-                                        <Typography variant="caption" sx={{ color: 'text.secondary' }} noWrap>{match.location}</Typography>
-                                      </Stack>
-                                    )}
-                                    {match.job && match.job !== 'Not provided' && (
-                                      <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block' }} noWrap>{match.job}</Typography>
-                                    )}
-                                  </Box>
-                                  <Chip
-                                    label="Sent"
-                                    size="small"
-                                    icon={<Send size={10} />}
-                                    sx={{ bgcolor: 'rgba(26,107,114,0.12)', color: '#1A6B72', fontWeight: 700, fontSize: '0.65rem', '& .MuiChip-icon': { ml: 0.5 } }}
+                              {/* Hero profile photo */}
+                              <Box sx={{ position: 'relative', width: '100%', pt: '65%', bgcolor: 'rgba(26,107,114,0.08)' }}>
+                                {match.img ? (
+                                  <Box
+                                    component="img"
+                                    src={match.img}
+                                    alt={match.name}
+                                    referrerPolicy="no-referrer"
+                                    sx={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top center' }}
                                   />
-                                </Stack>
+                                ) : (
+                                  <Box sx={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, rgba(26,107,114,0.12) 0%, rgba(201,168,76,0.15) 100%)' }}>
+                                    <Avatar sx={{ width: 64, height: 64, bgcolor: '#1A6B72', fontWeight: 700, color: '#fff', fontSize: '1.4rem' }}>
+                                      {initials}
+                                    </Avatar>
+                                  </Box>
+                                )}
+                                <Box sx={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.65) 0%, transparent 55%)' }} />
+                                <Box sx={{ position: 'absolute', bottom: 0, left: 0, right: 0, p: 1.5 }}>
+                                  <Stack direction="row" justifyContent="space-between" alignItems="flex-end">
+                                    <Box sx={{ minWidth: 0 }}>
+                                      <Typography variant="subtitle2" sx={{ fontWeight: 800, color: '#fff', lineHeight: 1.2 }} noWrap>
+                                        {match.name}{match.age ? `, ${match.age}` : ''}
+                                      </Typography>
+                                      {match.location && match.location !== 'Not provided' && (
+                                        <Stack direction="row" spacing={0.4} alignItems="center">
+                                          <MapPin size={10} color="rgba(255,255,255,0.85)" />
+                                          <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.85)', fontSize: '0.68rem' }} noWrap>{match.location}</Typography>
+                                        </Stack>
+                                      )}
+                                    </Box>
+                                    <Chip
+                                      label="Sent"
+                                      size="small"
+                                      icon={<Send size={10} />}
+                                      sx={{ bgcolor: 'rgba(26,107,114,0.85)', color: '#fff', fontWeight: 700, fontSize: '0.62rem', flexShrink: 0, '& .MuiChip-icon': { ml: 0.5, color: '#fff' } }}
+                                    />
+                                  </Stack>
+                                </Box>
                               </Box>
-                              <Box sx={{ px: 2.5, py: 1.8 }}>
+                              <Box sx={{ px: 2, py: 1.5 }}>
+                                {match.job && match.job !== 'Not provided' && (
+                                  <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 0.5 }}>💼 {match.job}</Typography>
+                                )}
                                 {match.moonSign && match.moonSign !== 'Pending' && (
                                   <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 0.5 }}>
                                     🌙 {match.moonSign}
@@ -862,7 +906,7 @@ export default function MatchRecommendations() {
                   {bestMatch.score}% compatibility based on astrology, personality, lifestyle, and family values.
                 </Typography>
                 <Stack direction="row" spacing={1.5} sx={{ mt: 2 }}>
-                  <Button variant="contained" onClick={() => handleViewProfile(bestMatch.id)}>
+                  <Button variant="contained" onClick={() => handleViewProfile(bestMatch.id, bestMatch.img, bestMatch.score ?? null, bestMatch.band ?? null)}>
                     View Best Match
                   </Button>
                   <Button variant="outlined" onClick={() => handleExpressInterest(bestMatch.id)}>
@@ -915,8 +959,21 @@ export default function MatchRecommendations() {
         matchId={selectedMatchId}
         open={detailPanelOpen}
         onClose={() => setDetailPanelOpen(false)}
+        previewImage={selectedMatchImg}
+        previewScore={selectedMatchScore}
+        previewBand={selectedMatchBand}
         onSendMessage={handleOpenMessageModal}
         onExpressInterest={handleExpressInterest}
+        onScoreResolved={(id, score, band) => {
+          setMatches((prev: any[]) =>
+            prev.map((m) => m.id === id ? { ...m, score, band } : m)
+          );
+          // Keep preview state in sync so reopening the panel shows the real score
+          if (selectedMatchId === id) {
+            setSelectedMatchScore(score);
+            setSelectedMatchBand(band);
+          }
+        }}
       />
 
       <MessageModal

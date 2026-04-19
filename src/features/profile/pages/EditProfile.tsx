@@ -124,6 +124,7 @@ export default function EditProfile() {
     ethnicity: '',
     height: '',
     hobbies: [] as string[],
+    seekingGender: '',
     diet: 'Non-veg',
     exercise: 'Regularly',
     smoking: 'Never',
@@ -638,6 +639,21 @@ export default function EditProfile() {
                 <User size={20} /> Identity & Verification
               </Typography>
               <Stack spacing={2}>
+                <TextField
+                  fullWidth
+                  select
+                  label="I am looking for"
+                  value={formData.seekingGender}
+                  onChange={(e) => handleChange('seekingGender', e.target.value)}
+                  helperText="Controls which gender appears in your matches and top match."
+                >
+                  <MenuItem value="">No preference (show all)</MenuItem>
+                  <MenuItem value="female">Women</MenuItem>
+                  <MenuItem value="male">Men</MenuItem>
+                  <MenuItem value="non-binary">Non-binary</MenuItem>
+                  <MenuItem value="any">Any gender</MenuItem>
+                </TextField>
+
                 <TextField
                   fullWidth
                   select

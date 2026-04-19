@@ -17,6 +17,7 @@ interface Conversation {
   id: string;
   title: string;
   otherUserId: string;
+  img?: string | null;
   preview: string;
   date: string;
 }
@@ -43,6 +44,7 @@ export default function MessagesPage() {
   const location = useLocation();
   const deepLinkConvId = (location.state as any)?.conversationId as string | undefined;
   const deepLinkUserId = (location.state as any)?.openUserId as string | undefined;
+  const deepLinkStartConv = Boolean((location.state as any)?.startConversation);
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
   // All mutual matches — full list regardless of whether a conversation exists
@@ -112,13 +114,13 @@ export default function MessagesPage() {
         const target = items.find((c) => c.id === deepLinkConvId);
         if (target) { setSelectedConv(target); if (isMobile) setShowList(false); }
       } else if (deepLinkUserId) {
-        // Find existing conv or create one via server
+        // Find existing conv or open one only if the caller explicitly requested it
         const existing = items.find((c) => c.otherUserId === deepLinkUserId);
         if (existing) {
           setSelectedConv(existing);
           if (isMobile) setShowList(false);
-        } else {
-          // Need to open (conversation may not exist yet — create it)
+        } else if (deepLinkStartConv) {
+          // Only create a conversation when the user clicked "Message" on a tile
           setOpeningConvFor(deepLinkUserId);
           try {
             const r: any = await api.post('/chat/conversations/open', { userId: deepLinkUserId });
@@ -128,6 +130,7 @@ export default function MessagesPage() {
             if (isMobile) setShowList(false);
           } catch { /* mutual match may not exist — fail silently */ }
           finally { setOpeningConvFor(null); }
+          // else: deepLinkUserId without startConversation → person appears in Eligible Chats, no auto-open
         }
       }
     })
@@ -329,7 +332,7 @@ export default function MessagesPage() {
                     sx={{ py: 1.5, px: 2, pr: 5, '&.Mui-selected': { bgcolor: 'primary.50' } }}
                   >
                     <ListItemAvatar>
-                      <Avatar sx={{ bgcolor: 'primary.main', width: 44, height: 44 }}>
+                      <Avatar src={conv.img || undefined} sx={{ bgcolor: 'primary.main', width: 44, height: 44 }}>
                         {initials(conv.title)}
                       </Avatar>
                     </ListItemAvatar>
@@ -351,8 +354,7 @@ export default function MessagesPage() {
             ))}
           </List>
 
-          {/* ── Mutual Matches without a chat yet ── */}
-          {eligibleMatches.length > 0 && (
+              {eligibleMatches.length > 0 && (
             <Box sx={{ mt: 'auto', borderTop: '1px solid', borderColor: 'divider' }}>
               <Box sx={{ px: 2, pt: 1.5, pb: 0.5, display: 'flex', alignItems: 'center', gap: 1 }}>
                 <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary', letterSpacing: '0.06em' }}>
@@ -362,32 +364,39 @@ export default function MessagesPage() {
               </Box>
               <List disablePadding>
                 {eligibleMatches.map((match) => (
-                  <ListItemButton
+                  <ListItem
                     key={match.id}
-                    onClick={() => handleStartChat(match)}
-                    disabled={openingConvFor === match.id}
-                    sx={{ py: 1, px: 2 }}
+                    disablePadding
+                    secondaryAction={
+                      <Tooltip title="Start chat">
+                        <IconButton
+                          size="small"
+                          disabled={openingConvFor === match.id}
+                          onClick={() => handleStartChat(match)}
+                          sx={{ color: 'primary.main' }}
+                        >
+                          {openingConvFor === match.id
+                            ? <CircularProgress size={16} />
+                            : <PlusCircle size={18} />}
+                        </IconButton>
+                      </Tooltip>
+                    }
                   >
-                    <ListItemAvatar>
-                      <Avatar
-                        src={match.img || undefined}
-                        sx={{ bgcolor: 'secondary.main', width: 40, height: 40, fontSize: '0.85rem' }}
-                      >
-                        {match.initials}
-                      </Avatar>
-                    </ListItemAvatar>
-                    <ListItemText
-                      primary={<Typography variant="subtitle2" sx={{ fontWeight: 600 }}>{match.name}</Typography>}
-                      secondary={<Typography variant="caption" color="text.secondary">Start a conversation</Typography>}
-                    />
-                    {openingConvFor === match.id
-                      ? <CircularProgress size={16} />
-                      : (
-                        <Tooltip title="Start chat">
-                          <PlusCircle size={18} style={{ color: theme.palette.primary.main, flexShrink: 0 }} />
-                        </Tooltip>
-                      )}
-                  </ListItemButton>
+                    <ListItemButton sx={{ py: 1, px: 2, pr: 6, pointerEvents: 'none' }}>
+                      <ListItemAvatar>
+                        <Avatar
+                          src={match.img || undefined}
+                          sx={{ bgcolor: 'secondary.main', width: 40, height: 40, fontSize: '0.85rem' }}
+                        >
+                          {match.initials}
+                        </Avatar>
+                      </ListItemAvatar>
+                      <ListItemText
+                        primary={<Typography variant="subtitle2" sx={{ fontWeight: 600 }}>{match.name}</Typography>}
+                        secondary={<Typography variant="caption" color="text.secondary">Matched — tap + to chat</Typography>}
+                      />
+                    </ListItemButton>
+                  </ListItem>
                 ))}
               </List>
             </Box>
@@ -406,7 +415,7 @@ export default function MessagesPage() {
             <ArrowLeft size={20} />
           </IconButton>
         )}
-        <Avatar sx={{ bgcolor: 'primary.main', width: 40, height: 40 }}>
+        <Avatar src={selectedConv.img || undefined} sx={{ bgcolor: 'primary.main', width: 40, height: 40 }}>
           {initials(selectedConv.title)}
         </Avatar>
         <Box sx={{ flex: 1 }}>
@@ -441,7 +450,9 @@ export default function MessagesPage() {
             // Only show avatar on the last consecutive message from the same sender
             const isLastInGroup = idx === messages.length - 1 ||
               String(messages[idx + 1].senderId) !== String(msg.senderId);
+            const myPic = (currentUser as any)?.profilePic || undefined;
             const myInitials = initials((currentUser as any)?.name || (currentUser as any)?.personalInfo?.name || 'Me');
+            const theirPic = selectedConv.img || undefined;
             const theirInitials = initials(selectedConv.title);
             return (
               <Box
@@ -451,6 +462,7 @@ export default function MessagesPage() {
                 {/* Other person's avatar — left side */}
                 {!isMine && (
                   <Avatar
+                    src={theirPic}
                     sx={{
                       width: 28, height: 28, fontSize: '0.65rem',
                       bgcolor: 'primary.main',
@@ -481,6 +493,7 @@ export default function MessagesPage() {
                 {/* My avatar — right side */}
                 {isMine && (
                   <Avatar
+                    src={myPic}
                     sx={{
                       width: 28, height: 28, fontSize: '0.65rem',
                       bgcolor: 'secondary.main',

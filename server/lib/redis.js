@@ -20,6 +20,12 @@ const noopRedisClient = {
   async del() {
     return null;
   },
+  async mGet(keys) {
+    return keys.map(() => null);
+  },
+  async scan() {
+    return { cursor: 0, keys: [] };
+  },
 };
 
 export const redisClient = redisEnabled

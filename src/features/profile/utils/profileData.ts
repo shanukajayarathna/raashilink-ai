@@ -6,7 +6,7 @@ const DEFAULT_PRIVACY = {
   whoCanSeePhotos: 'Matches Only',
 };
 
-const PLACEHOLDER_VALUES = new Set(['not provided', 'unknown']);
+const PLACEHOLDER_VALUES = new Set(['not provided', 'unknown', 'building a meaningful future through shared values.']);
 const PERSONALITY_SUBJECTS = [
   'Openness',
   'Conscientiousness',
@@ -275,6 +275,7 @@ export function normalizeProfileData(profile: any) {
       phone: normalizeString(personalInfo.phone || profile?.phone),
       age: normalizeOptionalValue(profile?.age ?? personalInfo.age ?? ''),
       gender: normalizeString(personalInfo.gender || profile?.gender),
+      seekingGender: normalizeString(personalInfo.seekingGender ?? profile?.seekingGender ?? ''),
       height,
       education,
       occupation,
@@ -347,6 +348,7 @@ export function buildProfileUpdatePayload(source: any) {
     location: normalized.location,
     age: Number.isFinite(age) ? age : undefined,
     gender: normalized.personalInfo.gender || undefined,
+    seekingGender: normalized.personalInfo.seekingGender || undefined,
     ...birthPayload,
     height: normalized.personalInfo.height,
     education: normalized.personalInfo.education,
@@ -394,6 +396,7 @@ export function buildEditProfileFormData(profile: any) {
     socialPreference: normalized.lifestyle.socialPreference,
     privacy: normalized.privacy,
     gender: normalized.personalInfo.gender,
+    seekingGender: normalized.personalInfo.seekingGender || '',
   };
 }
 

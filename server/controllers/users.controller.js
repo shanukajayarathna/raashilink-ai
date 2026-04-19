@@ -286,6 +286,7 @@ function mapProfile(user, { includeMedia = true } = {}) {
       phone: user.phone || user.personalInfo?.phone || 'Not provided',
       age: user.age ?? user.personalInfo?.age ?? 'Not provided',
       gender: user.gender || user.personalInfo?.gender || 'Not provided',
+      seekingGender: user.personalInfo?.seekingGender || null,
       height: user.height || user.personalInfo?.height || 'Not provided',
       education: user.lifestyle?.educationLevel || 'Not provided',
       occupation: user.lifestyle?.professionType || 'Not provided',
@@ -440,6 +441,7 @@ export const updateProfile = asyncHandler(async (req, res) => {
     careerAmbitions: 'lifestyle.careerAmbitions',
     familyPlans: 'lifestyle.familyPlans',
     socialPreference: 'lifestyle.socialPreference',
+    seekingGender: 'personalInfo.seekingGender',
   };
 
   for (const [incomingKey, targetPath] of Object.entries(fieldMap)) {

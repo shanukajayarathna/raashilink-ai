@@ -12,7 +12,7 @@ import { cn } from '@/shared/lib/utils';
 
 interface MatchCardProps {
   match: any;
-  onViewProfile: (id: string) => void;
+  onViewProfile: (id: string, img?: string | null, score?: number | null, band?: string | null) => void;
   onExpressInterest: (id: string) => void;
   onSendMessage: (id: string) => void;
 }
@@ -213,7 +213,7 @@ export default function MatchCard({ match, onViewProfile, onExpressInterest, onS
           <Button
             fullWidth
             variant="outlined"
-            onClick={() => onViewProfile(match.id)}
+            onClick={() => onViewProfile(match.id, match.img, match.score ?? null, match.band ?? null)}
             sx={{ 
               borderColor: 'primary.light', 
               color: 'primary.main',

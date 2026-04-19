@@ -183,7 +183,7 @@ const WidgetHeader = ({ title, action }: { title: string; action?: React.ReactNo
 // --- Sub-Components ---
 
 // Map missing item label → profile tab index and optional section hint
-const MISSING_ITEM_NAV: Record<string, { tab: number }> = {
+const MISSING_ITEM_NAV: Record<string, { tab: number; path?: string }> = {
   'Add Profile Photo':   { tab: 0 },
   'Add Short Bio':       { tab: 0 },
   'Add Tagline':         { tab: 0 },
@@ -192,7 +192,7 @@ const MISSING_ITEM_NAV: Record<string, { tab: number }> = {
   'Add Ethnicity':       { tab: 0 },
   'Add Date of Birth':   { tab: 1 },
   'Add Birth Place':     { tab: 1 },
-  'Generate Horoscope':  { tab: 1 },
+  'Generate Horoscope':  { tab: 1, path: '/horoscope' },
   'Add Education':       { tab: 0 },
   'Add Profession':      { tab: 0 },
   'Add Religion':        { tab: 0 },
@@ -205,7 +205,7 @@ const MISSING_ITEM_NAV: Record<string, { tab: number }> = {
   'Verify Phone':        { tab: 0 },
 };
 
-const ProfileCompletionRing = ({ percentage, missingItems, onNavigate }: { percentage: number; missingItems: string[]; onNavigate: (tab: number) => void }) => {
+const ProfileCompletionRing = ({ percentage, missingItems, onNavigate }: { percentage: number; missingItems: string[]; onNavigate: (tab: number, path?: string) => void }) => {
   const radius = 36;
   const circumference = 2 * Math.PI * radius;
   const offset = circumference - (percentage / 100) * circumference;
@@ -251,7 +251,7 @@ const ProfileCompletionRing = ({ percentage, missingItems, onNavigate }: { perce
                   key={index}
                   label={item}
                   size="small"
-                  onClick={() => nav && onNavigate(nav.tab)}
+                  onClick={() => nav && onNavigate(nav.tab, nav.path)}
                   sx={{
                     bgcolor: 'rgba(139,26,46,0.05)',
                     color: COLORS.primary,
@@ -839,6 +839,7 @@ export default function UserDashboard() {
   const [pendingSent, setPendingSent] = useState<any[]>([]);
   const [pendingReceived, setPendingReceived] = useState<any[]>([]);
   const [selectedInterestId, setSelectedInterestId] = useState<string | null>(null);
+  const [selectedInterestImg, setSelectedInterestImg] = useState<string | null>(null);
   const [interestDetailOpen, setInterestDetailOpen] = useState(false);
   const [pendingLoading, setPendingLoading] = useState(true);
   const [data, setData] = useState<any>(() => {
@@ -885,7 +886,13 @@ export default function UserDashboard() {
   const [otpValue, setOtpValue] = useState('');
   const [busyChannel, setBusyChannel] = useState<'email' | 'phone' | null>(null);
   const [verifying, setVerifying] = useState(false);
+  const [liveTime, setLiveTime] = useState(new Date());
   const liveProfilePic = resolveProfilePic(user, data);
+
+  useEffect(() => {
+    const timer = setInterval(() => setLiveTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   // ── Lightweight refresh fns (for real-time events) ──────────────────────
   const refreshMutualMatches = useCallback(async () => {
@@ -921,7 +928,12 @@ export default function UserDashboard() {
       setPendingReceived((p) => p.filter((m) => m.id !== data.fromUserId));
       refreshMutualMatches();
     },
-    onMatchRemoved: () => refreshMutualMatches(),
+    onMatchRemoved: (data) => {
+      // Remove from pending lists immediately — they withdrew their interest
+      setPendingReceived((p) => p.filter((m) => m.id !== data.byUserId));
+      setPendingSent((p) => p.filter((m) => m.id !== data.byUserId));
+      refreshMutualMatches();
+    },
     onInterestAccepted: (data) => {
       setPendingSent((p) => p.filter((m) => m.id !== data.fromUserId));
       dispatch(showToast({ type: 'success', message: `${data.fromUserName} accepted your interest! 🎉` }));
@@ -1109,11 +1121,18 @@ export default function UserDashboard() {
   // Update other user data when user state changes
   useEffect(() => {
     if (user) {
+      // Recompute missing items from the updated Redux user state (e.g. after saving profile)
+      // only when the user object carries a full profile (indicated by a tagline or bio field).
+      const hasProfileData = user.tagline !== undefined || user.bio !== undefined;
+      const updatedMissingItems = hasProfileData ? computeMissingItems(user) : null;
+
       setData((prev: any) => ({
         ...prev,
         summary: {
           ...prev.summary,
           name: user.firstName || user.name || prev.summary.name,
+          ...(updatedMissingItems !== null && { missingItems: updatedMissingItems }),
+          ...(user.completion !== undefined && { profileCompletion: user.completion }),
         },
         email: user.email || prev.email,
         phone: user.phone || prev.phone,
@@ -1209,7 +1228,19 @@ export default function UserDashboard() {
 
   const getGregorianDate = () => {
     const options: Intl.DateTimeFormatOptions = { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' };
-    return new Date().toLocaleDateString('en-US', options);
+    return liveTime.toLocaleDateString('en-US', options);
+  };
+
+  const getGreeting = () => {
+    const hour = liveTime.getHours();
+    if (hour >= 5 && hour < 12) return 'Good morning';
+    if (hour >= 12 && hour < 17) return 'Good afternoon';
+    if (hour >= 17 && hour < 21) return 'Good evening';
+    return 'Good night';
+  };
+
+  const getLiveTimeString = () => {
+    return liveTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
   };
 
   if (loading) {
@@ -1255,11 +1286,14 @@ export default function UserDashboard() {
           sx={{ display: 'flex', flexDirection: 'column', gap: 1, flex: 1, minWidth: 0 }}
         >
           <Typography variant="h4" sx={{ fontFamily: 'Playfair Display', fontWeight: 700, color: COLORS.primary, wordWrap: 'break-word', overflowWrap: 'break-word', whiteSpace: 'normal' }}>
-            Good morning, {data.summary.name} ✨
+            {getGreeting()}, {data.summary.name} ✨
           </Typography>
           <Stack direction="row" spacing={1} alignItems="center" sx={{ flexWrap: 'wrap', gap: 1 }}>
             <Typography variant="body2" sx={{ color: COLORS.textSecondary, fontSize: '0.875rem', whiteSpace: 'nowrap' }}>
-              {getGregorianDate()} |
+              {getGregorianDate()} ·{' '}
+              <Box component="span" sx={{ fontFamily: 'monospace', fontVariantNumeric: 'tabular-nums', display: 'inline-block', minWidth: '7.5ch' }}>
+                {getLiveTimeString()}
+              </Box>{' '}|
             </Typography>
             <Chip label={`${data.summary.nakshatra} Nakshatra`} size="small" sx={{ bgcolor: COLORS.secondary, color: COLORS.primary, fontWeight: 700, height: 24 }} />
             <Chip
@@ -1322,7 +1356,7 @@ export default function UserDashboard() {
           <ProfileCompletionRing
             percentage={data.summary.profileCompletion}
             missingItems={data.summary.missingItems}
-            onNavigate={(tab) => navigate(`/profile?tab=${tab}&edit=true`)}
+            onNavigate={(tab, path) => path ? navigate(path) : navigate(`/profile?tab=${tab}&edit=true`)}
           />
         </Grid>
         <Grid size={{ xs: 12, md: 4 }}>
@@ -1591,26 +1625,39 @@ export default function UserDashboard() {
                                 minWidth: 175, flexShrink: 0,
                                 bgcolor: COLORS.background, borderRadius: 3,
                                 border: `1px solid rgba(139,26,46,0.2)`,
-                                p: 1.8,
+                                overflow: 'hidden',
                               }}
                             >
-                              <Stack direction="row" spacing={1.2} alignItems="center" sx={{ mb: 1.2 }}>
-                                <Avatar
-                                  src={match.img || undefined}
-                                  sx={{ width: 40, height: 40, bgcolor: COLORS.primary, fontWeight: 700, color: '#fff', fontSize: '0.85rem', border: `1.5px solid rgba(139,26,46,0.3)` }}
-                                >
-                                  {initials}
-                                </Avatar>
-                                <Box sx={{ minWidth: 0 }}>
-                                  <Typography sx={{ fontWeight: 700, fontSize: '0.82rem', color: COLORS.textPrimary }} noWrap>
+                              {/* Profile picture hero */}
+                              <Box sx={{ position: 'relative', width: '100%', pt: '75%', bgcolor: alpha(COLORS.primary, 0.08) }}>
+                                {match.img ? (
+                                  <Box
+                                    component="img"
+                                    src={match.img}
+                                    alt={match.name}
+                                    referrerPolicy="no-referrer"
+                                    sx={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+                                  />
+                                ) : (
+                                  <Box sx={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                    <Avatar sx={{ width: 64, height: 64, bgcolor: COLORS.primary, fontWeight: 700, color: '#fff', fontSize: '1.4rem' }}>
+                                      {initials}
+                                    </Avatar>
+                                  </Box>
+                                )}
+                                {/* Gradient name overlay */}
+                                <Box sx={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.65) 0%, transparent 55%)' }} />
+                                <Box sx={{ position: 'absolute', bottom: 0, left: 0, right: 0, p: 1 }}>
+                                  <Typography sx={{ fontWeight: 700, fontSize: '0.78rem', color: '#fff', lineHeight: 1.2 }} noWrap>
                                     {match.name}{match.age ? `, ${match.age}` : ''}
                                   </Typography>
                                   {match.location && match.location !== 'Not provided' && (
-                                    <Typography variant="caption" sx={{ color: '#888' }} noWrap>{match.location}</Typography>
+                                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.65rem' }} noWrap>{match.location}</Typography>
                                   )}
                                 </Box>
-                              </Stack>
-                              <Stack direction="row" spacing={0.8}>
+                              </Box>
+                              <Box sx={{ p: 1.2 }}>
+                                <Stack direction="row" spacing={0.8}>
                                 <Tooltip title="Accept interest">
                                   <IconButton
                                     size="small"
@@ -1649,13 +1696,14 @@ export default function UserDashboard() {
                                 <Tooltip title="View Profile">
                                   <IconButton
                                     size="small"
-                                    onClick={() => { setSelectedInterestId(match.id); setInterestDetailOpen(true); }}
+                                    onClick={() => { setSelectedInterestId(match.id); setSelectedInterestImg(match.img || null); setInterestDetailOpen(true); }}
                                     sx={{ flex: 1, borderRadius: 2, border: `1px solid rgba(26,107,114,0.5)`, color: '#1A6B72', '&:hover': { bgcolor: 'rgba(26,107,114,0.08)' } }}
                                   >
                                     <Eye size={14} />
                                   </IconButton>
                                 </Tooltip>
                               </Stack>
+                              </Box>
                             </Box>
                           );
                         })}
@@ -1679,43 +1727,56 @@ export default function UserDashboard() {
                             <Box
                               key={match.id}
                               sx={{
-                                minWidth: 175, flexShrink: 0,
+                                minWidth: 155, flexShrink: 0,
                                 bgcolor: COLORS.background, borderRadius: 3,
                                 border: `1px solid rgba(26,107,114,0.2)`,
-                                p: 1.8,
+                                overflow: 'hidden',
                               }}
                             >
-                              <Stack direction="row" spacing={1.2} alignItems="center" sx={{ mb: 1.2 }}>
-                                <Avatar
-                                  src={match.img || undefined}
-                                  sx={{ width: 40, height: 40, bgcolor: '#1A6B72', fontWeight: 700, color: '#fff', fontSize: '0.85rem', border: `1.5px solid rgba(26,107,114,0.3)` }}
-                                >
-                                  {initials}
-                                </Avatar>
-                                <Box sx={{ minWidth: 0 }}>
-                                  <Typography sx={{ fontWeight: 700, fontSize: '0.82rem', color: COLORS.textPrimary }} noWrap>
+                              {/* Profile picture hero */}
+                              <Box sx={{ position: 'relative', width: '100%', pt: '75%', bgcolor: 'rgba(26,107,114,0.08)' }}>
+                                {match.img ? (
+                                  <Box
+                                    component="img"
+                                    src={match.img}
+                                    alt={match.name}
+                                    referrerPolicy="no-referrer"
+                                    sx={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top center' }}
+                                  />
+                                ) : (
+                                  <Box sx={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                    <Avatar sx={{ width: 56, height: 56, bgcolor: '#1A6B72', fontWeight: 700, color: '#fff', fontSize: '1.2rem' }}>
+                                      {initials}
+                                    </Avatar>
+                                  </Box>
+                                )}
+                                <Box sx={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.65) 0%, transparent 55%)' }} />
+                                <Box sx={{ position: 'absolute', bottom: 0, left: 0, right: 0, p: 1 }}>
+                                  <Typography sx={{ fontWeight: 700, fontSize: '0.78rem', color: '#fff', lineHeight: 1.2 }} noWrap>
                                     {match.name}{match.age ? `, ${match.age}` : ''}
                                   </Typography>
                                   {match.location && match.location !== 'Not provided' && (
-                                    <Typography variant="caption" sx={{ color: '#888' }} noWrap>{match.location}</Typography>
+                                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.65rem' }} noWrap>{match.location}</Typography>
                                   )}
                                 </Box>
-                              </Stack>
-                              <Tooltip title="Withdraw interest">
-                                <IconButton
-                                  size="small"
-                                  onClick={async () => {
-                                    try {
-                                      await matchService.undoInterest(match.id);
-                                      setPendingSent((p) => p.filter((m) => m.id !== match.id));
-                                      dispatch(showToast({ type: 'info', message: 'Interest withdrawn.' }));
-                                    } catch { dispatch(showToast({ type: 'error', message: 'Failed.' })); }
-                                  }}
-                                  sx={{ width: '100%', borderRadius: 2, border: `1px solid rgba(211,47,47,0.4)`, color: '#d32f2f', '&:hover': { bgcolor: 'rgba(211,47,47,0.08)' } }}
-                                >
-                                  <UserMinus size={14} />
-                                </IconButton>
-                              </Tooltip>
+                              </Box>
+                              <Box sx={{ p: 1.2 }}>
+                                <Tooltip title="Withdraw interest">
+                                  <IconButton
+                                    size="small"
+                                    onClick={async () => {
+                                      try {
+                                        await matchService.undoInterest(match.id);
+                                        setPendingSent((p) => p.filter((m) => m.id !== match.id));
+                                        dispatch(showToast({ type: 'info', message: 'Interest withdrawn.' }));
+                                      } catch { dispatch(showToast({ type: 'error', message: 'Failed.' })); }
+                                    }}
+                                    sx={{ width: '100%', borderRadius: 2, border: `1px solid rgba(211,47,47,0.4)`, color: '#d32f2f', '&:hover': { bgcolor: 'rgba(211,47,47,0.08)' } }}
+                                  >
+                                    <UserMinus size={14} />
+                                  </IconButton>
+                                </Tooltip>
+                              </Box>
                             </Box>
                           );
                         })}
@@ -1820,7 +1881,8 @@ export default function UserDashboard() {
         matchId={selectedInterestId}
         open={interestDetailOpen}
         onClose={() => setInterestDetailOpen(false)}
-        onSendMessage={(id) => { setInterestDetailOpen(false); navigate(`/chat?user=${id}`); }}
+        previewImage={selectedInterestImg}
+        onSendMessage={(id) => { setInterestDetailOpen(false); navigate('/messages', { state: { openUserId: id } }); }}
         onExpressInterest={async (id) => {
           try {
             const res = await matchService.expressInterest(id);

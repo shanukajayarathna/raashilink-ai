@@ -55,6 +55,11 @@ const personalInfoSchema = new Schema(
       enum: ['single', 'engaged', 'married', 'divorced', 'widowed'],
       default: 'single',
     },
+    seekingGender: {
+      type: String,
+      enum: ['male', 'female', 'non-binary', 'any'],
+      default: null,
+    },
     photos: { type: [photoSchema], default: [] },
   },
   { _id: false }

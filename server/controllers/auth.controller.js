@@ -12,6 +12,7 @@ const REGISTRATION_ROLES = ['partner', 'couple', 'vendor'];
 const OTP_EXPIRY_MINUTES = 10;
 const SRI_LANKA_MOBILE_REGEX = /^7\d{8}$/;
 const GENDER_OPTIONS = ['male', 'female', 'non-binary', 'prefer_not_to_say'];
+const SEEKING_GENDER_OPTIONS = ['male', 'female', 'non-binary', 'any'];
 
 function buildToken(user) {
   return jwt.sign(
@@ -190,6 +191,9 @@ function buildPersonalInfo(input) {
     phone: normalizePhone(input.phone),
     profilePic: input.profilePic || undefined,
     gender: normalizedGender,
+    seekingGender: SEEKING_GENDER_OPTIONS.includes(String(input.seekingGender || '').trim())
+      ? String(input.seekingGender).trim()
+      : undefined,
     location: defaultLocation,
     ethnicity: input.ethnicity?.trim() || '',
     bio:

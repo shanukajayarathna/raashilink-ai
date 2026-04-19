@@ -155,6 +155,21 @@ const GENDER_OPTIONS = [
   { value: 'prefer_not_to_say', label: 'Prefer not to say' },
 ];
 
+const SEEKING_GENDER_OPTIONS = [
+  { value: 'female', label: 'Women' },
+  { value: 'male', label: 'Men' },
+  { value: 'non-binary', label: 'Non-binary' },
+  { value: 'any', label: 'Any gender' },
+];
+
+function formatSeekingGenderDisplay(value: any) {
+  if (value === undefined || value === null || value === '') return 'No preference';
+  const normalized = String(value).trim().toLowerCase();
+  const known = SEEKING_GENDER_OPTIONS.find((o) => o.value === normalized);
+  if (known) return known.label;
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+}
+
 function formatGenderDisplay(value: any) {
   if (value === undefined || value === null) return 'Not provided';
 
@@ -1244,6 +1259,7 @@ export default function UserProfile() {
                       {[
                         { label: 'Age', value: profileData.age, key: 'age', icon: <Calendar size={18} /> },
                         { label: 'Gender', value: formatGenderDisplay(profileData.personalInfo.gender), key: 'personalInfo.gender', icon: <User size={18} /> },
+                        { label: 'Looking For', value: formatSeekingGenderDisplay(profileData.personalInfo?.seekingGender), key: 'personalInfo.seekingGender', icon: <Heart size={18} /> },
                         { label: 'Height', value: (() => { const h = profileData.personalInfo.height; if (!h || h === 'Not provided') return h; const n = String(h).replace(/\s*cm$/i, '').trim(); return n ? `${n} cm` : h; })(), key: 'personalInfo.height', icon: <Activity size={18} /> },
                         { label: 'Education', value: profileData.personalInfo.education, key: 'personalInfo.education', icon: <GraduationCap size={18} /> },
                         { label: 'Occupation', value: profileData.personalInfo.occupation, key: 'personalInfo.occupation', icon: <Briefcase size={18} /> },
@@ -1287,6 +1303,26 @@ export default function UserProfile() {
                                   >
                                     <MenuItem value="">Select gender</MenuItem>
                                     {GENDER_OPTIONS.map((option) => (
+                                      <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>
+                                    ))}
+                                  </TextField>
+                                ) : item.key === 'personalInfo.seekingGender' ? (
+                                  <TextField
+                                    fullWidth
+                                    size="small"
+                                    select
+                                    value={editData.personalInfo?.seekingGender || ''}
+                                    onChange={(e) => setEditData({
+                                      ...editData,
+                                      personalInfo: {
+                                        ...editData.personalInfo,
+                                        seekingGender: e.target.value,
+                                      },
+                                    })}
+                                    sx={{ mt: 0.5 }}
+                                  >
+                                    <MenuItem value="">No preference</MenuItem>
+                                    {SEEKING_GENDER_OPTIONS.map((option) => (
                                       <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>
                                     ))}
                                   </TextField>

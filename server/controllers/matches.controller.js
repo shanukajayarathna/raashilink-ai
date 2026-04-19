@@ -8,7 +8,7 @@ import Message from '../models/Message.js';
 import Match from '../models/Match.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import ApiError from '../utils/ApiError.js';
-import compatibilityService, { calculateCompatibilityFromData } from '../services/compatibility.service.js';
+import { calculateCompatibilityFromData, buildCacheKey } from '../services/compatibility.service.js';
 import redisClient from '../lib/redis.js';
 import logger from '../utils/logger.js';
 import Notification from '../models/Notification.js';
@@ -288,6 +288,7 @@ function buildDetail(user, compatibility, mutualMatch) {
     score: compatibility.overallScore,
     band: compatibility.bandLabel,
     bio: normalizeDisplayValue(user.bio || profileField(user, 'bio')),
+    tagline: normalizeDisplayValue(user.tagline || user.personalInfo?.tagline || null),
     dimensions: [
       { label: 'Astrological', value: compatibility.astroScore },
       { label: 'Personality', value: compatibility.personalityScore },
@@ -352,7 +353,19 @@ export const getRecommendations = asyncHandler(async (req, res) => {
     isHeightFilterActive
   );
   const skip = (page - 1) * pageSize;
-  const currentUserGender = String(req.user.personalInfo?.gender || req.user.gender || '').toLowerCase();
+
+  // Fetch current user's gender and seekingGender to power automatic filtering
+  const currentUserProfile = await User.findById(req.user._id)
+    .select('personalInfo.gender personalInfo.seekingGender')
+    .lean();
+  const currentUserGender = String(currentUserProfile?.personalInfo?.gender || '').toLowerCase();
+  // What gender is the current user seeking? Use explicit profile value; fall back to
+  // opposite-binary logic; fall back to 'any' if gender is unknown.
+  const storedSeekingGender = String(currentUserProfile?.personalInfo?.seekingGender || '').toLowerCase();
+  const inferredSeekingGender = currentUserGender === 'male' ? 'female'
+    : currentUserGender === 'female' ? 'male'
+    : 'any';
+  const effectiveSeekingGender = storedSeekingGender || inferredSeekingGender;
 
   const candidateQuery = {
     _id: { $ne: req.user._id },
@@ -374,10 +387,22 @@ export const getRecommendations = asyncHandler(async (req, res) => {
   }
 
   if (selectedGender && ['male', 'female', 'non-binary', 'prefer_not_to_say'].includes(selectedGender)) {
+    // Explicit UI filter overrides the automatic seeking-gender filter
     candidateQuery['personalInfo.gender'] = selectedGender;
+  } else if (effectiveSeekingGender !== 'any') {
+    // Auto-filter: only show candidates whose gender matches what the current user is seeking
+    candidateQuery['personalInfo.gender'] = effectiveSeekingGender;
   }
 
-  // No automatic gender filter — show all users looking for a partner regardless of gender.
+  // Mutual seeking filter: candidates must also be seeking the current user's gender (or 'any')
+  if (currentUserGender && !selectedGender) {
+    candidateQuery.$or = [
+      { 'personalInfo.seekingGender': currentUserGender },
+      { 'personalInfo.seekingGender': 'any' },
+      { 'personalInfo.seekingGender': null },
+      { 'personalInfo.seekingGender': { $exists: false } },
+    ];
+  }
 
   // Check cache first
   const cacheKey = `recommendations:${currentUserId}:${page}:${pageSize}:${sortBy}:${ageMin}-${ageMax}:${heightMin}-${heightMax}:${selectedReligions.join('|')}:${selectedDistrict}:${selectedGender}:${searchTerm}:${fastMode}`;
@@ -399,8 +424,11 @@ export const getRecommendations = asyncHandler(async (req, res) => {
     'personality.openness', 'personality.conscientiousness', 'personality.extraversion',
     'personality.agreeableness', 'personality.neuroticism',
     'lifestyle.religion', 'lifestyle.diet', 'lifestyle.smoking', 'lifestyle.drinking',
-    'lifestyle.preferredLocation', 'lifestyle.educationLevel', 'lifestyle.professionType',
-    'lifestyle.familyValues',
+    'lifestyle.exercise', 'lifestyle.preferredLocation', 'lifestyle.educationLevel', 'lifestyle.professionType',
+    'lifestyle.familyValues', 'lifestyle.familyPlans', 'lifestyle.socialPreference',
+    'lifestyle.hobbies', 'lifestyle.languages',
+    'horoscopeData.nakshatra', 'horoscopeData.rashi',
+    'horoscopeData.rajju', 'horoscopeData.planetaryPositions',
   ].join(' ');
 
   const [users, currentUserData, allMutualInterests] = await Promise.all([
@@ -430,8 +458,10 @@ export const getRecommendations = asyncHandler(async (req, res) => {
         'lifestyle.diet',
         'lifestyle.smoking',
         'lifestyle.drinking',
+        'lifestyle.exercise',
         'lifestyle.preferredLocation',
         'lifestyle.familyPlans',
+        'lifestyle.socialPreference',
         'lifestyle.hobbies',
         'lifestyle.languages',
         'birthData.dateOfBirth',
@@ -442,6 +472,8 @@ export const getRecommendations = asyncHandler(async (req, res) => {
         'horoscopeData.rashi',
         'horoscopeData.nakshatra',
         'horoscopeData.ascendant',
+        'horoscopeData.rajju',
+        'horoscopeData.planetaryPositions',
         'createdAt',
         'updatedAt',
       ].join(' '))
@@ -489,12 +521,37 @@ export const getRecommendations = asyncHandler(async (req, res) => {
     )
   );
 
-  const scored = filteredUsers.map((candidate) => {
-    // Zero-DB fast path: all data already loaded, no subprocess spawned
+  // Fast-path scores for all candidates
+  const fastScores = new Map();
+  for (const candidate of filteredUsers) {
     const compatibility = currentUserData
       ? calculateCompatibilityFromData(currentUserData, candidate)
       : { overallScore: 50, astroScore: 50, personalityScore: 50, lifestyleScore: 50, familyScore: 50, bandLabel: 'MODERATE', explanation: '', astroBreakdown: {} };
+    fastScores.set(String(candidate._id), compatibility);
+  }
 
+  // Overlay with any cached full-engine results (written by getMatchDetail)
+  try {
+    const cacheKeys = filteredUsers.map((c) => buildCacheKey(currentUserId, String(c._id)));
+    if (cacheKeys.length > 0) {
+      const cachedValues = await redisClient.mGet(cacheKeys);
+      cachedValues.forEach((val, idx) => {
+        if (val) {
+          try {
+            const parsed = JSON.parse(val);
+            if (parsed && typeof parsed.overallScore === 'number') {
+              fastScores.set(String(filteredUsers[idx]._id), parsed);
+            }
+          } catch { /* ignore */ }
+        }
+      });
+    }
+  } catch (err) {
+    logger.warn('Redis mGet for cached compat scores failed', { message: err.message });
+  }
+
+  const scored = filteredUsers.map((candidate) => {
+    const compatibility = fastScores.get(String(candidate._id));
     const mutualMatch = mutualSet.has(String(candidate._id));
     return buildCard(candidate, compatibility, mutualMatch);
   });
@@ -535,48 +592,69 @@ export const getRecommendations = asyncHandler(async (req, res) => {
 export const getMatchDetail = asyncHandler(async (req, res) => {
   ensureObjectId(req.params.id, 'matchId');
 
-  const user = await User.findById(req.params.id)
-    .select([
-      '_id',
-      'role',
-      'personalInfo.firstName',
-      'personalInfo.lastName',
-      'personalInfo.age',
-      'personalInfo.gender',
-      'personalInfo.height',
-      'personalInfo.ethnicity',
-      'personalInfo.location',
-      'personalInfo.profilePic',
-      'personalInfo.bio',
-      'personalInfo.photos',
-      'lifestyle.professionType',
-      'lifestyle.careerAmbitions',
-      'lifestyle.educationLevel',
-      'lifestyle.familyValues',
-      'lifestyle.familyPlans',
-      'lifestyle.hobbies',
-      'lifestyle.religion',
-      'lifestyle.diet',
-      'lifestyle.smoking',
-      'lifestyle.drinking',
-      'lifestyle.languages',
-      'personality.openness',
-      'personality.neuroticism',
-      'horoscopeData.moonSign',
-      'horoscopeData.rashi',
-      'horoscopeData.nakshatra',
-      'horoscopeData.ascendant',
-      'photos',
-    ].join(' '))
-    .lean({ virtuals: true });
+  const compatFieldSelection = [
+    '_id',
+    'role',
+    'personalInfo.firstName',
+    'personalInfo.lastName',
+    'personalInfo.age',
+    'personalInfo.gender',
+    'personalInfo.height',
+    'personalInfo.ethnicity',
+    'personalInfo.location',
+    'personalInfo.profilePic',
+    'personalInfo.bio',
+    'personalInfo.tagline',
+    'personalInfo.photos',
+    'lifestyle.professionType',
+    'lifestyle.careerAmbitions',
+    'lifestyle.educationLevel',
+    'lifestyle.familyValues',
+    'lifestyle.familyPlans',
+    'lifestyle.hobbies',
+    'lifestyle.religion',
+    'lifestyle.diet',
+    'lifestyle.smoking',
+    'lifestyle.drinking',
+    'lifestyle.exercise',
+    'lifestyle.preferredLocation',
+    'lifestyle.socialPreference',
+    'lifestyle.languages',
+    'personality.openness',
+    'personality.conscientiousness',
+    'personality.extraversion',
+    'personality.agreeableness',
+    'personality.neuroticism',
+    'horoscopeData.moonSign',
+    'horoscopeData.rashi',
+    'horoscopeData.nakshatra',
+    'horoscopeData.ascendant',
+    'horoscopeData.gana',
+    'horoscopeData.rajju',
+    'horoscopeData.planetaryPositions',
+    'photos',
+  ].join(' ');
+
+  const [user, currentUser] = await Promise.all([
+    User.findById(req.params.id).select(compatFieldSelection).lean({ virtuals: true }),
+    User.findById(req.user._id).select(compatFieldSelection).lean({ virtuals: true }),
+  ]);
+
   if (!user || user.role !== 'user') {
     throw new ApiError(404, 'Match not found');
   }
+  if (!currentUser) {
+    throw new ApiError(404, 'Current user not found');
+  }
 
-  const compatibility = await compatibilityService.calculateCompatibility({
-    userAId: String(req.user._id),
-    userBId: String(user._id),
-  });
+  // Use the same fast JS path as the recommendations list so the score is always consistent
+  const compatibility = calculateCompatibilityFromData(currentUser, user);
+
+  // Cache this score so future recommendations list loads overlay the same value
+  const cacheKey = buildCacheKey(String(req.user._id), String(user._id));
+  try {
+    await redisClient.set(cacheKey, JSON.stringify(compatibility), { EX: 60 * 60 * 24 });
+  } catch { /* non-critical */ }
 
   const mutualInterest = await MatchInterest.findOne({
     $or: [
