@@ -54,6 +54,10 @@ const weddingProjectSchema = new Schema(
     expenses: { type: [expenseSchema], default: [] },
     checklist: { type: [checklistItemSchema], default: [] },
     vendors: { type: [bookedVendorSchema], default: [] },
+    pendingInvite: {
+      inviteeId: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+      status: { type: String, enum: ['pending', 'accepted', 'declined'], default: 'pending' },
+    },
   },
   {
     timestamps: true,

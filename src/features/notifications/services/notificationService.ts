@@ -2,14 +2,15 @@ import api from '@/shared/config/axiosConfig';
 
 export interface AppNotification {
   id: string;
-  type: 'interest_received' | 'mutual_match' | 'message_received' | 'interest_accepted' | 'interest_declined';
+  type: 'interest_received' | 'mutual_match' | 'message_received' | 'interest_accepted' | 'interest_declined' | 'wedding_invite' | 'wedding_accepted' | 'match_removed';
   fromUserId: string;
   fromUserName: string;
   fromUserProfilePic: string | null;
   conversationId: string | null;
+  metadata?: { inviterId?: string } | null;
   read: boolean;
   createdAt: string;
-  preview?: string; // for message_received
+  preview?: string;
 }
 
 export interface NotificationsResponse {

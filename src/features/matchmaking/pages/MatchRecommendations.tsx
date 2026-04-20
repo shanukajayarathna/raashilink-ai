@@ -13,6 +13,10 @@ import {
   Chip,
   Divider,
   Tooltip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from '@mui/material';
 import { motion } from 'motion/react';
 import { ChevronRight, RefreshCw, SearchX, Heart, MessageCircle, UserMinus, MapPin, Sparkles, Send, Inbox, UserCheck, UserX, Clock } from 'lucide-react';
@@ -21,6 +25,7 @@ import MatchCard from '../components/MatchCard';
 import MatchDetailPanel from '../components/MatchDetailPanel';
 import MessageModal from '../components/MessageModal';
 import matchService from '../services/matchService';
+import weddingService from '@/features/wedding/services/weddingService';
 import chatService from '@/features/chat/services/chatService';
 import { useDispatch } from 'react-redux';
 import { showToast } from '@/app/store/uiSlice';
@@ -35,6 +40,7 @@ export default function MatchRecommendations() {
   const [mutualMatches, setMutualMatches] = useState<any[]>([]);
   const [mutualLoading, setMutualLoading] = useState(true);
   const [removingId, setRemovingId] = useState<string | null>(null);
+  const [removeConfirm, setRemoveConfirm] = useState<{ matchId: string; matchName: string; hasWedding: boolean } | null>(null);
   const [pendingSent, setPendingSent] = useState<any[]>([]);
   const [pendingReceived, setPendingReceived] = useState<any[]>([]);
   const [pendingLoading, setPendingLoading] = useState(true);
@@ -162,10 +168,28 @@ export default function MatchRecommendations() {
   });
 
   const handleRemoveInterest = async (id: string) => {
-    setRemovingId(id);
+    const match = mutualMatches.find((m) => m.id === id);
+    const matchName = match?.name || 'this person';
+    let hasWedding = false;
     try {
-      await matchService.undoInterest(id);
-      setMutualMatches((prev) => prev.filter((m) => m.id !== id));
+      const proj = await weddingService.getProject();
+      const couple: any[] = proj?.data?.coupleUserIds || [];
+      // Only warn if it's a genuine shared project (2+ users) AND the match is one of them
+      if (couple.length >= 2) {
+        hasWedding = couple.some((u: any) => (typeof u === 'object' ? String(u._id) : String(u)) === id);
+      }
+    } catch { /* ignore */ }
+    setRemoveConfirm({ matchId: id, matchName, hasWedding });
+  };
+
+  const confirmRemoveInterest = async () => {
+    if (!removeConfirm) return;
+    const { matchId } = removeConfirm;
+    setRemoveConfirm(null);
+    setRemovingId(matchId);
+    try {
+      await matchService.undoInterest(matchId);
+      setMutualMatches((prev) => prev.filter((m) => m.id !== matchId));
       dispatch(showToast({ type: 'success', message: 'Match removed successfully.' }));
       fetchMatches();
     } catch (err: any) {
@@ -983,6 +1007,39 @@ export default function MatchRecommendations() {
         recipientId={messageRecipient.id}
         onSend={handleSendMessage}
       />
+
+      {/* Remove match confirmation dialog */}
+      <Dialog open={!!removeConfirm} onClose={() => setRemoveConfirm(null)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700, color: '#d32f2f' }}>Remove Match?</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary">
+            Are you sure you want to remove <strong>{removeConfirm?.matchName}</strong> from your matches?
+            This will also delete your conversation and all messages.
+          </Typography>
+          {removeConfirm?.hasWedding && (
+            <Box sx={{ mt: 2, p: 1.5, borderRadius: 2, bgcolor: '#fff3cd', border: '1px solid #ffc107' }}>
+              <Typography variant="body2" sx={{ fontWeight: 700, color: '#856404' }}>
+                ⚠️ Shared Wedding Project
+              </Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                You and {removeConfirm.matchName} have an accepted wedding project together.
+                Removing this match will <strong>reset the shared wedding project</strong> for both of you.
+              </Typography>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setRemoveConfirm(null)}>Cancel</Button>
+          <Button
+            variant="contained"
+            color="error"
+            onClick={confirmRemoveInterest}
+            sx={{ fontWeight: 700, textTransform: 'none' }}
+          >
+            Yes, Remove
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Container>
   );
 }

@@ -6,6 +6,7 @@ import MatchInterest from '../models/MatchInterest.js';
 import Conversation from '../models/Conversation.js';
 import Message from '../models/Message.js';
 import Match from '../models/Match.js';
+import WeddingProject from '../models/WeddingProject.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import ApiError from '../utils/ApiError.js';
 import { calculateCompatibilityFromData, buildCacheKey } from '../services/compatibility.service.js';
@@ -882,7 +883,45 @@ export const undoInterest = asyncHandler(async (req, res) => {
     ],
   });
 
+  // ── Wedding project cleanup ──────────────────────────────────────────────
+  // If these two users share a wedding project (accepted invite), split it:
+  // - Remove the remover from the shared project (they keep their own new solo one)
+  // - The other user keeps the original project (solo again)
+  // - Clean up wedding_invite / wedding_accepted notifications between them
+  const sharedWeddingProject = await WeddingProject.findOne({
+    coupleUserIds: { $all: [req.user._id, otherId] },
+  });
+  if (sharedWeddingProject) {
+    // Remove the current user from the couple — other user retains the project solo
+    sharedWeddingProject.coupleUserIds = sharedWeddingProject.coupleUserIds.filter(
+      (id) => String(id) !== String(req.user._id)
+    );
+    sharedWeddingProject.pendingInvite = { inviteeId: null, status: 'declined' };
+    await sharedWeddingProject.save();
+
+    // Clean up wedding notifications between both users
+    await Notification.deleteMany({
+      $or: [
+        { userId: req.user._id, fromUserId: otherId, type: { $in: ['wedding_invite', 'wedding_accepted'] } },
+        { userId: otherId, fromUserId: req.user._id, type: { $in: ['wedding_invite', 'wedding_accepted'] } },
+      ],
+    });
+
+    // Tell the other user their wedding project was reset
+    emitToUser(otherId, 'wedding_reset', { byUserId: String(req.user._id) });
+  }
+
   // Notify the other user that the match was removed
+  const remover = await User.findById(req.user._id).select('firstName lastName name profilePic').lean();
+  const removerName = remover?.firstName || remover?.name || 'Someone';
+  await Notification.create({
+    userId: otherId,
+    type: 'match_removed',
+    fromUserId: req.user._id,
+    fromUserName: removerName,
+    fromUserProfilePic: remover?.profilePic || null,
+  });
+
   emitToUser(otherId, 'match_removed', { byUserId: String(req.user._id) });
 
   res.status(200).json({

@@ -72,6 +72,44 @@ const weddingService = {
     const response = await axiosInstance.post('/wedding/quotes/request', quoteData);
     return response.data;
   },
+
+  /**
+   * Update vendor booking status (shortlisted, requested, booked, cancelled).
+   */
+  updateVendorStatus: async (vendorId: string, status: string) => {
+    const response = await axiosInstance.patch('/wedding/vendors/status', { vendorId, status });
+    return response.data;
+  },
+
+  /**
+   * Toggle a checklist task completed/pending by index.
+   */
+  toggleTask: async (index: number) => {
+    const response = await axiosInstance.patch(`/wedding/tasks/${index}/toggle`);
+    return response.data;
+  },
+
+  /**
+   * Send a wedding planning invite to your match partner.
+   */
+  invitePartner: async (partnerId: string) => {
+    const response = await axiosInstance.post('/wedding/couple/invite', { partnerId });
+    return response.data;
+  },
+
+  acceptInvite: async (inviterId: string) => {
+    const response = await axiosInstance.post('/wedding/couple/accept', { inviterId });
+    return response.data;
+  },
+
+  getPendingInvite: async (): Promise<{ inviterId: string; inviterName: string; inviterProfilePic: string | null; projectId: string } | null> => {
+    const response = await axiosInstance.get('/wedding/couple/pending-invite');
+    return response.data?.data ?? null;
+  },
+
+  resetWedding: async (): Promise<void> => {
+    await axiosInstance.post('/wedding/couple/reset');
+  },
 };
 
 export default weddingService;

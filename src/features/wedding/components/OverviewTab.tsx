@@ -28,25 +28,32 @@ const COLORS = {
 
 const CHART_COLORS = [COLORS.primary, COLORS.secondary, COLORS.accent, '#4CAF50', '#FF9800', '#9C27B0'];
 
-const MOCK_BUDGET_DATA = [
-  { name: 'Venue', value: 250000 },
-  { name: 'Catering', value: 180000 },
-  { name: 'Photography', value: 120000 },
-  { name: 'Decor', value: 90000 },
-  { name: 'Attire', value: 160000 },
-];
-
-const MOCK_TASKS = [
-  { id: 1, title: 'Finalize Guest List', due: '2025-05-15', category: 'Logistics', status: 'pending' },
-  { id: 2, title: 'Book Photographer', due: '2025-05-20', category: 'Photography', status: 'pending' },
-  { id: 3, title: 'Order Invitations', due: '2025-06-01', category: 'Invitations', status: 'pending' },
-  { id: 4, title: 'Cake Tasting', due: '2025-06-10', category: 'Catering', status: 'pending' },
-  { id: 5, title: 'Select Florist', due: '2025-06-15', category: 'Decorations', status: 'pending' },
-];
-
-export default function OverviewTab({ data, onSwitchTab }: { data: any, onSwitchTab: (idx: number) => void }) {
+export default function OverviewTab({ data, onSwitchTab, project, budget }: { data: any, onSwitchTab: (idx: number) => void, project?: any, budget?: any }) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+
+  // Build budget chart data from real expenses grouped by category, or fall back to empty
+  const expenses: any[] = Array.isArray(project?.expenses) ? project.expenses : [];
+  const budgetChartData = expenses.length > 0
+    ? Object.entries(
+        expenses.reduce((acc: Record<string, number>, e: any) => {
+          acc[e.category] = (acc[e.category] || 0) + Number(e.amount || 0);
+          return acc;
+        }, {})
+      ).map(([name, value]) => ({ name, value }))
+    : [];
+
+  // Upcoming pending tasks from real checklist
+  const checklist: any[] = Array.isArray(project?.checklist) ? project.checklist : [];
+  const upcomingTasks = checklist
+    .filter((t: any) => !t.completed)
+    .slice(0, 5)
+    .map((t: any, i: number) => ({
+      id: String(i),
+      title: t.title,
+      due: t.dueDate ? new Date(t.dueDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'No due date',
+      category: t.assignedTo || 'General',
+    }));
 
   return (
     <Grid container spacing={4}>
@@ -74,10 +81,16 @@ export default function OverviewTab({ data, onSwitchTab }: { data: any, onSwitch
               </Stack>
 
               <Box sx={{ height: 300, width: '100%' }}>
+                {budgetChartData.length === 0 ? (
+                  <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, color: 'text.secondary' }}>
+                    <TrendingUp size={40} opacity={0.3} />
+                    <Typography variant="body2">No expenses logged yet. Add expenses in the Budget tab.</Typography>
+                  </Box>
+                ) : (
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
-                      data={MOCK_BUDGET_DATA}
+                      data={budgetChartData}
                       cx="50%"
                       cy="50%"
                       innerRadius={60}
@@ -85,7 +98,7 @@ export default function OverviewTab({ data, onSwitchTab }: { data: any, onSwitch
                       paddingAngle={5}
                       dataKey="value"
                     >
-                      {MOCK_BUDGET_DATA.map((entry, index) => (
+                      {budgetChartData.map((entry, index) => (
                         <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
                       ))}
                     </Pie>
@@ -96,6 +109,7 @@ export default function OverviewTab({ data, onSwitchTab }: { data: any, onSwitch
                     <Legend verticalAlign="bottom" height={36} />
                   </PieChart>
                 </ResponsiveContainer>
+                )}
               </Box>
 
               <Box sx={{ mt: 4, p: 3, bgcolor: COLORS.cream, borderRadius: 4, border: '1px dashed', borderColor: COLORS.secondary }}>
@@ -140,7 +154,15 @@ export default function OverviewTab({ data, onSwitchTab }: { data: any, onSwitch
               </Stack>
 
               <Stack spacing={2}>
-                {MOCK_TASKS.map((task, i) => (
+                {upcomingTasks.length === 0 ? (
+                  <Box sx={{ py: 4, textAlign: 'center', color: 'text.secondary' }}>
+                    <CheckCircle2 size={40} opacity={0.3} style={{ margin: '0 auto 8px' }} />
+                    <Typography variant="body2">All tasks done, or none added yet!</Typography>
+                    <Button size="small" onClick={() => onSwitchTab(1)} sx={{ mt: 1, color: COLORS.primary, fontWeight: 700, textTransform: 'none' }}>
+                      Go to Checklist
+                    </Button>
+                  </Box>
+                ) : upcomingTasks.map((task, i) => (
                   <MotionBox
                     key={task.id}
                     initial={{ opacity: 0, y: 10 }}

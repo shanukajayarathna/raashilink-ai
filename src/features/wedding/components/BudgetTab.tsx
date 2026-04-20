@@ -6,7 +6,7 @@ import {
   Table, TableBody, TableCell, TableContainer, 
   TableHead, TableRow, Paper, LinearProgress,
   Dialog, DialogTitle, DialogContent, DialogActions,
-  Fab, useTheme, useMediaQuery, Alert, Tooltip, Chip
+  Fab, useTheme, useMediaQuery, Alert, Tooltip, Chip, CircularProgress
 } from '@mui/material';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, 
@@ -19,6 +19,7 @@ import {
   Filter, Download
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import weddingService from '../services/weddingService';
 
 const COLORS = {
   primary: '#8B1A2E',
@@ -33,30 +34,59 @@ const COLORS = {
   warning: '#ED6C02'
 };
 
-const MOCK_BUDGET_SUMMARY = {
-  totalBudget: 800000,
-  totalSpent: 312000,
-  remaining: 488000,
-  variance: -12.5 // % under budget
-};
-
-const MOCK_BUDGET_DATA = [
-  { category: 'Venue', allocated: 250000, spent: 200000, status: 'On Track', color: COLORS.success },
-  { category: 'Catering', allocated: 150000, spent: 180000, status: 'Overspent', color: COLORS.error },
-  { category: 'Photography', allocated: 120000, spent: 60000, status: 'On Track', color: COLORS.success },
-  { category: 'Decor', allocated: 100000, spent: 40000, status: 'On Track', color: COLORS.success },
-  { category: 'Attire', allocated: 100000, spent: 20000, status: 'On Track', color: COLORS.success },
-  { category: 'Logistics', allocated: 80000, spent: 12000, status: 'On Track', color: COLORS.success },
-];
+const CATEGORY_COLORS = ['#8B1A2E','#C9A84C','#1A6B72','#4CAF50','#FF9800','#9C27B0','#2196F3','#F44336','#607D8B'];
 
 const CATEGORIES = [
   'Venue', 'Catering', 'Photography', 'Decor', 'Attire', 'Logistics', 'Beauty', 'Invitations', 'Others'
 ];
 
-export default function BudgetTab() {
+interface BudgetTabProps {
+  totalBudget?: number;
+  totalSpent?: number;
+  expenses?: any[];
+  onExpenseAdded?: () => void;
+}
+
+export default function BudgetTab({ totalBudget = 0, totalSpent = 0, expenses = [], onExpenseAdded }: BudgetTabProps) {
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
+  const [newExpense, setNewExpense] = useState({ title: '', category: CATEGORIES[0], amount: '', notes: '' });
+  const [addingExpense, setAddingExpense] = useState(false);
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+
+  // Build per-category breakdown from real expenses
+  const categoryMap: Record<string, number> = {};
+  expenses.forEach((e: any) => {
+    const cat = e.category || 'Others';
+    categoryMap[cat] = (categoryMap[cat] || 0) + Number(e.amount || 0);
+  });
+  const chartData = Object.entries(categoryMap).map(([category, spent], i) => ({
+    category,
+    spent,
+    color: CATEGORY_COLORS[i % CATEGORY_COLORS.length],
+  }));
+
+  const remaining = Math.max(0, totalBudget - totalSpent);
+  const variancePct = totalBudget > 0 ? Math.round(((totalBudget - totalSpent) / totalBudget) * 100) : 0;
+  const isOverBudget = totalSpent > totalBudget;
+
+  const handleAddExpense = async () => {
+    if (!newExpense.title.trim() || !newExpense.amount) return;
+    setAddingExpense(true);
+    try {
+      await weddingService.addExpense({
+        title: newExpense.title.trim(),
+        category: newExpense.category,
+        amount: Number(newExpense.amount),
+        notes: newExpense.notes,
+      });
+      onExpenseAdded?.();
+      setIsExpenseModalOpen(false);
+      setNewExpense({ title: '', category: CATEGORIES[0], amount: '', notes: '' });
+    } catch { /* silent */ }
+    finally { setAddingExpense(false); }
+  };
+
 
   return (
     <Box>
@@ -64,31 +94,31 @@ export default function BudgetTab() {
       <Grid container spacing={3} sx={{ mb: 6 }}>
         <SummaryCard 
           title="Total Budget" 
-          value={`LKR ${MOCK_BUDGET_SUMMARY.totalBudget.toLocaleString()}`} 
+          value={`LKR ${totalBudget.toLocaleString()}`} 
           icon={<DollarSign size={24} />} 
           color={COLORS.primary}
           delay={0.1}
         />
         <SummaryCard 
           title="Total Spent" 
-          value={`LKR ${MOCK_BUDGET_SUMMARY.totalSpent.toLocaleString()}`} 
+          value={`LKR ${totalSpent.toLocaleString()}`} 
           icon={<TrendingUp size={24} />} 
           color={COLORS.accent}
           delay={0.2}
         />
         <SummaryCard 
           title="Remaining" 
-          value={`LKR ${MOCK_BUDGET_SUMMARY.remaining.toLocaleString()}`} 
+          value={`LKR ${remaining.toLocaleString()}`} 
           icon={<TrendingDown size={24} />} 
-          color={COLORS.success}
+          color={isOverBudget ? COLORS.error : COLORS.success}
           delay={0.3}
         />
         <SummaryCard 
-          title="Budget Variance" 
-          value={`${MOCK_BUDGET_SUMMARY.variance}%`} 
-          icon={<ArrowDownRight size={24} />} 
-          color={COLORS.success}
-          subtitle="Under Budget"
+          title="Budget Used" 
+          value={`${100 - variancePct}%`} 
+          icon={isOverBudget ? <ArrowUpRight size={24} /> : <ArrowDownRight size={24} />}
+          color={isOverBudget ? COLORS.error : COLORS.success}
+          subtitle={isOverBudget ? 'Over Budget' : `${variancePct}% remaining`}
           delay={0.4}
         />
       </Grid>
@@ -98,138 +128,78 @@ export default function BudgetTab() {
         <CardContent sx={{ p: 4 }}>
           <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 4 }}>
             <Typography variant="h6" sx={{ fontWeight: 800, color: COLORS.primary, fontFamily: 'Playfair Display' }}>
-              Allocated vs Spent per Category
+              Spending by Category
             </Typography>
-            <Button 
-              variant="outlined" 
-              startIcon={<Download size={18} />}
-              sx={{ borderRadius: 3, textTransform: 'none', fontWeight: 700, color: COLORS.textPrimary, borderColor: 'divider' }}
-            >
-              Export Report
-            </Button>
           </Stack>
-          <Box sx={{ height: 400, width: '100%' }}>
+          {chartData.length === 0 ? (
+            <Box sx={{ py: 8, textAlign: 'center', color: 'text.secondary' }}>
+              <DollarSign size={40} opacity={0.3} style={{ margin: '0 auto 8px' }} />
+              <Typography variant="body2">No expenses yet. Add your first expense below.</Typography>
+            </Box>
+          ) : (
+          <Box sx={{ height: 300, width: '100%' }}>
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={MOCK_BUDGET_DATA} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+              <BarChart data={chartData} margin={{ top: 10, right: 30, left: 10, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
                 <XAxis dataKey="category" axisLine={false} tickLine={false} tick={{ fill: COLORS.textSecondary, fontSize: 12 }} />
                 <YAxis axisLine={false} tickLine={false} tick={{ fill: COLORS.textSecondary, fontSize: 12 }} />
                 <ChartTooltip 
                   cursor={{ fill: `${COLORS.cream}50` }}
                   contentStyle={{ borderRadius: 12, border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }}
+                  formatter={(v: number) => `LKR ${v.toLocaleString()}`}
                 />
-                <Legend verticalAlign="top" align="right" iconType="circle" wrapperStyle={{ paddingBottom: 20 }} />
-                <Bar dataKey="allocated" fill={COLORS.secondary} radius={[4, 4, 0, 0]} name="Allocated" />
-                <Bar dataKey="spent" fill={COLORS.primary} radius={[4, 4, 0, 0]} name="Spent" />
+                <Bar dataKey="spent" radius={[4, 4, 0, 0]} name="Spent" fill={COLORS.primary} />
               </BarChart>
             </ResponsiveContainer>
           </Box>
+          )}
         </CardContent>
       </Card>
 
-      {/* Category Breakdown Table */}
+      {/* Expense List Table */}
       <Typography variant="h6" sx={{ fontWeight: 800, color: COLORS.primary, mb: 3, fontFamily: 'Playfair Display' }}>
-        Category Breakdown
+        All Expenses
       </Typography>
+      {expenses.length === 0 ? (
+        <Box sx={{ py: 6, textAlign: 'center', color: 'text.secondary', mb: 6 }}>
+          <Receipt size={40} opacity={0.3} style={{ margin: '0 auto 8px' }} />
+          <Typography variant="body2">No expenses logged yet.</Typography>
+        </Box>
+      ) : (
       <TableContainer component={Paper} sx={{ borderRadius: 6, border: '1px solid', borderColor: 'divider', boxShadow: 'none', mb: 6, overflow: 'hidden' }}>
         <Table>
           <TableHead sx={{ bgcolor: COLORS.cream }}>
             <TableRow>
+              <TableCell sx={{ fontWeight: 800, color: COLORS.primary }}>Title</TableCell>
               <TableCell sx={{ fontWeight: 800, color: COLORS.primary }}>Category</TableCell>
-              <TableCell sx={{ fontWeight: 800, color: COLORS.primary }}>Allocated (LKR)</TableCell>
-              <TableCell sx={{ fontWeight: 800, color: COLORS.primary }}>Spent (LKR)</TableCell>
-              <TableCell sx={{ fontWeight: 800, color: COLORS.primary }}>Remaining</TableCell>
-              <TableCell sx={{ fontWeight: 800, color: COLORS.primary }}>% Used</TableCell>
-              <TableCell sx={{ fontWeight: 800, color: COLORS.primary }}>Status</TableCell>
+              <TableCell sx={{ fontWeight: 800, color: COLORS.primary }}>Amount (LKR)</TableCell>
+              <TableCell sx={{ fontWeight: 800, color: COLORS.primary }}>Paid</TableCell>
+              <TableCell sx={{ fontWeight: 800, color: COLORS.primary }}>Notes</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
-            {MOCK_BUDGET_DATA.map((row, i) => {
-              const remaining = row.allocated - row.spent;
-              const percentUsed = Math.round((row.spent / row.allocated) * 100);
-              const isOver = row.spent > row.allocated;
-
-              return (
-                <TableRow key={i} sx={{ '&:last-child td, &:last-child th': { border: 0 } }}>
-                  <TableCell sx={{ fontWeight: 700, color: COLORS.textPrimary }}>{row.category}</TableCell>
-                  <TableCell>{row.allocated.toLocaleString()}</TableCell>
-                  <TableCell sx={{ color: isOver ? COLORS.error : 'inherit', fontWeight: isOver ? 700 : 400 }}>
-                    {row.spent.toLocaleString()}
-                  </TableCell>
-                  <TableCell sx={{ color: remaining < 0 ? COLORS.error : COLORS.success, fontWeight: 700 }}>
-                    {remaining.toLocaleString()}
-                  </TableCell>
-                  <TableCell sx={{ width: 150 }}>
-                    <Stack direction="row" spacing={1} alignItems="center">
-                      <LinearProgress 
-                        variant="determinate" 
-                        value={Math.min(percentUsed, 100)} 
-                        sx={{ 
-                          flexGrow: 1, 
-                          height: 6, 
-                          borderRadius: 3, 
-                          bgcolor: `${row.color}15`,
-                          '& .MuiLinearProgress-bar': { bgcolor: row.color }
-                        }} 
-                      />
-                      <Typography variant="caption" sx={{ fontWeight: 700 }}>{percentUsed}%</Typography>
-                    </Stack>
-                  </TableCell>
-                  <TableCell>
-                    <Chip 
-                      label={row.status} 
-                      size="small" 
-                      sx={{ 
-                        fontWeight: 800, 
-                        fontSize: '0.7rem',
-                        bgcolor: `${row.color}15`,
-                        color: row.color,
-                        border: 'none'
-                      }} 
-                    />
-                  </TableCell>
-                </TableRow>
-              );
-            })}
+            {expenses.map((e: any, i: number) => (
+              <TableRow key={i} sx={{ '&:last-child td, &:last-child th': { border: 0 } }}>
+                <TableCell sx={{ fontWeight: 700 }}>{e.title}</TableCell>
+                <TableCell>
+                  <Chip label={e.category} size="small" sx={{ fontWeight: 700, bgcolor: `${COLORS.primary}10`, color: COLORS.primary, border: 'none', fontSize: '0.7rem' }} />
+                </TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>{Number(e.amount).toLocaleString()}</TableCell>
+                <TableCell>
+                  {e.paid ? <CheckCircle2 size={18} color={COLORS.success} /> : <AlertCircle size={18} color={COLORS.warning} />}
+                </TableCell>
+                <TableCell sx={{ color: 'text.secondary', fontSize: '0.8rem' }}>{e.notes || '—'}</TableCell>
+              </TableRow>
+            ))}
           </TableBody>
         </Table>
       </TableContainer>
-
-      {/* AI Budget Tips Section */}
-      <Box sx={{ mb: 10 }}>
-        <Typography variant="h6" sx={{ fontWeight: 800, color: COLORS.primary, mb: 3, fontFamily: 'Playfair Display', display: 'flex', alignItems: 'center', gap: 1.5 }}>
-          <Sparkles size={24} color={COLORS.secondary} />
-          AI Budget Recommendations
-        </Typography>
-        <Grid container spacing={3}>
-          <Grid size={{ xs: 12, md: 4 }}>
-            <TipCard 
-              title="Catering Alert" 
-              desc="You're 20% over budget on Catering. Consider reducing the number of appetizers or switching to a buffet style to save LKR 40,000."
-              type="warning"
-            />
-          </Grid>
-          <Grid size={{ xs: 12, md: 4 }}>
-            <TipCard 
-              title="Venue Savings" 
-              desc="Great job! You saved LKR 50,000 on the venue. We recommend reallocating this to your 'Photography' fund for a better package."
-              type="success"
-            />
-          </Grid>
-          <Grid size={{ xs: 12, md: 4 }}>
-            <TipCard 
-              title="Decoration Tip" 
-              desc="Local seasonal flowers can reduce your decoration costs by 15-20%. Ask your florist for 'Araliya' or 'Lotus' options."
-              type="info"
-            />
-          </Grid>
-        </Grid>
-      </Box>
+      )}
 
       {/* Floating Add Expense Button */}
       <Fab 
         color="primary" 
-        aria-label="add" 
+        aria-label="add expense" 
         onClick={() => setIsExpenseModalOpen(true)}
         sx={{ 
           position: 'fixed', 
@@ -248,34 +218,28 @@ export default function BudgetTab() {
         <DialogTitle sx={{ fontWeight: 800, fontFamily: 'Playfair Display', color: COLORS.primary }}>Add New Expense</DialogTitle>
         <DialogContent>
           <Stack spacing={3} sx={{ mt: 1 }}>
+            <TextField fullWidth label="Title" placeholder="e.g. Advance payment for flowers" value={newExpense.title} onChange={(e) => setNewExpense(x => ({ ...x, title: e.target.value }))} />
             <FormControl fullWidth>
               <InputLabel>Category</InputLabel>
-              <Select label="Category">
+              <Select label="Category" value={newExpense.category} onChange={(e) => setNewExpense(x => ({ ...x, category: e.target.value }))}>
                 {CATEGORIES.map(cat => <MenuItem key={cat} value={cat}>{cat}</MenuItem>)}
               </Select>
             </FormControl>
-            <TextField fullWidth label="Description" placeholder="e.g. Advance payment for flowers" />
-            <Grid container spacing={2}>
-              <Grid size={{ xs: 12, sm: 6 }}>
-                <TextField fullWidth label="Amount (LKR)" type="number" />
-              </Grid>
-              <Grid size={{ xs: 12, sm: 6 }}>
-                <TextField fullWidth type="date" label="Date" InputLabelProps={{ shrink: true }} />
-              </Grid>
-            </Grid>
-            <Button 
-              variant="outlined" 
-              fullWidth 
-              startIcon={<Receipt size={18} />}
-              sx={{ borderStyle: 'dashed', py: 2, borderRadius: 3, color: COLORS.textSecondary }}
-            >
-              Upload Receipt Photo
-            </Button>
+            <TextField fullWidth label="Amount (LKR)" type="number" value={newExpense.amount} onChange={(e) => setNewExpense(x => ({ ...x, amount: e.target.value }))} inputProps={{ min: 0 }} />
+            <TextField fullWidth label="Notes (optional)" multiline rows={2} value={newExpense.notes} onChange={(e) => setNewExpense(x => ({ ...x, notes: e.target.value }))} />
           </Stack>
         </DialogContent>
         <DialogActions sx={{ p: 3 }}>
-          <Button onClick={() => setIsExpenseModalOpen(false)} sx={{ color: 'text.secondary', fontWeight: 700 }}>Cancel</Button>
-          <Button variant="contained" sx={{ bgcolor: COLORS.primary, borderRadius: 3, px: 4, fontWeight: 700 }}>Add Expense</Button>
+          <Button onClick={() => setIsExpenseModalOpen(false)} disabled={addingExpense} sx={{ color: 'text.secondary', fontWeight: 700 }}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={handleAddExpense}
+            disabled={addingExpense || !newExpense.title.trim() || !newExpense.amount}
+            startIcon={addingExpense ? <CircularProgress size={14} color="inherit" /> : undefined}
+            sx={{ bgcolor: COLORS.primary, borderRadius: 3, px: 4, fontWeight: 700 }}
+          >
+            {addingExpense ? 'Adding...' : 'Add Expense'}
+          </Button>
         </DialogActions>
       </Dialog>
     </Box>
@@ -319,24 +283,4 @@ function SummaryCard({ title, value, icon, color, subtitle, delay }: any) {
   );
 }
 
-function TipCard({ title, desc, type }: any) {
-  const color = type === 'warning' ? COLORS.error : type === 'success' ? COLORS.success : COLORS.accent;
-  return (
-    <Card sx={{ borderRadius: 6, border: '1px solid', borderColor: `${color}20`, bgcolor: `${color}05`, height: '100%' }}>
-      <CardContent sx={{ p: 3 }}>
-        <Stack direction="row" spacing={1.5} alignItems="flex-start">
-          <Box sx={{ p: 1, borderRadius: 2, bgcolor: 'white', color: color, boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
-            {type === 'warning' ? <AlertCircle size={20} /> : type === 'success' ? <CheckCircle2 size={20} /> : <Sparkles size={20} />}
-          </Box>
-          <Box>
-            <Typography variant="subtitle2" sx={{ fontWeight: 800, color: color }}>{title}</Typography>
-            <Typography variant="body2" sx={{ color: COLORS.textSecondary, mt: 0.5, lineHeight: 1.6 }}>{desc}</Typography>
-          </Box>
-        </Stack>
-      </CardContent>
-    </Card>
-  );
-}
-
 const MotionBox = motion(Box);
-

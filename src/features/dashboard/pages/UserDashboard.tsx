@@ -69,6 +69,7 @@ import axiosInstance from '@/shared/config/axiosConfig';
 import DashboardSkeleton from '@/components/skeletons/DashboardSkeleton';
 import userService from '@/features/profile/services/userService';
 import matchService from '@/features/matchmaking/services/matchService';
+import weddingService from '@/features/wedding/services/weddingService';
 import { showToast } from '@/app/store/uiSlice';
 import { updateUser } from '@/features/auth/store/authSlice';
 import CoupleDashboard from '@/features/dashboard/pages/CoupleDashboard';
@@ -836,6 +837,7 @@ export default function UserDashboard() {
   const [mutualMatches, setMutualMatches] = useState<any[]>([]);
   const [mutualMatchesLoading, setMutualMatchesLoading] = useState(true);
   const [removingMatchId, setRemovingMatchId] = useState<string | null>(null);
+  const [removeConfirm, setRemoveConfirm] = useState<{ matchId: string; matchName: string; hasWedding: boolean } | null>(null);
   const [pendingSent, setPendingSent] = useState<any[]>([]);
   const [pendingReceived, setPendingReceived] = useState<any[]>([]);
   const [selectedInterestId, setSelectedInterestId] = useState<string | null>(null);
@@ -1145,6 +1147,25 @@ export default function UserDashboard() {
   }, [user]);
 
   const handleRemoveMatch = async (matchId: string) => {
+    const match = mutualMatches.find((m) => m.id === matchId);
+    const matchName = match?.name || 'this person';
+    // Check if they share an active wedding project
+    let hasWedding = false;
+    try {
+      const proj = await weddingService.getProject();
+      const couple: any[] = proj?.data?.coupleUserIds || [];
+      // Only warn if it's a genuine shared project (2+ users) AND the match is one of them
+      if (couple.length >= 2) {
+        hasWedding = couple.some((u: any) => (typeof u === 'object' ? String(u._id) : String(u)) === matchId);
+      }
+    } catch { /* ignore */ }
+    setRemoveConfirm({ matchId, matchName, hasWedding });
+  };
+
+  const confirmRemoveMatch = async () => {
+    if (!removeConfirm) return;
+    const { matchId } = removeConfirm;
+    setRemoveConfirm(null);
     setRemovingMatchId(matchId);
     try {
       await matchService.undoInterest(matchId);
@@ -1896,6 +1917,39 @@ export default function UserDashboard() {
           } catch { dispatch(showToast({ type: 'error', message: 'Failed.' })); }
         }}
       />
+
+      {/* Remove match confirmation dialog */}
+      <Dialog open={!!removeConfirm} onClose={() => setRemoveConfirm(null)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700, color: '#d32f2f' }}>Remove Match?</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary">
+            Are you sure you want to remove <strong>{removeConfirm?.matchName}</strong> from your matches?
+            This will also delete your conversation and all messages.
+          </Typography>
+          {removeConfirm?.hasWedding && (
+            <Box sx={{ mt: 2, p: 1.5, borderRadius: 2, bgcolor: '#fff3cd', border: '1px solid #ffc107' }}>
+              <Typography variant="body2" sx={{ fontWeight: 700, color: '#856404' }}>
+                ⚠️ Shared Wedding Project
+              </Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                You and {removeConfirm.matchName} have an accepted wedding project together.
+                Removing this match will <strong>reset the shared wedding project</strong> for both of you.
+              </Typography>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setRemoveConfirm(null)}>Cancel</Button>
+          <Button
+            variant="contained"
+            color="error"
+            onClick={confirmRemoveMatch}
+            sx={{ fontWeight: 700, textTransform: 'none' }}
+          >
+            Yes, Remove
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

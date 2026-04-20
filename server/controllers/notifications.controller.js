@@ -20,6 +20,7 @@ export const getNotifications = asyncHandler(async (req, res) => {
         fromUserName: n.fromUserName,
         fromUserProfilePic: n.fromUserProfilePic || null,
         conversationId: n.conversationId ? String(n.conversationId) : null,
+        metadata: n.metadata || null,
         read: n.read,
         createdAt: n.createdAt,
       })),

@@ -3,7 +3,7 @@ import {
   Box, Typography, Avatar, IconButton, Divider,
   CircularProgress, Tooltip,
 } from '@mui/material';
-import { Heart, Sparkles, CheckCheck, X, MessageCircle, HeartOff, HeartHandshake } from 'lucide-react';
+import { Heart, Sparkles, CheckCheck, X, MessageCircle, HeartOff, HeartHandshake, CalendarHeart, UserMinus } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 import type { AppNotification } from '../services/notificationService';
@@ -44,7 +44,9 @@ export default function NotificationPanel({
     onClose();
     if (n.type === 'mutual_match' || n.type === 'message_received') {
       navigate('/messages', { state: { conversationId: n.conversationId } });
-    } else if (n.type === 'interest_declined') {
+    } else if (n.type === 'wedding_invite' || n.type === 'wedding_accepted') {
+      navigate('/wedding');
+    } else if (n.type === 'interest_declined' || n.type === 'match_removed') {
       // No navigation needed — just dismiss
     } else {
       navigate(`/matches?user=${n.fromUserId}`);
@@ -170,7 +172,7 @@ export default function NotificationPanel({
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          bgcolor: n.type === 'mutual_match' ? '#f59e0b' : n.type === 'message_received' ? '#2563eb' : n.type === 'interest_accepted' ? '#16a34a' : n.type === 'interest_declined' ? '#6b7280' : '#8B1A2E',
+                          bgcolor: n.type === 'mutual_match' ? '#f59e0b' : n.type === 'message_received' ? '#2563eb' : n.type === 'interest_accepted' ? '#16a34a' : (n.type === 'interest_declined' || n.type === 'match_removed') ? '#6b7280' : (n.type === 'wedding_invite' || n.type === 'wedding_accepted') ? '#be185d' : '#8B1A2E',
                           border: '2px solid white',
                         }}>
                           {n.type === 'mutual_match'
@@ -181,6 +183,12 @@ export default function NotificationPanel({
                             ? <HeartHandshake size={10} color="white" />
                             : n.type === 'interest_declined'
                             ? <HeartOff size={10} color="white" />
+                            : n.type === 'match_removed'
+                            ? <UserMinus size={10} color="white" />
+                            : n.type === 'wedding_invite'
+                            ? <CalendarHeart size={10} color="white" />
+                            : n.type === 'wedding_accepted'
+                            ? <CalendarHeart size={10} color="white" />
                             : <Heart size={10} color="white" fill="white" />
                           }
                         </Box>
@@ -210,6 +218,21 @@ export default function NotificationPanel({
                             <>
                               <span style={{ color: '#6b7280' }}>{n.fromUserName}</span>
                               {' '}declined your interest
+                            </>
+                          ) : n.type === 'match_removed' ? (
+                            <>
+                              <span style={{ color: '#6b7280' }}>{n.fromUserName}</span>
+                              {' '}removed you from their matches
+                            </>
+                          ) : n.type === 'wedding_invite' ? (
+                            <>
+                              <span style={{ color: '#be185d' }}>{n.fromUserName}</span>
+                              {' '}invited you to plan your wedding together! 💍
+                            </>
+                          ) : n.type === 'wedding_accepted' ? (
+                            <>
+                              <span style={{ color: '#be185d' }}>{n.fromUserName}</span>
+                              {' '}accepted your wedding invite! 🎉
                             </>
                           ) : (
                             <>
@@ -254,6 +277,20 @@ export default function NotificationPanel({
                               <HeartOff size={11} />
                               <Typography variant="caption" sx={{ color: '#6b7280', fontWeight: 600 }}>
                                 Tap to dismiss
+                              </Typography>
+                            </Box>
+                          ) : (n.type === 'interest_declined' || n.type === 'match_removed') ? (
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: '#6b7280' }}>
+                              <HeartOff size={11} />
+                              <Typography variant="caption" sx={{ color: '#6b7280', fontWeight: 600 }}>
+                                Tap to dismiss
+                              </Typography>
+                            </Box>
+                          ) : (n.type === 'wedding_invite' || n.type === 'wedding_accepted') ? (
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: '#be185d' }}>
+                              <CalendarHeart size={11} />
+                              <Typography variant="caption" sx={{ color: '#be185d', fontWeight: 600 }}>
+                                {n.type === 'wedding_invite' ? 'Accept on Wedding page' : 'Go to Wedding page'}
                               </Typography>
                             </Box>
                           ) : (

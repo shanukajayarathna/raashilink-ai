@@ -1,5 +1,8 @@
 import mongoose from 'mongoose';
 import WeddingProject from '../models/WeddingProject.js';
+import Notification from '../models/Notification.js';
+import User from '../models/User.js';
+import { emitToUser } from '../lib/socket.js';
 import Vendor from '../models/Vendor.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import ApiError from '../utils/ApiError.js';
@@ -39,6 +42,7 @@ async function getOrCreateProject(userId) {
 
 export const getProject = asyncHandler(async (req, res) => {
   const project = await getOrCreateProject(req.user._id);
+  await project.populate('coupleUserIds', 'firstName lastName name profilePic');
 
   res.status(200).json({
     success: true,
@@ -173,6 +177,260 @@ export const requestQuote = asyncHandler(async (req, res) => {
   });
 });
 
+export const updateVendorStatus = asyncHandler(async (req, res) => {
+  const { vendorId, status } = req.body ?? {};
+  ensureObjectId(vendorId, 'vendorId');
+  const allowedStatuses = ['shortlisted', 'requested', 'booked', 'cancelled'];
+  if (!allowedStatuses.includes(status)) {
+    throw new ApiError(400, `Status must be one of: ${allowedStatuses.join(', ')}`);
+  }
+
+  const project = await getOrCreateProject(req.user._id);
+  const entry = project.vendors.find((v) => String(v.vendorId) === String(vendorId));
+  if (!entry) {
+    throw new ApiError(404, 'Vendor not found in project');
+  }
+  entry.status = status;
+  await project.save();
+
+  res.status(200).json({ success: true, data: { vendorId, status } });
+});
+
+export const toggleTask = asyncHandler(async (req, res) => {
+  const { index } = req.params;
+  const idx = Number(index);
+  const project = await getOrCreateProject(req.user._id);
+
+  if (isNaN(idx) || idx < 0 || idx >= project.checklist.length) {
+    throw new ApiError(400, 'Invalid task index');
+  }
+
+  project.checklist[idx].completed = !project.checklist[idx].completed;
+  await project.save();
+
+  res.status(200).json({ success: true, data: project.checklist[idx] });
+});
+
+export const invitePartner = asyncHandler(async (req, res) => {
+  const { partnerId } = req.body ?? {};
+  if (!partnerId) throw new ApiError(400, 'partnerId is required');
+  ensureObjectId(partnerId, 'partnerId');
+
+  if (String(partnerId) === String(req.user._id)) {
+    throw new ApiError(400, 'Cannot invite yourself');
+  }
+
+  const project = await getOrCreateProject(req.user._id);
+
+  // Already linked
+  if (project.coupleUserIds.some((id) => String(id) === String(partnerId))) {
+    return res.status(200).json({ success: true, message: 'Partner already linked', data: project });
+  }
+
+  project.pendingInvite = { inviteeId: partnerId, status: 'pending' };
+  await project.save();
+
+  // Send notification to partner
+  const inviter = await User.findById(req.user._id).select('firstName lastName name profilePic').lean();
+  const inviterName = inviter?.firstName || inviter?.name || 'Someone';
+  const notif = await Notification.create({
+    userId: partnerId,
+    type: 'wedding_invite',
+    fromUserId: req.user._id,
+    fromUserName: inviterName,
+    fromUserProfilePic: inviter?.profilePic || null,
+    metadata: { inviterId: String(req.user._id) },
+  });
+  emitToUser(partnerId, 'notification', {
+    id: String(notif._id),
+    type: 'wedding_invite',
+    fromUserId: String(req.user._id),
+    fromUserName: inviterName,
+    fromUserProfilePic: inviter?.profilePic || null,
+    metadata: { inviterId: String(req.user._id) },
+    read: false,
+    createdAt: notif.createdAt,
+  });
+
+  res.status(200).json({
+    success: true,
+    message: 'Invitation sent',
+    data: { projectId: String(project._id), inviteeId: partnerId },
+  });
+});
+
+export const acceptInvite = asyncHandler(async (req, res) => {
+  const { inviterId } = req.body ?? {};
+  if (!inviterId) throw new ApiError(400, 'inviterId is required');
+  ensureObjectId(inviterId, 'inviterId');
+
+  // Find the inviter's project that has a pending invite for this user
+  const inviterProject = await WeddingProject.findOne({
+    coupleUserIds: inviterId,
+    'pendingInvite.inviteeId': req.user._id,
+    'pendingInvite.status': 'pending',
+  });
+
+  if (!inviterProject) {
+    throw new ApiError(404, 'No pending invitation found from this user');
+  }
+
+  // Link both users into the inviter's project
+  if (!inviterProject.coupleUserIds.some((id) => String(id) === String(req.user._id))) {
+    inviterProject.coupleUserIds.push(req.user._id);
+  }
+  inviterProject.pendingInvite.status = 'accepted';
+  await inviterProject.save();
+
+  // Remove or reassign the acceptor's separate solo project if it exists
+  await WeddingProject.deleteMany({
+    coupleUserIds: req.user._id,
+    _id: { $ne: inviterProject._id },
+  });
+
+  // Notify the inviter that their invite was accepted
+  const acceptor = await User.findById(req.user._id).select('firstName lastName name profilePic').lean();
+  const acceptorName = acceptor?.firstName || acceptor?.name || 'Your match';
+
+  const notif = await Notification.create({
+    userId: inviterId,
+    type: 'wedding_accepted',
+    fromUserId: req.user._id,
+    fromUserName: acceptorName,
+    fromUserProfilePic: acceptor?.profilePic || null,
+    metadata: { acceptorId: String(req.user._id) },
+  });
+  emitToUser(inviterId, 'notification', {
+    id: String(notif._id),
+    type: 'wedding_accepted',
+    fromUserId: String(req.user._id),
+    fromUserName: acceptorName,
+    fromUserProfilePic: acceptor?.profilePic || null,
+    metadata: { acceptorId: String(req.user._id) },
+    read: false,
+    createdAt: notif.createdAt,
+  });
+
+  res.status(200).json({
+    success: true,
+    message: 'Invitation accepted — wedding project shared!',
+    data: inviterProject,
+  });
+});
+
+// GET /wedding/couple/pending-invite — check if current user has a pending invite from anyone
+export const getPendingInvite = asyncHandler(async (req, res) => {
+  const project = await WeddingProject.findOne({
+    'pendingInvite.inviteeId': req.user._id,
+    'pendingInvite.status': 'pending',
+  }).populate('coupleUserIds', 'firstName lastName name profilePic');
+
+  if (!project) {
+    return res.status(200).json({ success: true, data: null });
+  }
+
+  const inviter = project.coupleUserIds.find(
+    (u) => u && typeof u === 'object' && String(u._id) !== String(req.user._id)
+  ) || project.coupleUserIds[0];
+
+  res.status(200).json({
+    success: true,
+    data: {
+      inviterId: String(inviter?._id || project.coupleUserIds[0]),
+      inviterName: inviter?.firstName || inviter?.name || 'Your match',
+      inviterProfilePic: inviter?.profilePic || null,
+      projectId: String(project._id),
+    },
+  });
+});
+
+// POST /wedding/couple/reset
+// Handles 3 cases:
+//   1. Inviter cancels a pending outgoing invite
+//   2. Either partner dissolves a coupled project
+//   3. Invitee formally declines an incoming invite
+export const resetWedding = asyncHandler(async (req, res) => {
+  // --- Case 3: current user is the invitee wanting to decline ---
+  const inviteeProject = await WeddingProject.findOne({
+    'pendingInvite.inviteeId': req.user._id,
+    'pendingInvite.status': 'pending',
+  });
+  if (inviteeProject) {
+    const inviterId = inviteeProject.coupleUserIds.find(
+      (id) => String(id) !== String(req.user._id)
+    ) || inviteeProject.coupleUserIds[0];
+    inviteeProject.pendingInvite.status = 'declined';
+    await inviteeProject.save();
+
+    await Notification.deleteMany({
+      $or: [
+        { userId: req.user._id, fromUserId: inviterId, type: 'wedding_invite' },
+        { userId: inviterId, fromUserId: req.user._id, type: { $in: ['wedding_invite', 'wedding_accepted'] } },
+      ],
+    });
+    if (inviterId) {
+      emitToUser(inviterId, 'wedding_reset', { message: 'Your wedding invitation was declined' });
+    }
+    return res.status(200).json({ success: true, message: 'Invitation declined' });
+  }
+
+  // --- Cases 1 & 2: current user owns/is in a project ---
+  const project = await WeddingProject.findOne({ coupleUserIds: req.user._id });
+  if (!project) {
+    return res.status(200).json({ success: true, message: 'No wedding project to reset' });
+  }
+
+  const isCoupled = project.coupleUserIds.length >= 2;
+  const hasPendingInvite = project.pendingInvite?.status === 'pending';
+
+  const partnerId = isCoupled
+    ? project.coupleUserIds.find((id) => String(id) !== String(req.user._id))
+    : hasPendingInvite
+    ? project.pendingInvite.inviteeId
+    : null;
+
+  if (isCoupled) {
+    // Dissolve couple: remove current user, partner keeps the project solo
+    project.coupleUserIds = project.coupleUserIds.filter(
+      (id) => String(id) !== String(req.user._id)
+    );
+    project.pendingInvite = { inviteeId: null, status: 'declined' };
+    await project.save();
+
+    // Create a fresh solo project for the current user
+    await WeddingProject.create({
+      coupleUserIds: [req.user._id],
+      weddingDate: new Date(Date.now() + 1000 * 60 * 60 * 24 * 180),
+      totalBudget: 0,
+      expenses: [],
+      checklist: [],
+      vendors: [],
+    });
+  } else {
+    // Inviter cancels pending invite
+    project.pendingInvite = { inviteeId: null, status: 'declined' };
+    await project.save();
+  }
+
+  // Clean up wedding notifications and notify partner
+  if (partnerId) {
+    await Notification.deleteMany({
+      $or: [
+        { userId: req.user._id, fromUserId: partnerId, type: { $in: ['wedding_invite', 'wedding_accepted'] } },
+        { userId: partnerId, fromUserId: req.user._id, type: { $in: ['wedding_invite', 'wedding_accepted'] } },
+      ],
+    });
+    const resetter = await User.findById(req.user._id).select('firstName lastName name').lean();
+    const resetterName = resetter?.firstName || resetter?.name || 'Your match';
+    emitToUser(partnerId, 'wedding_reset', {
+      resetterName,
+      message: `${resetterName} has cancelled the wedding invite`,
+    });
+  }
+
+  res.status(200).json({ success: true, message: 'Wedding project reset successfully' });
+});
+
 export default {
   getProject,
   updateProject,
@@ -181,4 +439,11 @@ export default {
   getBudget,
   getWeddingVendors,
   requestQuote,
+  updateVendorStatus,
+  toggleTask,
+  invitePartner,
+  acceptInvite,
+  getPendingInvite,
+  resetWedding,
 };
+

@@ -5,7 +5,7 @@ import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, MenuItem, Select, FormControl, InputLabel,
   useTheme, useMediaQuery, Tabs, Tab, Badge,
-  Tooltip, Grid
+  Tooltip, Grid, CircularProgress
 } from '@mui/material';
 import { 
   Plus, Sparkles, Filter, MoreVertical, 
@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
+import weddingService from '../services/weddingService';
 
 const COLORS = {
   primary: '#8B1A2E',
@@ -33,20 +34,48 @@ const CATEGORIES = [
   'Attire', 'Invitations', 'Beauty', 'Logistics'
 ];
 
-const INITIAL_TASKS = [
-  { id: '1', title: 'Book Galle Face Hotel', category: 'Venue & Catering', assignedTo: 'Shanuka', due: '2025-05-15', status: 'completed' },
-  { id: '2', title: 'Finalize Menu with Chef', category: 'Venue & Catering', assignedTo: 'Kavindi', due: '2025-06-20', status: 'pending' },
-  { id: '3', title: 'Hire Wedding Photographer', category: 'Photography', assignedTo: 'Shanuka', due: '2025-05-30', status: 'completed' },
-  { id: '4', title: 'Engagement Shoot', category: 'Photography', assignedTo: 'Both', due: '2025-07-10', status: 'pending' },
-  { id: '5', title: 'Order Saree & Suit', category: 'Attire', assignedTo: 'Kavindi', due: '2025-06-01', status: 'pending' },
-  { id: '6', title: 'Send Save the Dates', category: 'Invitations', assignedTo: 'Both', due: '2025-04-15', status: 'overdue' },
-];
+interface Task {
+  id: string;
+  title: string;
+  category: string;
+  assignedTo: string;
+  due: string;
+  status: 'completed' | 'pending' | 'overdue';
+  apiIndex: number;
+}
 
-export default function ChecklistTab() {
-  const [tasks, setTasks] = useState(INITIAL_TASKS);
+function buildTasks(checklist: any[]): Task[] {
+  const now = new Date();
+  return checklist.map((item: any, idx: number) => {
+    let status: Task['status'] = item.completed ? 'completed' : 'pending';
+    if (!item.completed && item.dueDate && new Date(item.dueDate) < now) {
+      status = 'overdue';
+    }
+    return {
+      id: `task-${idx}`,
+      title: item.title,
+      category: item.assignedTo ? 'Logistics' : 'Logistics',
+      assignedTo: item.assignedTo || 'Both',
+      due: item.dueDate ? new Date(item.dueDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—',
+      status,
+      apiIndex: idx,
+    };
+  });
+}
+
+export default function ChecklistTab({ checklist: initialChecklist, onChecklistChange }: { checklist?: any[], onChecklistChange?: (updated: any[]) => void }) {
+  const [tasks, setTasks] = useState<Task[]>(() => buildTasks(initialChecklist || []));
   const [filter, setFilter] = useState('All');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isAISuggesting, setIsAISuggesting] = useState(false);
+  const [togglingIdx, setTogglingIdx] = useState<number | null>(null);
+  const [newTask, setNewTask] = useState({ title: '', category: CATEGORIES[0], assignedTo: 'Both', due: '' });
+  const [addingTask, setAddingTask] = useState(false);
+
+  // Sync when parent passes fresh checklist
+  React.useEffect(() => {
+    setTasks(buildTasks(initialChecklist || []));
+  }, [initialChecklist]);
 
   const filteredTasks = tasks.filter(task => {
     if (filter === 'All') return true;
@@ -56,12 +85,20 @@ export default function ChecklistTab() {
     return true;
   });
 
-  const handleToggleTask = (id: string) => {
-    setTasks(prev => prev.map(task => 
-      task.id === id 
-        ? { ...task, status: task.status === 'completed' ? 'pending' : 'completed' } 
-        : task
-    ));
+  const handleToggleTask = async (task: Task) => {
+    setTogglingIdx(task.apiIndex);
+    try {
+      await weddingService.toggleTask(task.apiIndex);
+      setTasks(prev => prev.map(t =>
+        t.apiIndex === task.apiIndex
+          ? { ...t, status: t.status === 'completed' ? 'pending' : 'completed' }
+          : t
+      ));
+    } catch {
+      // silently fail — optimistic update not applied
+    } finally {
+      setTogglingIdx(null);
+    }
   };
 
   const handleDragEnd = (result: any) => {
@@ -72,19 +109,49 @@ export default function ChecklistTab() {
     setTasks(items);
   };
 
+  const handleAddTask = async () => {
+    if (!newTask.title.trim()) return;
+    setAddingTask(true);
+    try {
+      await weddingService.addTask({
+        title: newTask.title.trim(),
+        assignedTo: newTask.assignedTo,
+        dueDate: newTask.due || undefined,
+      });
+      // Reload project to get fresh checklist with correct indexes
+      const projectRes = await weddingService.getProject();
+      const fresh = buildTasks(projectRes?.data?.checklist || []);
+      setTasks(fresh);
+      onChecklistChange?.(projectRes?.data?.checklist || []);
+      setIsModalOpen(false);
+      setNewTask({ title: '', category: CATEGORIES[0], assignedTo: 'Both', due: '' });
+    } catch {
+      // silent
+    } finally {
+      setAddingTask(false);
+    }
+  };
+
   const handleAISuggest = async () => {
     setIsAISuggesting(true);
-    // Simulating API call to /api/v1/wedding/ai-checklist
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    const aiTasks = [
-      { id: Date.now().toString(), title: 'Book Traditional Dancers', category: 'Logistics', assignedTo: 'Both', due: '2025-08-15', status: 'pending' },
-      { id: (Date.now() + 1).toString(), title: 'Finalize Poruwa Decor', category: 'Decorations', assignedTo: 'Kavindi', due: '2025-09-01', status: 'pending' },
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    const aiSuggestions = [
+      { title: 'Book Traditional Dancers', assignedTo: 'Both', dueDate: undefined },
+      { title: 'Finalize Poruwa Decor', assignedTo: 'Partner', dueDate: undefined },
+      { title: 'Confirm Mehendi Artist', assignedTo: 'You', dueDate: undefined },
     ];
-    setTasks(prev => [...prev, ...aiTasks]);
+    try {
+      for (const s of aiSuggestions) {
+        await weddingService.addTask(s);
+      }
+      const projectRes = await weddingService.getProject();
+      setTasks(buildTasks(projectRes?.data?.checklist || []));
+      onChecklistChange?.(projectRes?.data?.checklist || []);
+    } catch { /* silent */ }
     setIsAISuggesting(false);
   };
 
-  const progress = Math.round((tasks.filter(t => t.status === 'completed').length / tasks.length) * 100);
+  const progress = tasks.length > 0 ? Math.round((tasks.filter(t => t.status === 'completed').length / tasks.length) * 100) : 0;
 
   return (
     <Box>
@@ -99,7 +166,7 @@ export default function ChecklistTab() {
             <Stack direction="row" spacing={2}>
               <Button 
                 variant="contained" 
-                startIcon={isAISuggesting ? <Sparkles size={18} className="animate-pulse" /> : <Sparkles size={18} />}
+                startIcon={isAISuggesting ? <Sparkles size={18} /> : <Sparkles size={18} />}
                 onClick={handleAISuggest}
                 disabled={isAISuggesting}
                 sx={{ 
@@ -147,7 +214,7 @@ export default function ChecklistTab() {
           onChange={(_, v) => setFilter(v)}
           sx={{ 
             bgcolor: 'white', 
-            borderRadius: 4, 
+            borderRadius: 4,
             p: 0.5, 
             border: '1px solid', 
             borderColor: 'divider',
@@ -176,7 +243,13 @@ export default function ChecklistTab() {
         />
       </Stack>
 
-      {/* Task List with DnD */}
+      {tasks.length === 0 ? (
+        <Box sx={{ py: 8, textAlign: 'center', color: 'text.secondary' }}>
+          <CheckCircle2 size={48} opacity={0.3} style={{ margin: '0 auto 12px' }} />
+          <Typography variant="body1" fontWeight={600}>No tasks yet</Typography>
+          <Typography variant="body2">Add your first task or use AI Suggest to get started.</Typography>
+        </Box>
+      ) : (
       <DragDropContext onDragEnd={handleDragEnd}>
         <Droppable droppableId="checklist">
           {(provided) => (
@@ -184,7 +257,6 @@ export default function ChecklistTab() {
               {CATEGORIES.map(category => {
                 const categoryTasks = filteredTasks.filter(t => t.category === category);
                 if (categoryTasks.length === 0) return null;
-
                 return (
                   <Box key={category} sx={{ mb: 2 }}>
                     <Typography variant="subtitle2" sx={{ fontWeight: 800, color: COLORS.primary, mb: 2, px: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -213,11 +285,15 @@ export default function ChecklistTab() {
                                 <Box {...provided.dragHandleProps} sx={{ color: 'text.disabled', cursor: 'grab' }}>
                                   <GripVertical size={20} />
                                 </Box>
-                                <Checkbox 
-                                  checked={task.status === 'completed'} 
-                                  onChange={() => handleToggleTask(task.id)}
-                                  sx={{ color: COLORS.primary, '&.Mui-checked': { color: COLORS.success } }}
-                                />
+                                {togglingIdx === task.apiIndex ? (
+                                  <CircularProgress size={20} sx={{ color: COLORS.primary }} />
+                                ) : (
+                                  <Checkbox 
+                                    checked={task.status === 'completed'} 
+                                    onChange={() => handleToggleTask(task)}
+                                    sx={{ color: COLORS.primary, '&.Mui-checked': { color: COLORS.success } }}
+                                  />
+                                )}
                                 <Box sx={{ flexGrow: 1 }}>
                                   <Typography 
                                     variant="body1" 
@@ -250,9 +326,6 @@ export default function ChecklistTab() {
                                     border: 'none'
                                   }} 
                                 />
-                                <IconButton size="small">
-                                  <MoreVertical size={18} />
-                                </IconButton>
                               </CardContent>
                             </MotionCard>
                           )}
@@ -262,23 +335,57 @@ export default function ChecklistTab() {
                   </Box>
                 );
               })}
+              {/* Uncategorized / all tasks if no category matches */}
+              {filteredTasks.filter(t => !CATEGORIES.includes(t.category)).map((task, index) => (
+                <Draggable key={task.id} draggableId={task.id} index={index}>
+                  {(provided, snapshot) => (
+                    <MotionCard
+                      ref={provided.innerRef}
+                      {...provided.draggableProps}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      sx={{ borderRadius: 4, border: '1px solid', borderColor: snapshot.isDragging ? COLORS.secondary : 'divider', bgcolor: task.status === 'completed' ? `${COLORS.cream}50` : 'white' }}
+                    >
+                      <CardContent sx={{ p: '12px 16px !important', display: 'flex', alignItems: 'center', gap: 2 }}>
+                        <Box {...provided.dragHandleProps} sx={{ color: 'text.disabled', cursor: 'grab' }}><GripVertical size={20} /></Box>
+                        {togglingIdx === task.apiIndex ? (
+                          <CircularProgress size={20} sx={{ color: COLORS.primary }} />
+                        ) : (
+                          <Checkbox checked={task.status === 'completed'} onChange={() => handleToggleTask(task)} sx={{ color: COLORS.primary, '&.Mui-checked': { color: COLORS.success } }} />
+                        )}
+                        <Box sx={{ flexGrow: 1 }}>
+                          <Typography variant="body1" sx={{ fontWeight: 600, color: task.status === 'completed' ? 'text.disabled' : 'text.primary', textDecoration: task.status === 'completed' ? 'line-through' : 'none' }}>
+                            {task.title}
+                          </Typography>
+                          <Stack direction="row" spacing={2} alignItems="center" sx={{ mt: 0.5 }}>
+                            <Typography variant="caption" sx={{ color: 'text.secondary', display: 'flex', alignItems: 'center', gap: 0.5 }}><User size={12} /> {task.assignedTo}</Typography>
+                            <Typography variant="caption" sx={{ color: task.status === 'overdue' ? COLORS.error : 'text.secondary', display: 'flex', alignItems: 'center', gap: 0.5 }}><Calendar size={12} /> {task.due}</Typography>
+                          </Stack>
+                        </Box>
+                        <Chip label={task.status.toUpperCase()} size="small" sx={{ fontWeight: 800, fontSize: '0.65rem', bgcolor: task.status === 'completed' ? `${COLORS.success}15` : `${COLORS.warning}15`, color: task.status === 'completed' ? COLORS.success : COLORS.warning, border: 'none' }} />
+                      </CardContent>
+                    </MotionCard>
+                  )}
+                </Draggable>
+              ))}
               {provided.placeholder}
             </Stack>
           )}
         </Droppable>
       </DragDropContext>
+      )}
 
       {/* Add Task Modal */}
       <Dialog open={isModalOpen} onClose={() => setIsModalOpen(false)} fullWidth maxWidth="sm" PaperProps={{ sx: { borderRadius: 6 } }}>
         <DialogTitle sx={{ fontWeight: 800, fontFamily: 'Playfair Display', color: COLORS.primary }}>Add New Task</DialogTitle>
         <DialogContent>
           <Stack spacing={3} sx={{ mt: 1 }}>
-            <TextField fullWidth label="Task Name" placeholder="e.g. Book Florist" />
+            <TextField fullWidth label="Task Name" placeholder="e.g. Book Florist" value={newTask.title} onChange={(e) => setNewTask(t => ({ ...t, title: e.target.value }))} />
             <Grid container spacing={2}>
               <Grid size={{ xs: 12, sm: 6 }}>
                 <FormControl fullWidth>
                   <InputLabel>Category</InputLabel>
-                  <Select label="Category">
+                  <Select label="Category" value={newTask.category} onChange={(e) => setNewTask(t => ({ ...t, category: e.target.value }))}>
                     {CATEGORIES.map(cat => <MenuItem key={cat} value={cat}>{cat}</MenuItem>)}
                   </Select>
                 </FormControl>
@@ -286,20 +393,28 @@ export default function ChecklistTab() {
               <Grid size={{ xs: 12, sm: 6 }}>
                 <FormControl fullWidth>
                   <InputLabel>Assigned To</InputLabel>
-                  <Select label="Assigned To">
-                    <MenuItem value="Shanuka">Shanuka</MenuItem>
-                    <MenuItem value="Kavindi">Kavindi</MenuItem>
+                  <Select label="Assigned To" value={newTask.assignedTo} onChange={(e) => setNewTask(t => ({ ...t, assignedTo: e.target.value }))}>
+                    <MenuItem value="You">You</MenuItem>
+                    <MenuItem value="Partner">Partner</MenuItem>
                     <MenuItem value="Both">Both</MenuItem>
                   </Select>
                 </FormControl>
               </Grid>
             </Grid>
-            <TextField fullWidth type="date" label="Due Date" InputLabelProps={{ shrink: true }} />
+            <TextField fullWidth type="date" label="Due Date" InputLabelProps={{ shrink: true }} value={newTask.due} onChange={(e) => setNewTask(t => ({ ...t, due: e.target.value }))} />
           </Stack>
         </DialogContent>
         <DialogActions sx={{ p: 3 }}>
-          <Button onClick={() => setIsModalOpen(false)} sx={{ color: 'text.secondary', fontWeight: 700 }}>Cancel</Button>
-          <Button variant="contained" sx={{ bgcolor: COLORS.primary, borderRadius: 3, px: 4, fontWeight: 700 }}>Add Task</Button>
+          <Button onClick={() => setIsModalOpen(false)} disabled={addingTask} sx={{ color: 'text.secondary', fontWeight: 700 }}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={handleAddTask}
+            disabled={addingTask || !newTask.title.trim()}
+            startIcon={addingTask ? <CircularProgress size={14} color="inherit" /> : undefined}
+            sx={{ bgcolor: COLORS.primary, borderRadius: 3, px: 4, fontWeight: 700 }}
+          >
+            {addingTask ? 'Adding...' : 'Add Task'}
+          </Button>
         </DialogActions>
       </Dialog>
     </Box>
@@ -307,4 +422,5 @@ export default function ChecklistTab() {
 }
 
 const MotionCard = motion(Card);
+
 

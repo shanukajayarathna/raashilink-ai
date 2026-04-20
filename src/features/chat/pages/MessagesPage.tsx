@@ -4,14 +4,16 @@ import {
   List, ListItem, ListItemButton, ListItemAvatar, ListItemText,
   Divider, CircularProgress, useTheme, useMediaQuery,
   Dialog, DialogTitle, DialogContent, DialogActions, Button, Chip, Tooltip,
+  Snackbar, Alert,
 } from '@mui/material';
-import { Send, ArrowLeft, MessageCircle, Trash2, PlusCircle } from 'lucide-react';
+import { Send, ArrowLeft, MessageCircle, Trash2, PlusCircle, Heart } from 'lucide-react';
 import { useSelector } from 'react-redux';
 import { RootState } from '@/app/store/store';
 import api from '@/shared/config/axiosConfig';
 import { markSentPreview } from '@/shared/lib/sentMsgTracker';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useRealtimeUpdates } from '@/shared/hooks/useRealtimeUpdates';
+import weddingService from '@/features/wedding/services/weddingService';
 
 interface Conversation {
   id: string;
@@ -42,6 +44,7 @@ export default function MessagesPage() {
   const currentUser = useSelector((state: RootState) => state.auth.user);
   const currentUserId = (currentUser as any)?._id || (currentUser as any)?.id || '';
   const location = useLocation();
+  const navigate = useNavigate();
   const deepLinkConvId = (location.state as any)?.conversationId as string | undefined;
   const deepLinkUserId = (location.state as any)?.openUserId as string | undefined;
   const deepLinkStartConv = Boolean((location.state as any)?.startConversation);
@@ -65,6 +68,9 @@ export default function MessagesPage() {
   const prevMsgIdsRef = useRef<Set<string>>(new Set());
   const [deleteTarget, setDeleteTarget] = useState<Conversation | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [weddingInviteOpen, setWeddingInviteOpen] = useState(false);
+  const [sendingInvite, setSendingInvite] = useState(false);
+  const [inviteSnack, setInviteSnack] = useState<{ open: boolean; msg: string; severity: 'success' | 'error' }>({ open: false, msg: '', severity: 'success' });
 
   /** Find an existing conversation by partner userId, or call the server to create one */
   const getOrOpenConversation = useCallback(async (userId: string): Promise<Conversation | null> => {
@@ -424,6 +430,16 @@ export default function MessagesPage() {
           </Typography>
           <Typography variant="caption" color="text.secondary">Mutual match</Typography>
         </Box>
+        <Tooltip title="Plan Wedding Together">
+          <IconButton
+            size="small"
+            onClick={() => setWeddingInviteOpen(true)}
+            sx={{ color: '#8B1A2E', mr: 0.5 }}
+            aria-label="Plan Wedding Together"
+          >
+            <Heart size={18} />
+          </IconButton>
+        </Tooltip>
         <IconButton
           size="small"
           onClick={() => setDeleteTarget(selectedConv)}
@@ -559,6 +575,43 @@ export default function MessagesPage() {
         )}
       </Box>
 
+      {/* Wedding Invite Dialog */}
+      <Dialog open={weddingInviteOpen} onClose={() => !sendingInvite && setWeddingInviteOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Heart size={20} color="#8B1A2E" />
+          Plan Wedding Together
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary">
+            Send <strong>{selectedConv?.title}</strong> an invitation to start planning your wedding together on RaashiLink. You'll both share a wedding dashboard, checklist, budget, and vendor list.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setWeddingInviteOpen(false)} disabled={sendingInvite}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={async () => {
+              if (!selectedConv) return;
+              setSendingInvite(true);
+              try {
+                await weddingService.invitePartner(selectedConv.otherUserId);
+                setInviteSnack({ open: true, msg: `Invitation sent to ${selectedConv.title}! They need to accept to link your wedding project.`, severity: 'success' });
+                setWeddingInviteOpen(false);
+              } catch {
+                setInviteSnack({ open: true, msg: 'Failed to send invitation. Please try again.', severity: 'error' });
+              } finally {
+                setSendingInvite(false);
+              }
+            }}
+            disabled={sendingInvite}
+            startIcon={sendingInvite ? <CircularProgress size={14} color="inherit" /> : <Heart size={14} />}
+            sx={{ bgcolor: '#8B1A2E', '&:hover': { bgcolor: '#6B1422' } }}
+          >
+            {sendingInvite ? 'Sending…' : 'Send Invite'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       {/* Delete confirmation dialog */}
       <Dialog open={!!deleteTarget} onClose={() => !deleting && setDeleteTarget(null)} maxWidth="xs" fullWidth>
         <DialogTitle sx={{ fontWeight: 700 }}>Delete conversation?</DialogTitle>
@@ -580,6 +633,17 @@ export default function MessagesPage() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <Snackbar
+        open={inviteSnack.open}
+        autoHideDuration={6000}
+        onClose={() => setInviteSnack((s) => ({ ...s, open: false }))}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert severity={inviteSnack.severity} onClose={() => setInviteSnack((s) => ({ ...s, open: false }))} sx={{ width: '100%' }}>
+          {inviteSnack.msg}
+        </Alert>
+      </Snackbar>
     </>
   );
 }

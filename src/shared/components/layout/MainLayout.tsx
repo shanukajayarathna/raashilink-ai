@@ -14,7 +14,7 @@ import { cn } from '@/shared/lib/utils';
 import FloatingRaashiBot from '@/features/chat/components/FloatingRaashiBot';
 import NotificationPanel from '@/features/notifications/components/NotificationPanel';
 import notificationService, { type AppNotification } from '@/features/notifications/services/notificationService';
-import { playInterestSound, playMatchSound, playMessageSound } from '@/features/notifications/utils/sounds';;
+import { playInterestSound, playMatchSound, playMessageSound, playWeddingInviteSound } from '@/features/notifications/utils/sounds';;
 import api from '@/shared/config/axiosConfig';
 import { connectSocket } from '@/shared/hooks/useRealtimeUpdates';
 import { consumeSentPreview } from '@/shared/lib/sentMsgTracker';
@@ -41,6 +41,8 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
   const convSeeded = useRef(false);
   const clientMsgCountRef = useRef(0);
   const [msgNotif, setMsgNotif] = useState<{ name: string; content: string; conversationId?: string } | null>(null);
+  const [eventNotif, setEventNotif] = useState<{ icon: string; title: string; body: string; path?: string } | null>(null);
+  const eventNotifTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const notifTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
@@ -98,12 +100,55 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
     socket.on('mutual_match', onMatchEvent);
     socket.on('interest_accepted', onMatchEvent);
     socket.on('interest_declined', onMatchEvent);
+    socket.on('match_removed', onMatchEvent);
+
+    // Real-time server-pushed notifications (e.g. wedding invites)
+    const onNotification = (payload: AppNotification) => {
+      setNotifications((prev) => {
+        if (prev.some((n) => n.id === payload.id)) return prev;
+        return [payload, ...prev];
+      });
+      setUnreadCount((c) => c + 1);
+      if (payload.type === 'wedding_invite') {
+        playWeddingInviteSound();
+        showEventNotifRef.current('💍', `${payload.fromUserName} invited you!`, 'Plan your wedding together — tap to accept.', '/wedding');
+      } else if (payload.type === 'wedding_accepted') {
+        playWeddingInviteSound();
+        showEventNotifRef.current('🎉', `${payload.fromUserName} accepted your invite!`, 'Your wedding project is now shared. Time to start planning!', '/wedding');
+        // Trigger dashboard refresh if the inviter is currently on the wedding page
+        window.dispatchEvent(new CustomEvent('wedding:partnerAccepted'));
+      } else if (payload.type === 'mutual_match') {
+        playMatchSound();
+      } else {
+        playInterestSound();
+      }
+    };
+    socket.on('notification', onNotification);
+
+    // Listen for acceptee-side wedding accept (dispatched from WeddingDashboard)
+    const onWeddingAcceptedSelf = (e: Event) => {
+      const { inviterName } = (e as CustomEvent).detail ?? {};
+      playWeddingInviteSound();
+      showEventNotifRef.current('🎉', 'Wedding invite accepted!', `You and ${inviterName || 'your partner'} are now planning together!`, '/wedding');
+    };
+    window.addEventListener('wedding:accepted', onWeddingAcceptedSelf);
+
+    // When the other user removes the match, their wedding project gets reset
+    const onWeddingReset = () => {
+      showEventNotifRef.current('💔', 'Wedding project reset', 'Your match removed you — your wedding project has been reset.', '/wedding');
+      window.dispatchEvent(new CustomEvent('wedding:reset'));
+    };
+    socket.on('wedding_reset', onWeddingReset);
 
     return () => {
       socket.off('interest_received', onMatchEvent);
       socket.off('mutual_match', onMatchEvent);
       socket.off('interest_accepted', onMatchEvent);
       socket.off('interest_declined', onMatchEvent);
+      socket.off('match_removed', onMatchEvent);
+      socket.off('notification', onNotification);
+      socket.off('wedding_reset', onWeddingReset);
+      window.removeEventListener('wedding:accepted', onWeddingAcceptedSelf);
     };
   }, [token, fetchNotifications]);
 
@@ -205,6 +250,15 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
     setMsgNotif({ name, content, conversationId });
     notifTimerRef.current = setTimeout(() => setMsgNotif(null), 4500);
   }, []);
+
+  const showEventNotif = useCallback((icon: string, title: string, body: string, path?: string) => {
+    if (eventNotifTimerRef.current) clearTimeout(eventNotifTimerRef.current);
+    setEventNotif({ icon, title, body, path });
+    eventNotifTimerRef.current = setTimeout(() => setEventNotif(null), 6000);
+  }, []);
+
+  const showEventNotifRef = useRef(showEventNotif);
+  useEffect(() => { showEventNotifRef.current = showEventNotif; }, [showEventNotif]);
 
   // Poll conversations globally so message notifications fire on every page
   useEffect(() => {
@@ -514,6 +568,43 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
               <button
                 className="flex-shrink-0 text-textSecondary hover:text-textPrimary transition-colors"
                 onClick={(e) => { e.stopPropagation(); setMsgNotif(null); }}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Event notification toast (wedding invite / accept) */}
+      <AnimatePresence>
+        {eventNotif && (
+          <motion.div
+            key="event-toast"
+            initial={{ opacity: 0, y: -20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -14, scale: 0.95 }}
+            transition={{ type: 'spring', stiffness: 380, damping: 28 }}
+            style={{ position: 'fixed', top: msgNotif ? 128 : 72, right: 20, zIndex: 9998, maxWidth: 360, minWidth: 280 }}
+          >
+            <div
+              className="flex items-center gap-3 bg-white rounded-2xl shadow-2xl border-l-4 p-3 cursor-pointer"
+              style={{ borderLeftColor: '#be185d' }}
+              onClick={() => { setEventNotif(null); if (eventNotif.path) navigate(eventNotif.path); }}
+            >
+              <div
+                className="w-10 h-10 rounded-full flex items-center justify-center text-xl flex-shrink-0"
+                style={{ background: 'linear-gradient(135deg, #fce7f3, #ffe4e6)' }}
+              >
+                {eventNotif.icon}
+              </div>
+              <div className="flex-1 overflow-hidden">
+                <p className="text-sm font-bold leading-tight" style={{ color: '#be185d' }}>{eventNotif.title}</p>
+                <p className="text-xs text-textSecondary mt-0.5">{eventNotif.body}</p>
+              </div>
+              <button
+                className="flex-shrink-0 text-textSecondary hover:text-textPrimary transition-colors"
+                onClick={(e) => { e.stopPropagation(); setEventNotif(null); }}
               >
                 <X className="w-4 h-4" />
               </button>

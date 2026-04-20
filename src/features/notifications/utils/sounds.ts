@@ -48,3 +48,11 @@ export function playMessageSound() {
   playTone(800, 0.14, 0.2, 'sine');
   setTimeout(() => playTone(1000, 0.1, 0.15, 'sine'), 110);
 }
+
+/** Romantic four-note chime for a wedding invite 💍 */
+export function playWeddingInviteSound() {
+  playTone(523, 0.2, 0.28);   // C5
+  setTimeout(() => playTone(659, 0.2, 0.26), 200);  // E5
+  setTimeout(() => playTone(784, 0.2, 0.24), 400);  // G5
+  setTimeout(() => playTone(1047, 0.35, 0.22), 600); // C6
+}

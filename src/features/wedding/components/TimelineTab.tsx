@@ -26,69 +26,72 @@ const COLORS = {
   warning: '#ED6C02'
 };
 
-const MOCK_TIMELINE = [
-  {
-    id: 1,
-    timeframe: '3 Months Out',
-    date: 'Sept 2025',
-    status: 'completed',
-    icon: <MapPin size={20} />,
-    tasks: [
-      { title: 'Book Venue & Catering', completed: true },
-      { title: 'Hire Photographer', completed: true },
-      { title: 'Finalize Guest List', completed: true },
-    ]
-  },
-  {
-    id: 2,
-    timeframe: '2 Months Out',
-    date: 'Oct 2025',
-    status: 'in-progress',
-    icon: <Calendar size={20} />,
-    tasks: [
-      { title: 'Send Invitations', completed: false },
-      { title: 'Dress & Suit Fittings', completed: true },
-      { title: 'Book Florist', completed: false },
-    ]
-  },
-  {
-    id: 3,
-    timeframe: '1 Month Out',
-    date: 'Nov 2025',
-    status: 'pending',
-    icon: <Utensils size={20} />,
-    tasks: [
-      { title: 'Final Guest Count', completed: false },
-      { title: 'Rehearsal Dinner Planning', completed: false },
-      { title: 'Marriage License', completed: false },
-    ]
-  },
-  {
-    id: 4,
-    timeframe: '1 Week Out',
-    date: 'Dec 21, 2025',
-    status: 'pending',
-    icon: <Scissors size={20} />,
-    tasks: [
-      { title: 'Final Payments', completed: false },
-      { title: 'Pickup Attire', completed: false },
-      { title: 'Beauty Appointments', completed: false },
-    ]
-  },
-  {
-    id: 5,
-    timeframe: 'Wedding Day',
-    date: 'Dec 28, 2025',
-    status: 'pending',
-    icon: <Heart size={20} />,
-    tasks: [
-      { title: 'The Big Day! ❤', completed: false },
-    ]
-  }
-];
+function buildTimeline(weddingDate: Date) {
+  const wd = weddingDate.getTime();
+  const fmt = (d: Date) => d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+  const addDays = (ms: number, days: number) => new Date(ms - days * 24 * 60 * 60 * 1000);
+  const now = Date.now();
 
-export default function TimelineTab() {
-  const [expandedId, setExpandedId] = useState<number | null>(2); // Default expand current milestone
+  const milestones = [
+    {
+      id: 1, timeframe: '6 Months Out', date: fmt(addDays(wd, 180)),
+      ts: wd - 180 * 86400000,
+      icon: <MapPin size={20} />,
+      tasks: [
+        { title: 'Book Venue & Catering', completed: false },
+        { title: 'Hire Photographer', completed: false },
+        { title: 'Set Wedding Budget', completed: false },
+      ],
+    },
+    {
+      id: 2, timeframe: '3 Months Out', date: fmt(addDays(wd, 90)),
+      ts: wd - 90 * 86400000,
+      icon: <Calendar size={20} />,
+      tasks: [
+        { title: 'Send Invitations', completed: false },
+        { title: 'Book Florist', completed: false },
+        { title: 'Dress & Suit Fittings', completed: false },
+      ],
+    },
+    {
+      id: 3, timeframe: '1 Month Out', date: fmt(addDays(wd, 30)),
+      ts: wd - 30 * 86400000,
+      icon: <Utensils size={20} />,
+      tasks: [
+        { title: 'Final Guest Count', completed: false },
+        { title: 'Confirm All Vendors', completed: false },
+        { title: 'Marriage License', completed: false },
+      ],
+    },
+    {
+      id: 4, timeframe: '1 Week Out', date: fmt(addDays(wd, 7)),
+      ts: wd - 7 * 86400000,
+      icon: <Scissors size={20} />,
+      tasks: [
+        { title: 'Final Payments', completed: false },
+        { title: 'Pickup Attire', completed: false },
+        { title: 'Beauty Appointments', completed: false },
+      ],
+    },
+    {
+      id: 5, timeframe: 'Wedding Day', date: fmt(weddingDate),
+      ts: wd,
+      icon: <Heart size={20} />,
+      tasks: [{ title: 'The Big Day! ❤', completed: false }],
+    },
+  ];
+
+  return milestones.map(m => ({
+    ...m,
+    status: now > m.ts + 86400000 ? 'completed' : now > m.ts - 14 * 86400000 ? 'in-progress' : 'pending',
+  }));
+}
+
+export default function TimelineTab({ weddingDate }: { weddingDate?: string }) {
+  const parsedDate = weddingDate ? new Date(weddingDate) : new Date(Date.now() + 180 * 24 * 60 * 60 * 1000);
+  const timeline = buildTimeline(parsedDate);
+  const currentIdx = timeline.findIndex(m => m.status === 'in-progress');
+  const [expandedId, setExpandedId] = useState<number | null>(timeline[currentIdx >= 0 ? currentIdx : 0]?.id ?? null);
 
   return (
     <Box sx={{ maxWidth: 800, mx: 'auto', py: 4 }}>
@@ -124,7 +127,7 @@ export default function TimelineTab() {
         }} />
 
         <Stack spacing={4}>
-          {MOCK_TIMELINE.map((milestone, i) => (
+          {timeline.map((milestone, i) => (
             <TimelineItem 
               key={milestone.id} 
               milestone={milestone} 
