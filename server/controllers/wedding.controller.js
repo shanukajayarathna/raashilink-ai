@@ -13,6 +13,48 @@ function ensureObjectId(id, field) {
   }
 }
 
+function notifyPartner(project, currentUserId) {
+  if (!Array.isArray(project.coupleUserIds) || project.coupleUserIds.length < 2) return;
+  const partnerId = project.coupleUserIds.find((id) => String(id) !== String(currentUserId));
+  if (partnerId) {
+    emitToUser(partnerId, 'wedding_updated', { projectId: String(project._id) });
+  }
+}
+
+/**
+ * Fully resets wedding projects for two users:
+ * - Deletes any shared/coupled project and any solo projects for both users
+ * - Creates two fresh blank solo projects (one per user)
+ * - Cleans up all wedding notifications between the pair
+ * - Emits wedding_reset to both users
+ */
+export async function resetBothWeddingProjects(userIdA, userIdB) {
+  const freshDate = () => new Date(Date.now() + 1000 * 60 * 60 * 24 * 180);
+
+  // Delete ALL existing projects that involve either user
+  await WeddingProject.deleteMany({
+    coupleUserIds: { $in: [userIdA, userIdB] },
+  });
+
+  // Clean up all wedding-related notifications between the two users
+  await Notification.deleteMany({
+    $or: [
+      { userId: userIdA, fromUserId: userIdB, type: { $in: ['wedding_invite', 'wedding_accepted'] } },
+      { userId: userIdB, fromUserId: userIdA, type: { $in: ['wedding_invite', 'wedding_accepted'] } },
+    ],
+  });
+
+  // Create fresh blank projects for each user
+  await WeddingProject.create([
+    { coupleUserIds: [userIdA], weddingDate: freshDate(), totalBudget: 0, expenses: [], checklist: [], vendors: [] },
+    { coupleUserIds: [userIdB], weddingDate: freshDate(), totalBudget: 0, expenses: [], checklist: [], vendors: [] },
+  ]);
+
+  // Notify both users so their dashboards refresh
+  emitToUser(String(userIdA), 'wedding_reset', { message: 'Wedding project has been reset' });
+  emitToUser(String(userIdB), 'wedding_reset', { message: 'Wedding project has been reset' });
+}
+
 function calculateBudget(project) {
   const totalSpent = (project.expenses || []).reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
   return {
@@ -42,7 +84,8 @@ async function getOrCreateProject(userId) {
 
 export const getProject = asyncHandler(async (req, res) => {
   const project = await getOrCreateProject(req.user._id);
-  await project.populate('coupleUserIds', 'firstName lastName name profilePic');
+  // Select 'personalInfo' (real DB field) so virtuals (firstName, lastName, profilePic) are computed on serialisation
+  await project.populate({ path: 'coupleUserIds', select: 'personalInfo' });
 
   res.status(200).json({
     success: true,
@@ -65,6 +108,7 @@ export const updateProject = asyncHandler(async (req, res) => {
   }
 
   await project.save();
+  notifyPartner(project, req.user._id);
 
   res.status(200).json({
     success: true,
@@ -86,6 +130,7 @@ export const addTask = asyncHandler(async (req, res) => {
     completed: false,
   });
   await project.save();
+  notifyPartner(project, req.user._id);
 
   res.status(201).json({
     success: true,
@@ -109,6 +154,7 @@ export const addExpense = asyncHandler(async (req, res) => {
     paid: false,
   });
   await project.save();
+  notifyPartner(project, req.user._id);
 
   res.status(201).json({
     success: true,
@@ -166,6 +212,7 @@ export const requestQuote = asyncHandler(async (req, res) => {
   }
 
   await project.save();
+  notifyPartner(project, req.user._id);
 
   res.status(201).json({
     success: true,
@@ -192,6 +239,7 @@ export const updateVendorStatus = asyncHandler(async (req, res) => {
   }
   entry.status = status;
   await project.save();
+  notifyPartner(project, req.user._id);
 
   res.status(200).json({ success: true, data: { vendorId, status } });
 });
@@ -207,6 +255,7 @@ export const toggleTask = asyncHandler(async (req, res) => {
 
   project.checklist[idx].completed = !project.checklist[idx].completed;
   await project.save();
+  notifyPartner(project, req.user._id);
 
   res.status(200).json({ success: true, data: project.checklist[idx] });
 });
@@ -251,6 +300,8 @@ export const invitePartner = asyncHandler(async (req, res) => {
     read: false,
     createdAt: notif.createdAt,
   });
+  // Let the invitee's WeddingDashboard refresh immediately
+  emitToUser(partnerId, 'wedding_invite', { inviterId: String(req.user._id), inviterName });
 
   res.status(200).json({
     success: true,
@@ -310,6 +361,8 @@ export const acceptInvite = asyncHandler(async (req, res) => {
     read: false,
     createdAt: notif.createdAt,
   });
+  // Let the inviter's WeddingDashboard refresh immediately
+  emitToUser(inviterId, 'wedding_accepted', { acceptorId: String(req.user._id), acceptorName });
 
   res.status(200).json({
     success: true,
@@ -323,7 +376,7 @@ export const getPendingInvite = asyncHandler(async (req, res) => {
   const project = await WeddingProject.findOne({
     'pendingInvite.inviteeId': req.user._id,
     'pendingInvite.status': 'pending',
-  }).populate('coupleUserIds', 'firstName lastName name profilePic');
+  }).populate({ path: 'coupleUserIds', select: 'personalInfo' });
 
   if (!project) {
     return res.status(200).json({ success: true, data: null });
@@ -390,22 +443,10 @@ export const resetWedding = asyncHandler(async (req, res) => {
     : null;
 
   if (isCoupled) {
-    // Dissolve couple: remove current user, partner keeps the project solo
-    project.coupleUserIds = project.coupleUserIds.filter(
-      (id) => String(id) !== String(req.user._id)
-    );
-    project.pendingInvite = { inviteeId: null, status: 'declined' };
-    await project.save();
-
-    // Create a fresh solo project for the current user
-    await WeddingProject.create({
-      coupleUserIds: [req.user._id],
-      weddingDate: new Date(Date.now() + 1000 * 60 * 60 * 24 * 180),
-      totalBudget: 0,
-      expenses: [],
-      checklist: [],
-      vendors: [],
-    });
+    // Both users get fresh blank projects
+    await resetBothWeddingProjects(req.user._id, partnerId);
+    // resetBothWeddingProjects already emits wedding_reset to both, so we can return early
+    return res.status(200).json({ success: true, message: 'Wedding project reset successfully' });
   } else {
     // Inviter cancels pending invite
     project.pendingInvite = { inviteeId: null, status: 'declined' };

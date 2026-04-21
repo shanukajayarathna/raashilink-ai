@@ -41,7 +41,7 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
   const convSeeded = useRef(false);
   const clientMsgCountRef = useRef(0);
   const [msgNotif, setMsgNotif] = useState<{ name: string; content: string; conversationId?: string } | null>(null);
-  const [eventNotif, setEventNotif] = useState<{ icon: string; title: string; body: string; path?: string } | null>(null);
+  const [eventNotif, setEventNotif] = useState<{ icon: string; title: string; body: string; path?: string; color?: string } | null>(null);
   const eventNotifTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const notifTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const navigate = useNavigate();
@@ -94,13 +94,35 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
     if (!token) return;
     const socket = connectSocket(token);
 
-    const onMatchEvent = () => fetchNotifications(true);
+    const onMutualMatch = (payload: any) => {
+      fetchNotifications(true);
+      playMatchSound();
+      showEventNotifRef.current('🎉', "It's a Match!", `You and ${payload.fromUserName || 'someone'} are now connected!`, '/messages', '#f59e0b');
+    };
+    const onInterestReceived = (payload: any) => {
+      fetchNotifications(true);
+      playInterestSound();
+      showEventNotifRef.current('💛', `${payload.fromUserName || 'Someone'} liked you!`, 'They expressed interest in you — check your matches.', '/matches', '#f59e0b');
+    };
+    const onInterestAccepted = (payload: any) => {
+      fetchNotifications(true);
+      playInterestSound();
+      showEventNotifRef.current('🥳', `${payload.fromUserName || 'Someone'} accepted your interest!`, 'You can now message each other.', '/messages', '#16a34a');
+    };
+    const onInterestDeclined = (payload: any) => {
+      fetchNotifications(true);
+      showEventNotifRef.current('💔', 'Interest declined', `${payload.fromUserName || 'Someone'} has declined your interest.`, '/matches', '#6b7280');
+    };
+    const onMatchRemoved = () => {
+      fetchNotifications(true);
+      showEventNotifRef.current('👋', 'Match removed', 'Someone removed you from their matches.', '/matches', '#6b7280');
+    };
 
-    socket.on('interest_received', onMatchEvent);
-    socket.on('mutual_match', onMatchEvent);
-    socket.on('interest_accepted', onMatchEvent);
-    socket.on('interest_declined', onMatchEvent);
-    socket.on('match_removed', onMatchEvent);
+    socket.on('interest_received', onInterestReceived);
+    socket.on('mutual_match', onMutualMatch);
+    socket.on('interest_accepted', onInterestAccepted);
+    socket.on('interest_declined', onInterestDeclined);
+    socket.on('match_removed', onMatchRemoved);
 
     // Real-time server-pushed notifications (e.g. wedding invites)
     const onNotification = (payload: AppNotification) => {
@@ -111,14 +133,29 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
       setUnreadCount((c) => c + 1);
       if (payload.type === 'wedding_invite') {
         playWeddingInviteSound();
-        showEventNotifRef.current('💍', `${payload.fromUserName} invited you!`, 'Plan your wedding together — tap to accept.', '/wedding');
+        showEventNotifRef.current('💍', `${payload.fromUserName} invited you!`, 'Plan your wedding together — tap to accept.', '/wedding', '#be185d');
       } else if (payload.type === 'wedding_accepted') {
         playWeddingInviteSound();
-        showEventNotifRef.current('🎉', `${payload.fromUserName} accepted your invite!`, 'Your wedding project is now shared. Time to start planning!', '/wedding');
-        // Trigger dashboard refresh if the inviter is currently on the wedding page
+        showEventNotifRef.current('🎉', `${payload.fromUserName} accepted your invite!`, 'Your wedding project is now shared. Time to start planning!', '/wedding', '#be185d');
         window.dispatchEvent(new CustomEvent('wedding:partnerAccepted'));
+      } else if (payload.type === 'engagement_invite') {
+        playInterestSound();
+        showEventNotifRef.current('💎', `${payload.fromUserName} proposed an engagement!`, 'Tap to view and respond to the proposal.', '/messages', '#C9A84C');
+      } else if (payload.type === 'engagement_accepted') {
+        playMatchSound();
+        showEventNotifRef.current('💍', `${payload.fromUserName} accepted your proposal!`, 'You are now engaged — celebrate and start planning!', '/messages', '#C9A84C');
+      } else if (payload.type === 'engagement_cancelled') {
+        showEventNotifRef.current('💔', 'Engagement cancelled', `${payload.fromUserName} has cancelled the engagement.`, '/messages', '#6b7280');
+      } else if (payload.type === 'interest_accepted') {
+        playInterestSound();
+        showEventNotifRef.current('🥳', `${payload.fromUserName} accepted your interest!`, 'You can now message each other.', '/messages', '#16a34a');
+      } else if (payload.type === 'interest_declined') {
+        showEventNotifRef.current('💔', 'Interest declined', `${payload.fromUserName} has declined your interest.`, '/matches', '#6b7280');
+      } else if (payload.type === 'match_removed') {
+        showEventNotifRef.current('👋', 'Match removed', `${payload.fromUserName} removed you from their matches.`, '/matches', '#6b7280');
       } else if (payload.type === 'mutual_match') {
         playMatchSound();
+        showEventNotifRef.current('🎉', "It's a Match!", `You and ${payload.fromUserName} are now connected!`, '/messages', '#f59e0b');
       } else {
         playInterestSound();
       }
@@ -129,23 +166,23 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
     const onWeddingAcceptedSelf = (e: Event) => {
       const { inviterName } = (e as CustomEvent).detail ?? {};
       playWeddingInviteSound();
-      showEventNotifRef.current('🎉', 'Wedding invite accepted!', `You and ${inviterName || 'your partner'} are now planning together!`, '/wedding');
+      showEventNotifRef.current('🎉', 'Wedding invite accepted!', `You and ${inviterName || 'your partner'} are now planning together!`, '/wedding', '#be185d');
     };
     window.addEventListener('wedding:accepted', onWeddingAcceptedSelf);
 
     // When the other user removes the match, their wedding project gets reset
     const onWeddingReset = () => {
-      showEventNotifRef.current('💔', 'Wedding project reset', 'Your match removed you — your wedding project has been reset.', '/wedding');
+      showEventNotifRef.current('💔', 'Wedding project reset', 'Your match removed you — your wedding project has been reset.', '/wedding', '#6b7280');
       window.dispatchEvent(new CustomEvent('wedding:reset'));
     };
     socket.on('wedding_reset', onWeddingReset);
 
     return () => {
-      socket.off('interest_received', onMatchEvent);
-      socket.off('mutual_match', onMatchEvent);
-      socket.off('interest_accepted', onMatchEvent);
-      socket.off('interest_declined', onMatchEvent);
-      socket.off('match_removed', onMatchEvent);
+      socket.off('interest_received', onInterestReceived);
+      socket.off('mutual_match', onMutualMatch);
+      socket.off('interest_accepted', onInterestAccepted);
+      socket.off('interest_declined', onInterestDeclined);
+      socket.off('match_removed', onMatchRemoved);
       socket.off('notification', onNotification);
       socket.off('wedding_reset', onWeddingReset);
       window.removeEventListener('wedding:accepted', onWeddingAcceptedSelf);
@@ -251,9 +288,9 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
     notifTimerRef.current = setTimeout(() => setMsgNotif(null), 4500);
   }, []);
 
-  const showEventNotif = useCallback((icon: string, title: string, body: string, path?: string) => {
+  const showEventNotif = useCallback((icon: string, title: string, body: string, path?: string, color?: string) => {
     if (eventNotifTimerRef.current) clearTimeout(eventNotifTimerRef.current);
-    setEventNotif({ icon, title, body, path });
+    setEventNotif({ icon, title, body, path, color });
     eventNotifTimerRef.current = setTimeout(() => setEventNotif(null), 6000);
   }, []);
 
@@ -589,17 +626,17 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
           >
             <div
               className="flex items-center gap-3 bg-white rounded-2xl shadow-2xl border-l-4 p-3 cursor-pointer"
-              style={{ borderLeftColor: '#be185d' }}
+              style={{ borderLeftColor: eventNotif.color || '#be185d' }}
               onClick={() => { setEventNotif(null); if (eventNotif.path) navigate(eventNotif.path); }}
             >
               <div
                 className="w-10 h-10 rounded-full flex items-center justify-center text-xl flex-shrink-0"
-                style={{ background: 'linear-gradient(135deg, #fce7f3, #ffe4e6)' }}
+                style={{ background: `linear-gradient(135deg, ${eventNotif.color ? eventNotif.color + '22' : '#fce7f3'}, ${eventNotif.color ? eventNotif.color + '33' : '#ffe4e6'})` }}
               >
                 {eventNotif.icon}
               </div>
               <div className="flex-1 overflow-hidden">
-                <p className="text-sm font-bold leading-tight" style={{ color: '#be185d' }}>{eventNotif.title}</p>
+                <p className="text-sm font-bold leading-tight" style={{ color: eventNotif.color || '#be185d' }}>{eventNotif.title}</p>
                 <p className="text-xs text-textSecondary mt-0.5">{eventNotif.body}</p>
               </div>
               <button

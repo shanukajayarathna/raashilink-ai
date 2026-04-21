@@ -38,6 +38,7 @@ import {
   Save,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import weddingService from '@/features/wedding/services/weddingService';
 
 const COLORS = {
   primary: '#8B1A2E',
@@ -95,23 +96,20 @@ export default function SetBudgetModal({ open, onClose, totalBudget, categories,
   const handleAiSuggest = async () => {
     setIsAiLoading(true);
     try {
-      // Simulating API call to GET /api/v1/wedding/budget/ai-suggestions
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // AI logic: Venue 35%, Catering 20%, Photography 15%, Decoration 10%, Attire 10%, Others 10%
-      const suggestions = [
-        { name: 'Venue', percent: 0.35 },
-        { name: 'Catering', percent: 0.20 },
-        { name: 'Photography', percent: 0.15 },
-        { name: 'Decoration', percent: 0.10 },
-        { name: 'Attire', percent: 0.10 },
-        { name: 'Others', percent: 0.10 },
-      ];
+      // Standard Sri Lankan wedding percentage split
+      const suggestions: Record<string, number> = {
+        Venue: 0.35,
+        Catering: 0.20,
+        Photography: 0.15,
+        Decoration: 0.10,
+        Attire: 0.10,
+        Others: 0.10,
+      };
 
       const suggestedCategories = localCategories.map(cat => {
-        const suggestion = suggestions.find(s => s.name === cat.name);
-        if (suggestion) {
-          return { ...cat, allocated: Math.round(totalBudget * suggestion.percent) };
+        const pct = suggestions[cat.name];
+        if (pct !== undefined) {
+          return { ...cat, allocated: Math.round(totalBudget * pct) };
         }
         return cat;
       });
@@ -124,7 +122,16 @@ export default function SetBudgetModal({ open, onClose, totalBudget, categories,
     }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    try {
+      const allocations = localCategories.reduce((acc, cat) => {
+        acc[cat.name] = cat.allocated;
+        return acc;
+      }, {} as Record<string, number>);
+      await weddingService.saveAllocations(allocations);
+    } catch (err) {
+      console.error('Failed to save allocations', err);
+    }
     onSave(localCategories);
   };
 

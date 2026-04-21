@@ -3,7 +3,7 @@ import {
   Box, Typography, Avatar, IconButton, Divider,
   CircularProgress, Tooltip,
 } from '@mui/material';
-import { Heart, Sparkles, CheckCheck, X, MessageCircle, HeartOff, HeartHandshake, CalendarHeart, UserMinus } from 'lucide-react';
+import { Heart, Sparkles, CheckCheck, X, MessageCircle, HeartOff, HeartHandshake, CalendarHeart, UserMinus, Diamond } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 import type { AppNotification } from '../services/notificationService';
@@ -46,6 +46,15 @@ export default function NotificationPanel({
       navigate('/messages', { state: { conversationId: n.conversationId } });
     } else if (n.type === 'wedding_invite' || n.type === 'wedding_accepted') {
       navigate('/wedding');
+    } else if (n.type === 'engagement_invite') {
+      // Pass proposer id in state so MessagesPage shows the accept banner directly
+      navigate('/messages', { state: { openUserId: n.fromUserId, engagementProposerId: n.fromUserId } });
+    } else if (n.type === 'engagement_accepted') {
+      // Go to messages with partner open and mark as engaged so button turns solid
+      navigate('/messages', { state: { openUserId: n.fromUserId, engagedUserId: n.fromUserId } });
+    } else if (n.type === 'engagement_cancelled') {
+      // Just go to messages so the user sees the updated state
+      navigate('/messages', { state: { openUserId: n.fromUserId } });
     } else if (n.type === 'interest_declined' || n.type === 'match_removed') {
       // No navigation needed — just dismiss
     } else {
@@ -172,7 +181,7 @@ export default function NotificationPanel({
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          bgcolor: n.type === 'mutual_match' ? '#f59e0b' : n.type === 'message_received' ? '#2563eb' : n.type === 'interest_accepted' ? '#16a34a' : (n.type === 'interest_declined' || n.type === 'match_removed') ? '#6b7280' : (n.type === 'wedding_invite' || n.type === 'wedding_accepted') ? '#be185d' : '#8B1A2E',
+                          bgcolor: n.type === 'mutual_match' ? '#f59e0b' : n.type === 'message_received' ? '#2563eb' : n.type === 'interest_accepted' ? '#16a34a' : (n.type === 'interest_declined' || n.type === 'match_removed') ? '#6b7280' : (n.type === 'wedding_invite' || n.type === 'wedding_accepted') ? '#be185d' : (n.type === 'engagement_invite' || n.type === 'engagement_accepted') ? '#C9A84C' : n.type === 'engagement_cancelled' ? '#6b7280' : '#8B1A2E',
                           border: '2px solid white',
                         }}>
                           {n.type === 'mutual_match'
@@ -189,6 +198,10 @@ export default function NotificationPanel({
                             ? <CalendarHeart size={10} color="white" />
                             : n.type === 'wedding_accepted'
                             ? <CalendarHeart size={10} color="white" />
+                            : (n.type === 'engagement_invite' || n.type === 'engagement_accepted')
+                            ? <Diamond size={10} color="white" />
+                            : n.type === 'engagement_cancelled'
+                            ? <Diamond size={10} color="white" />
                             : <Heart size={10} color="white" fill="white" />
                           }
                         </Box>
@@ -233,6 +246,21 @@ export default function NotificationPanel({
                             <>
                               <span style={{ color: '#be185d' }}>{n.fromUserName}</span>
                               {' '}accepted your wedding invite! 🎉
+                            </>
+                          ) : n.type === 'engagement_invite' ? (
+                            <>
+                              <span style={{ color: '#C9A84C' }}>{n.fromUserName}</span>
+                              {' '}has proposed an engagement to you! 💎
+                            </>
+                          ) : n.type === 'engagement_accepted' ? (
+                            <>
+                              <span style={{ color: '#C9A84C' }}>{n.fromUserName}</span>
+                              {' '}accepted your engagement proposal! 💎🎉
+                            </>
+                          ) : n.type === 'engagement_cancelled' ? (
+                            <>
+                              <span style={{ color: '#6b7280' }}>{n.fromUserName}</span>
+                              {' '}cancelled the engagement 💔
                             </>
                           ) : (
                             <>
@@ -291,6 +319,20 @@ export default function NotificationPanel({
                               <CalendarHeart size={11} />
                               <Typography variant="caption" sx={{ color: '#be185d', fontWeight: 600 }}>
                                 {n.type === 'wedding_invite' ? 'Accept on Wedding page' : 'Go to Wedding page'}
+                              </Typography>
+                            </Box>
+                          ) : (n.type === 'engagement_invite' || n.type === 'engagement_accepted') ? (
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: '#C9A84C' }}>
+                              <Diamond size={11} />
+                              <Typography variant="caption" sx={{ color: '#C9A84C', fontWeight: 600 }}>
+                                {n.type === 'engagement_invite' ? 'Accept — go to Messages' : 'Start wedding planning'}
+                              </Typography>
+                            </Box>
+                          ) : n.type === 'engagement_cancelled' ? (
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: '#6b7280' }}>
+                              <Diamond size={11} />
+                              <Typography variant="caption" sx={{ color: '#6b7280', fontWeight: 600 }}>
+                                View conversation
                               </Typography>
                             </Box>
                           ) : (

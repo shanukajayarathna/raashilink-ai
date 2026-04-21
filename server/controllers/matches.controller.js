@@ -15,6 +15,7 @@ import logger from '../utils/logger.js';
 import Notification from '../models/Notification.js';
 import { resolvePythonCommand } from '../utils/pythonRuntime.js';
 import { emitToUser } from '../lib/socket.js';
+import { resetBothWeddingProjects } from './wedding.controller.js';
 import { deriveGanaFromNakshatra } from '../utils/gana.js';
 
 function escapeRegex(value = '') {
@@ -884,31 +885,32 @@ export const undoInterest = asyncHandler(async (req, res) => {
   });
 
   // ── Wedding project cleanup ──────────────────────────────────────────────
-  // If these two users share a wedding project (accepted invite), split it:
-  // - Remove the remover from the shared project (they keep their own new solo one)
-  // - The other user keeps the original project (solo again)
-  // - Clean up wedding_invite / wedding_accepted notifications between them
+  // Both users get fresh blank wedding projects so no stale data is retained
   const sharedWeddingProject = await WeddingProject.findOne({
     coupleUserIds: { $all: [req.user._id, otherId] },
   });
-  if (sharedWeddingProject) {
-    // Remove the current user from the couple — other user retains the project solo
-    sharedWeddingProject.coupleUserIds = sharedWeddingProject.coupleUserIds.filter(
-      (id) => String(id) !== String(req.user._id)
-    );
-    sharedWeddingProject.pendingInvite = { inviteeId: null, status: 'declined' };
-    await sharedWeddingProject.save();
+  const hadSharedProject = !!sharedWeddingProject;
 
-    // Clean up wedding notifications between both users
-    await Notification.deleteMany({
-      $or: [
-        { userId: req.user._id, fromUserId: otherId, type: { $in: ['wedding_invite', 'wedding_accepted'] } },
-        { userId: otherId, fromUserId: req.user._id, type: { $in: ['wedding_invite', 'wedding_accepted'] } },
-      ],
+  if (hadSharedProject) {
+    await resetBothWeddingProjects(req.user._id, otherId);
+    // resetBothWeddingProjects emits wedding_reset to both users
+  } else {
+    // Check if there's a pending invite between them (not yet coupled)
+    const pendingProject = await WeddingProject.findOne({
+      coupleUserIds: req.user._id,
+      'pendingInvite.inviteeId': otherId,
+      'pendingInvite.status': 'pending',
     });
-
-    // Tell the other user their wedding project was reset
-    emitToUser(otherId, 'wedding_reset', { byUserId: String(req.user._id) });
+    if (pendingProject) {
+      pendingProject.pendingInvite = { inviteeId: null, status: 'declined' };
+      await pendingProject.save();
+      await Notification.deleteMany({
+        $or: [
+          { userId: req.user._id, fromUserId: otherId, type: { $in: ['wedding_invite', 'wedding_accepted'] } },
+          { userId: otherId, fromUserId: req.user._id, type: { $in: ['wedding_invite', 'wedding_accepted'] } },
+        ],
+      });
+    }
   }
 
   // Notify the other user that the match was removed
@@ -1232,6 +1234,194 @@ export const getTodayMatches = asyncHandler(async (req, res) => {
   }
 });
 
+// ── Engagement (formal commitment step between chatting and wedding planning) ──
+
+async function findMatchRecord(userAId, userBId) {
+  return Match.findOne({
+    $or: [
+      { userAId, userBId },
+      { userAId: userBId, userBId: userAId },
+    ],
+  });
+}
+
+export const getEngagementStatus = asyncHandler(async (req, res) => {
+  const currentUserId = req.user._id;
+  const partnerId = req.params.id;
+
+  if (!mongoose.Types.ObjectId.isValid(partnerId)) {
+    throw new ApiError(400, 'Invalid partner id');
+  }
+
+  const match = await findMatchRecord(currentUserId, partnerId);
+  const status = match?.engagementStatus || 'none';
+  const proposerId = match?.engagementProposerId ? String(match.engagementProposerId) : null;
+
+  res.status(200).json({ success: true, data: { status, proposerId } });
+});
+
+export const proposeEngagement = asyncHandler(async (req, res) => {
+  const currentUserId = req.user._id;
+  const partnerId = req.params.id;
+
+  if (!mongoose.Types.ObjectId.isValid(partnerId)) {
+    throw new ApiError(400, 'Invalid partner id');
+  }
+
+  // Must be a mutual match — MatchInterest uses status 'mutual' (not 'accepted')
+  const isMutual = await MatchInterest.exists({
+    $or: [
+      { fromUser: currentUserId, toUser: partnerId, status: 'mutual' },
+      { fromUser: partnerId, toUser: currentUserId, status: 'mutual' },
+    ],
+  });
+  if (!isMutual) {
+    throw new ApiError(403, 'You can only propose engagement to a mutual match');
+  }
+
+  const partner = await User.findById(partnerId).lean();
+  if (!partner) throw new ApiError(404, 'Partner not found');
+
+  const currentUser = await User.findById(currentUserId).lean();
+
+  // Persist proposed status on the Match record
+  const match = await findMatchRecord(currentUserId, partnerId);
+  if (match && match.engagementStatus === 'none') {
+    match.engagementStatus = 'proposed';
+    match.engagementProposerId = currentUserId;
+    await match.save();
+  }
+
+  // Send notification to partner
+  const notification = await Notification.create({
+    userId: partnerId,
+    type: 'engagement_invite',
+    fromUserId: currentUserId,
+    fromUserName: currentUser.name || currentUser.personalInfo?.firstName || 'Someone',
+    fromUserProfilePic: currentUser.profilePic || currentUser.personalInfo?.photos?.[0]?.url || null,
+    metadata: { proposerId: String(currentUserId) },
+  });
+
+  emitToUser(String(partnerId), 'notification', {
+    ...notification.toObject(),
+    id: String(notification._id),
+  });
+  // Dedicated event so MessagesPage can react without polling
+  emitToUser(String(partnerId), 'engagement_invite', {
+    fromUserId: String(currentUserId),
+    fromUserName: currentUser.name || currentUser.personalInfo?.firstName || 'Someone',
+    fromUserProfilePic: currentUser.profilePic || currentUser.personalInfo?.photos?.[0]?.url || null,
+  });
+
+  res.status(200).json({ success: true, message: 'Engagement proposal sent' });
+});
+
+export const acceptEngagement = asyncHandler(async (req, res) => {
+  const currentUserId = req.user._id;
+  const proposerId = req.params.id;
+
+  if (!mongoose.Types.ObjectId.isValid(proposerId)) {
+    throw new ApiError(400, 'Invalid proposer id');
+  }
+
+  const proposer = await User.findById(proposerId).lean();
+  if (!proposer) throw new ApiError(404, 'Proposer not found');
+
+  const currentUser = await User.findById(currentUserId).lean();
+
+  // Persist accepted status on the Match record
+  const match = await findMatchRecord(currentUserId, proposerId);
+  if (match) {
+    match.engagementStatus = 'accepted';
+    await match.save();
+  }
+
+  // Remove the original engagement_invite notification so the acceptor's banner doesn't re-appear
+  await Notification.deleteMany({
+    userId: currentUserId,
+    fromUserId: proposerId,
+    type: 'engagement_invite',
+  });
+
+  // Notify the proposer that their proposal was accepted
+  const notification = await Notification.create({
+    userId: proposerId,
+    type: 'engagement_accepted',
+    fromUserId: currentUserId,
+    fromUserName: currentUser.name || currentUser.personalInfo?.firstName || 'Someone',
+    fromUserProfilePic: currentUser.profilePic || currentUser.personalInfo?.photos?.[0]?.url || null,
+    metadata: { acceptorId: String(currentUserId) },
+  });
+
+  emitToUser(String(proposerId), 'notification', {
+    ...notification.toObject(),
+    id: String(notification._id),
+  });
+  // Dedicated event so MessagesPage can react without polling
+  emitToUser(String(proposerId), 'engagement_accepted', {
+    fromUserId: String(currentUserId),
+    fromUserName: currentUser.name || currentUser.personalInfo?.firstName || 'Someone',
+    fromUserProfilePic: currentUser.profilePic || currentUser.personalInfo?.photos?.[0]?.url || null,
+  });
+
+  res.status(200).json({ success: true, message: 'Engagement accepted' });
+});
+
+export const cancelEngagement = asyncHandler(async (req, res) => {
+  const currentUserId = req.user._id;
+  const partnerId = req.params.id;
+
+  if (!mongoose.Types.ObjectId.isValid(partnerId)) {
+    throw new ApiError(400, 'Invalid partner id');
+  }
+
+  const currentUser = await User.findById(currentUserId).lean();
+  const partner = await User.findById(partnerId).lean();
+  if (!partner) throw new ApiError(404, 'Partner not found');
+
+  // Reset engagement on the shared Match record
+  const match = await findMatchRecord(currentUserId, partnerId);
+  if (match) {
+    match.engagementStatus = 'none';
+    match.engagementProposerId = null;
+    await match.save();
+  }
+
+  // Also reset wedding projects for both users since the engagement is off
+  const sharedWeddingProject = await WeddingProject.findOne({
+    coupleUserIds: { $all: [currentUserId, partnerId] },
+  });
+  if (sharedWeddingProject) {
+    await resetBothWeddingProjects(currentUserId, partnerId);
+    // resetBothWeddingProjects emits wedding_reset to both
+  }
+
+  // Notify the other party — persistent notification + real-time socket event
+  const senderName = currentUser.name || currentUser.personalInfo?.firstName || 'Someone';
+  const senderPic = currentUser.profilePic || currentUser.personalInfo?.photos?.[0]?.url || null;
+
+  const notification = await Notification.create({
+    userId: partnerId,
+    type: 'engagement_cancelled',
+    fromUserId: currentUserId,
+    fromUserName: senderName,
+    fromUserProfilePic: senderPic,
+    metadata: {},
+  });
+
+  emitToUser(String(partnerId), 'notification', {
+    ...notification.toObject(),
+    id: String(notification._id),
+  });
+  emitToUser(String(partnerId), 'engagement_cancelled', {
+    fromUserId: String(currentUserId),
+    fromUserName: senderName,
+    fromUserProfilePic: senderPic,
+  });
+
+  res.status(200).json({ success: true, message: 'Engagement cancelled' });
+});
+
 export default {
   getRecommendations,
   getMatchDetail,
@@ -1241,4 +1431,8 @@ export default {
   getPendingInterests,
   getMutualMatches,
   getTodayMatches,
+  proposeEngagement,
+  acceptEngagement,
+  cancelEngagement,
+  getEngagementStatus,
 };

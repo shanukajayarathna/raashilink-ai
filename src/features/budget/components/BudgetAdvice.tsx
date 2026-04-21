@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Typography,
@@ -27,6 +27,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import weddingService from '@/features/wedding/services/weddingService';
 
 const COLORS = {
   primary: '#8B1A2E',
@@ -41,45 +42,41 @@ const COLORS = {
   warning: '#ED6C02',
 };
 
-const MOCK_TIPS = [
-  {
-    id: 1,
-    type: 'warning',
-    icon: <AlertCircle size={18} />,
-    title: 'Catering Alert',
-    message: 'Catering is 20% over budget. Consider reducing guest count by 30 to save ~LKR 45,000.',
-    color: COLORS.error,
-  },
-  {
-    id: 2,
-    type: 'info',
-    icon: <Lightbulb size={18} />,
-    title: 'Photography Tip',
-    message: 'Photography allocation is 40% unused. Reallocate LKR 20,000 to Decoration?',
-    color: COLORS.accent,
-  },
-  {
-    id: 3,
-    type: 'success',
-    icon: <TrendingDown size={18} />,
-    title: 'Venue Savings',
-    message: 'Great job! You saved LKR 50,000 on the venue. We recommend reallocating this to your "Photography" fund for a better package.',
-    color: COLORS.success,
-  }
-];
+const TIP_COLORS = [COLORS.warning, COLORS.accent, COLORS.success];
+const TIP_ICONS = [<AlertCircle size={18} />, <Lightbulb size={18} />, <TrendingDown size={18} />];
 
 export default function BudgetAdvice() {
   const [query, setQuery] = useState('');
   const [isAsking, setIsAsking] = useState(false);
   const [aiResponse, setAiResponse] = useState<string | null>(null);
+  const [tips, setTips] = useState<string[]>([]);
+  const [loadingTips, setLoadingTips] = useState(true);
+
+  useEffect(() => {
+    const fetchTips = async () => {
+      setLoadingTips(true);
+      try {
+        const data = await weddingService.getAiBudgetTips();
+        setTips(data);
+      } catch {
+        setTips([
+          'Book your venue and catering at least 9 months in advance to lock in the best rates.',
+          'Source floral decorations from Pettah wholesale market for up to 40% savings.',
+          'Keep a 10-15% buffer for last-minute Sri Lankan wedding expenses.',
+        ]);
+      } finally {
+        setLoadingTips(false);
+      }
+    };
+    fetchTips();
+  }, []);
 
   const handleAsk = async () => {
     if (!query) return;
     setIsAsking(true);
     try {
-      // Simulating AI call
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      setAiResponse("Based on your current budget, I recommend prioritizing the Venue and Catering as they typically account for 50-60% of total costs in Sri Lankan weddings. You might want to explore local flower options to save on Decoration.");
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      setAiResponse(`Based on your current budget, ${query.toLowerCase().includes('cater') ? 'consider reducing your catering cost by limiting the guest list or opting for a buffet-style service instead of plated meals.' : 'I recommend prioritising Venue and Catering as they typically account for 50-60% of a Sri Lankan wedding budget. Explore local suppliers and book early for the best rates.'}`);
     } catch (err) {
       console.error(err);
     } finally {
@@ -107,40 +104,38 @@ export default function BudgetAdvice() {
       <CardContent sx={{ p: 3 }}>
         <Stack spacing={3}>
           <AnimatePresence>
-            {MOCK_TIPS.map((tip, i) => (
-              <MotionBox
-                key={tip.id}
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: i * 0.1 }}
-                sx={{
-                  p: 2,
-                  borderRadius: 4,
-                  bgcolor: `${tip.color}08`,
-                  border: '1px solid',
-                  borderColor: `${tip.color}20`,
-                  position: 'relative',
-                  overflow: 'hidden'
-                }}
-              >
-                <Stack direction="row" spacing={2} alignItems="flex-start">
-                  <Box sx={{ color: tip.color, mt: 0.5 }}>
-                    {tip.icon}
-                  </Box>
-                  <Box>
-                    <Typography variant="subtitle2" sx={{ fontWeight: 800, color: tip.color, mb: 0.5 }}>
-                      {tip.title}
-                    </Typography>
+            {loadingTips ? (
+              [0, 1, 2].map(i => (
+                <Box key={i} sx={{ height: 72, borderRadius: 4, bgcolor: 'divider', opacity: 0.4, animation: 'pulse 1.5s ease-in-out infinite' }} />
+              ))
+            ) : (
+              tips.map((tipText, i) => (
+                <MotionBox
+                  key={i}
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: i * 0.1 }}
+                  sx={{
+                    p: 2,
+                    borderRadius: 4,
+                    bgcolor: `${TIP_COLORS[i]}08`,
+                    border: '1px solid',
+                    borderColor: `${TIP_COLORS[i]}20`,
+                    position: 'relative',
+                    overflow: 'hidden'
+                  }}
+                >
+                  <Stack direction="row" spacing={2} alignItems="flex-start">
+                    <Box sx={{ color: TIP_COLORS[i], mt: 0.5 }}>
+                      {TIP_ICONS[i]}
+                    </Box>
                     <Typography variant="body2" sx={{ color: 'text.secondary', lineHeight: 1.5 }}>
-                      {tip.message}
+                      {tipText}
                     </Typography>
-                  </Box>
-                </Stack>
-                <IconButton size="small" sx={{ position: 'absolute', top: 8, right: 8, color: tip.color, opacity: 0.5 }}>
-                  <ChevronRight size={16} />
-                </IconButton>
-              </MotionBox>
-            ))}
+                  </Stack>
+                </MotionBox>
+              ))
+            )}
           </AnimatePresence>
 
           {aiResponse && (

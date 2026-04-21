@@ -9,6 +9,10 @@ import {
   getPendingInterests,
   getMutualMatches,
   getTodayMatches,
+  proposeEngagement,
+  acceptEngagement,
+  cancelEngagement,
+  getEngagementStatus,
 } from '../../controllers/matches.controller.js';
 
 const router = Router();
@@ -22,5 +26,9 @@ router.get('/:id', getMatchDetail);
 router.post('/:id/interest', expressInterest);
 router.delete('/:id/interest', undoInterest);
 router.post('/:id/interest/decline', declineInterest);
+router.post('/:id/engagement/propose', proposeEngagement);
+router.post('/:id/engagement/accept', acceptEngagement);
+router.delete('/:id/engagement', cancelEngagement);
+router.get('/:id/engagement', getEngagementStatus);
 
 export default router;

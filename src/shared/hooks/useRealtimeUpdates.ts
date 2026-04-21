@@ -47,7 +47,10 @@ export type RealtimeEvent =
   | 'mutual_match'        // A new mutual match was created (you're one of the parties)
   | 'match_removed'       // Someone removed you from their matches
   | 'interest_accepted'   // Someone accepted your pending interest
-  | 'interest_declined';  // Someone declined your pending interest
+  | 'interest_declined'   // Someone declined your pending interest
+  | 'engagement_invite'   // Someone proposed engagement to you
+  | 'engagement_accepted' // Someone accepted your engagement proposal
+  | 'engagement_cancelled'; // Someone cancelled the engagement
 
 export type RealtimeCallbacks = {
   /** Fired when another user sends you a pending interest */
@@ -60,6 +63,12 @@ export type RealtimeCallbacks = {
   onInterestAccepted?: (data: { fromUserId: string; fromUserName: string; fromUserProfilePic: string | null }) => void;
   /** Fired when someone declined your interest */
   onInterestDeclined?: (data: { fromUserId: string; fromUserName: string; fromUserProfilePic: string | null }) => void;
+  /** Fired when someone proposes engagement to you */
+  onEngagementInvite?: (data: { fromUserId: string; fromUserName: string; fromUserProfilePic: string | null }) => void;
+  /** Fired when someone accepted your engagement proposal */
+  onEngagementAccepted?: (data: { fromUserId: string; fromUserName: string; fromUserProfilePic: string | null }) => void;
+  /** Fired when the other party cancels the engagement */
+  onEngagementCancelled?: (data: { fromUserId: string; fromUserName: string; fromUserProfilePic: string | null }) => void;
 };
 
 /**
@@ -84,12 +93,18 @@ export function useRealtimeUpdates(callbacks: RealtimeCallbacks) {
     const onMatchRemoved = (d: any) => cbRef.current.onMatchRemoved?.(d);
     const onInterestAccepted = (d: any) => cbRef.current.onInterestAccepted?.(d);
     const onInterestDeclined = (d: any) => cbRef.current.onInterestDeclined?.(d);
+    const onEngagementInvite = (d: any) => cbRef.current.onEngagementInvite?.(d);
+    const onEngagementAccepted = (d: any) => cbRef.current.onEngagementAccepted?.(d);
+    const onEngagementCancelled = (d: any) => cbRef.current.onEngagementCancelled?.(d);
 
     socket.on('interest_received', onInterestReceived);
     socket.on('mutual_match', onMutualMatch);
     socket.on('match_removed', onMatchRemoved);
     socket.on('interest_accepted', onInterestAccepted);
     socket.on('interest_declined', onInterestDeclined);
+    socket.on('engagement_invite', onEngagementInvite);
+    socket.on('engagement_accepted', onEngagementAccepted);
+    socket.on('engagement_cancelled', onEngagementCancelled);
 
     return () => {
       socket.off('interest_received', onInterestReceived);
@@ -97,6 +112,9 @@ export function useRealtimeUpdates(callbacks: RealtimeCallbacks) {
       socket.off('match_removed', onMatchRemoved);
       socket.off('interest_accepted', onInterestAccepted);
       socket.off('interest_declined', onInterestDeclined);
+      socket.off('engagement_invite', onEngagementInvite);
+      socket.off('engagement_accepted', onEngagementAccepted);
+      socket.off('engagement_cancelled', onEngagementCancelled);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

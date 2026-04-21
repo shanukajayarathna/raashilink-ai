@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useCallback } from 'react';
 import {
   Box,
   Container,
@@ -100,42 +100,52 @@ const CATEGORY_COLORS = {
 function buildBudgetViewModel(budgetPayload: any) {
   const summary = budgetPayload?.data || {};
   const expenses = Array.isArray(summary.expenses) ? summary.expenses : [];
-  const grouped = expenses.reduce((acc: Record<string, number>, expense: any) => {
-    const category = expense?.category || 'Others';
-    acc[category] = (acc[category] || 0) + Number(expense?.amount || 0);
-    return acc;
-  }, {});
-
-  const categoryNames = Object.keys(grouped);
+  const byCategory: Record<string, any> = summary.byCategory || {};
   const totalBudget = Number(summary.totalBudget || 0);
-  const defaultAllocation = categoryNames.length > 0 ? Math.round(totalBudget / categoryNames.length) : totalBudget;
 
-  const categories = categoryNames.length > 0
-    ? categoryNames.map((name) => ({
-        name,
-        allocated: Math.max(grouped[name], defaultAllocation || grouped[name]),
-        spent: grouped[name],
-      }))
-    : [
-        {
-          name: 'Budget',
-          allocated: totalBudget,
-          spent: Number(summary.totalSpent || 0),
-        },
-      ];
+  // Prefer byCategory from the API (includes allocations)
+  let categories: { name: string; allocated: number; spent: number }[];
+  if (Object.keys(byCategory).length > 0) {
+    categories = Object.entries(byCategory).map(([name, data]: [string, any]) => ({
+      name,
+      allocated: Number(data.allocated || 0),
+      spent: Number(data.spent || 0),
+    }));
+  } else {
+    // Fallback: derive from expenses
+    const grouped = expenses.reduce((acc: Record<string, number>, expense: any) => {
+      const category = expense?.category || 'Others';
+      acc[category] = (acc[category] || 0) + Number(expense?.amount || 0);
+      return acc;
+    }, {});
+    categories = Object.entries(grouped).map(([name, spent]) => ({
+      name,
+      allocated: 0,
+      spent: spent as number,
+    }));
+  }
+
+  if (categories.length === 0) {
+    categories = [{ name: 'Budget', allocated: totalBudget, spent: Number(summary.totalSpent || 0) }];
+  }
 
   return {
     totalBudget,
     categories,
     expenses: expenses.map((expense: any, index: number) => ({
-      id: expense?._id || index + 1,
-      date: expense?.dueDate
-        ? new Date(expense.dueDate).toISOString().split('T')[0]
+      id: expense?._id || String(index + 1),
+      date: expense?.date
+        ? new Date(expense.date).toISOString().split('T')[0]
         : new Date().toISOString().split('T')[0],
       category: expense?.category || 'Others',
-      description: expense?.title || expense?.notes || 'Wedding expense',
+      description: expense?.description || expense?.title || 'Wedding expense',
       amount: Number(expense?.amount || 0),
-      hasReceipt: false,
+      hasReceipt: !!expense?.receiptUrlnse.date).toISOString().split('T')[0]
+        : new Date().toISOString().split('T')[0],
+      category: expense?.category || 'Others',
+      description: expense?.description || expense?.title || 'Wedding expense',
+      amount: Number(expense?.amount || 0),
+      hasReceipt: !!expense?.receiptUrl,
     })),
   };
 }
@@ -148,39 +158,37 @@ export default function BudgetPlanner() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isSetBudgetModalOpen, setIsSetBudgetModalOpen] = useState(false);
   const [budgetData, setBudgetData] = useState<any>(null);
-  const [isEditingTotal, setIsEditingTotal] = useState(false);
-  const [tempTotal, setTempTotal] = useState('');
-
-  const { token } = useSelector((state: RootState) => state.auth);
+  const fetchBudget = useCallback(async () => {
+    setLoading(true);
+    try {
+      const response = await weddingService.getBudget();
+      const viewModel = buildBudgetViewModel(response);
+      setBudgetData(viewModel);
+      setTempTotal(viewModel.totalBudget.toString());
+    } catch (err) {
+      console.error('Failed to load budget details', err);
+      const emptyViewModel = buildBudgetViewModel({ data: { totalBudget: 0, totalSpent: 0, expenses: [] } });
+      setBudgetData(emptyViewModel);
+      setTempTotal('0');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    const fetchBudget = async () => {
-      setLoading(true);
-      try {
-        const response = await weddingService.getBudget();
-        const viewModel = buildBudgetViewModel(response);
-        setBudgetData(viewModel);
-        setTempTotal(viewModel.totalBudget.toString());
-      } catch (err) {
-        console.error('Failed to load budget details', err);
-        const emptyViewModel = buildBudgetViewModel({ data: { totalBudget: 0, totalSpent: 0, expenses: [] } });
-        setBudgetData(emptyViewModel);
-        setTempTotal('0');
-      } finally {
-        setLoading(false);
-      }
-    };
-
     if (token) {
       fetchBudget();
       return;
     }
-
     const emptyViewModel = buildBudgetViewModel({ data: { totalBudget: 0, totalSpent: 0, expenses: [] } });
     setBudgetData(emptyViewModel);
     setTempTotal('0');
     setLoading(false);
-  }, [token]);
+  }, [token, fetchBudgetmptyViewModel = buildBudgetViewModel({ data: { totalBudget: 0, totalSpent: 0, expenses: [] } });
+    setBudgetData(emptyViewModel);
+    setTempTotal('0');
+    setLoading(false);
+  }, [token, fetchBudget]);
 
   const stats = useMemo(() => {
     if (!budgetData) return null;
@@ -439,11 +447,11 @@ export default function BudgetPlanner() {
                   />
                   <Button variant="outlined" startIcon={<Filter size={16} />} sx={{ borderRadius: 3, textTransform: 'none', fontWeight: 700, color: COLORS.textPrimary, borderColor: 'divider' }}>
                     Filter
-                  </Button>
+                  </Button>onDelete={fetchBudget} 
                 </Stack>
               </Stack>
 
-              <ExpenseList expenses={budgetData.expenses} />
+              <ExpenseList expenses={budgetData.expenses} onDelete={fetchBudget} />
             </CardContent>
           </Card>
         </Grid>
@@ -490,16 +498,9 @@ export default function BudgetPlanner() {
         <Plus size={24} />
       </Fab>
 
-      {/* Modals */}
-      <AddExpenseModal
-        open={isAddModalOpen}
-        onClose={() => setIsAddModalOpen(false)}
-        onAdd={(expense: any) => {
-          setBudgetData((prev: any) => ({
-            ...prev,
-            expenses: [expense, ...prev.expenses]
-          }));
+      {/* Modalasync () => {
           setIsAddModalOpen(false);
+          await fetchBudget();
         }}
       />
       <SetBudgetModal
@@ -507,9 +508,12 @@ export default function BudgetPlanner() {
         onClose={() => setIsSetBudgetModalOpen(false)}
         totalBudget={budgetData.totalBudget}
         categories={budgetData.categories}
-        onSave={(newCategories: any) => {
+        onSave={async (newCategories: any) => {
           setBudgetData((prev: any) => ({ ...prev, categories: newCategories }));
           setIsSetBudgetModalOpen(false);
+          await fetchBudget(({ ...prev, categories: newCategories }));
+          setIsSetBudgetModalOpen(false);
+          await fetchBudget();
         }}
       />
     </Container>
@@ -555,16 +559,16 @@ function CategoryTable({ categories }: { categories: any[] }) {
           <TableRow>
             <TableCell sx={{ fontWeight: 800, color: COLORS.primary }}>Category</TableCell>
             <TableCell sx={{ fontWeight: 800, color: COLORS.primary }}>Allocated</TableCell>
-            <TableCell sx={{ fontWeight: 800, color: COLORS.primary }}>Spent</TableCell>
-            <TableCell sx={{ fontWeight: 800, color: COLORS.primary }}>Remaining</TableCell>
+            <TableCell sx={{ fontWeight: 800, color: COLORS.primary }}>% Used</TableCell>
             <TableCell sx={{ fontWeight: 800, color: COLORS.primary }}>Status</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
           {categories.map((cat, i) => {
             const remaining = cat.allocated - cat.spent;
-            const isOver = cat.spent > cat.allocated;
-            const isWarning = cat.spent > cat.allocated * 0.9 && !isOver;
+            const isOver = cat.spent > cat.allocated && cat.allocated > 0;
+            const usedPct = cat.allocated > 0 ? Math.round((cat.spent / cat.allocated) * 100) : cat.spent > 0 ? 100 : 0;
+            const isWarning = usedPct >= 80 && !isOver;
 
             return (
               <TableRow key={i}>
@@ -574,9 +578,15 @@ function CategoryTable({ categories }: { categories: any[] }) {
                 <TableCell sx={{ color: remaining < 0 ? COLORS.error : COLORS.success, fontWeight: 700 }}>
                   LKR {remaining.toLocaleString()}
                 </TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>{usedPct}%</TableCell>
                 <TableCell>
                   <Chip
-                    label={isOver ? 'Over Budget' : isWarning ? 'Warning' : 'On Budget'}
+                    label={isOver ? 'Over' : isWarning ? 'Warning' : 'On track
+                </TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>{usedPct}%</TableCell>
+                <TableCell>
+                  <Chip
+                    label={isOver ? 'Over' : isWarning ? 'Warning' : 'On track'}
                     size="small"
                     sx={{
                       fontWeight: 800,
@@ -591,12 +601,38 @@ function CategoryTable({ categories }: { categories: any[] }) {
             );
           })}
         </TableBody>
-      </Table>
-    </TableContainer>
+      </Table>, onDelete }: { expenses: any[]; onDelete?: () => void }) {
+  const [deletingId, setDeletingId] = React.useState<string | null>(null);
+
+  const handleDelete = async (id: string) => {
+    setDeletingId(id);
+    try {
+      await weddingService.deleteExpense(id);
+      onDelete?.();
+    } catch (err) {
+      console.error('Failed to delete expense', err);
+    } finally {
+      setDeletingId(null);
+    }
+  };eContainer>
   );
 }
 
-function ExpenseList({ expenses }: { expenses: any[] }) {
+function ExpenseList({ expenses, onDelete }: { expenses: any[]; onDelete?: () => void }) {
+  const [deletingId, setDeletingId] = React.useState<string | null>(null);
+
+  const handleDelete = async (id: string) => {
+    setDeletingId(id);
+    try {
+      await weddingService.deleteExpense(id);
+      onDelete?.();
+    } catch (err) {
+      console.error('Failed to delete expense', err);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   return (
     <Stack spacing={2}>
       {expenses.map((expense, i) => (
@@ -656,8 +692,13 @@ function ExpenseList({ expenses }: { expenses: any[] }) {
                 </IconButton>
               </Tooltip>
             )}
-            <IconButton size="small" sx={{ color: COLORS.error }}>
-              <Trash2 size={18} />
+            <IconButton
+              size="small"
+              disabled={deletingId === expense.id}
+              onClick={() => handleDelete(expense.id)}
+              sx={{ color: COLORS.error }}
+            >
+              {deletingId === expense.id ? <CircularProgress size={18} /> : <Trash2 size={18} />}
             </IconButton>
           </Stack>
         </MotionBox>

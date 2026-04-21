@@ -40,6 +40,7 @@ import {
   LayoutGrid,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import weddingService from '@/features/wedding/services/weddingService';
 
 const COLORS = {
   primary: '#8B1A2E',
@@ -109,19 +110,30 @@ export default function AddExpenseModal({ open, onClose, onAdd }: AddExpenseModa
 
     setIsSubmitting(true);
     try {
-      // Simulating API call to POST /api/v1/wedding/expense/add
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      const newExpense = {
+      const res = await weddingService.addExpense({
+        description: formData.description,
+        category: formData.category,
+        amount: parseInt(formData.amount),
+        date: formData.date,
+        notes: formData.vendor ? `Vendor: ${formData.vendor}` : undefined,
+      });
+
+      const savedExpense = res?.data?.expense;
+      onAdd(savedExpense ? {
+        id: savedExpense._id,
+        date: savedExpense.date || formData.date,
+        category: savedExpense.category,
+        description: savedExpense.description,
+        amount: savedExpense.amount,
+        hasReceipt: false,
+      } : {
         id: Math.random(),
         date: formData.date,
         category: formData.category,
         description: formData.description,
         amount: parseInt(formData.amount),
         hasReceipt: !!receiptFile,
-      };
-      
-      onAdd(newExpense);
+      });
       setFormData({
         category: '',
         description: '',

@@ -6,13 +6,13 @@ import {
   Dialog, DialogTitle, DialogContent, DialogActions, Button, Chip, Tooltip,
   Snackbar, Alert,
 } from '@mui/material';
-import { Send, ArrowLeft, MessageCircle, Trash2, PlusCircle, Heart } from 'lucide-react';
+import { Send, ArrowLeft, MessageCircle, Trash2, PlusCircle, Heart, Diamond, X } from 'lucide-react';
 import { useSelector } from 'react-redux';
 import { RootState } from '@/app/store/store';
 import api from '@/shared/config/axiosConfig';
 import { markSentPreview } from '@/shared/lib/sentMsgTracker';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { useRealtimeUpdates } from '@/shared/hooks/useRealtimeUpdates';
+import { useRealtimeUpdates, connectSocket } from '@/shared/hooks/useRealtimeUpdates';
 import weddingService from '@/features/wedding/services/weddingService';
 
 interface Conversation {
@@ -48,6 +48,8 @@ export default function MessagesPage() {
   const deepLinkConvId = (location.state as any)?.conversationId as string | undefined;
   const deepLinkUserId = (location.state as any)?.openUserId as string | undefined;
   const deepLinkStartConv = Boolean((location.state as any)?.startConversation);
+  const deepLinkEngagementProposerId = (location.state as any)?.engagementProposerId as string | undefined;
+  const deepLinkEngagedUserId = (location.state as any)?.engagedUserId as string | undefined;
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
   // All mutual matches — full list regardless of whether a conversation exists
@@ -71,6 +73,70 @@ export default function MessagesPage() {
   const [weddingInviteOpen, setWeddingInviteOpen] = useState(false);
   const [sendingInvite, setSendingInvite] = useState(false);
   const [inviteSnack, setInviteSnack] = useState<{ open: boolean; msg: string; severity: 'success' | 'error' }>({ open: false, msg: '', severity: 'success' });
+  const [engagementOpen, setEngagementOpen] = useState(false);
+  const [proposingEngagement, setProposingEngagement] = useState(false);
+  // Track which partner we are engaged with (disables the propose button)
+  const [engagedWithUserId, setEngagedWithUserId] = useState<string | null>(deepLinkEngagedUserId ?? null);
+  // Track who sent the engagement proposal (null when not in 'proposed' state)
+  const [engagementProposerId, setEngagementProposerId] = useState<string | null>(null);
+  const [cancellingEngagement, setCancellingEngagement] = useState(false);
+  // Wedding planning status with the current conversation partner
+  const [weddingStatus, setWeddingStatus] = useState<'none' | 'invited' | 'coupled'>('none');
+  const [cancellingWedding, setCancellingWedding] = useState(false);
+  // Banner shown when partner sent us an engagement proposal
+  const [engagementBannerUserId, setEngagementBannerUserId] = useState<string | null>(null);
+  const [acceptingEngagement, setAcceptingEngagement] = useState(false);
+
+  // Fetch persistent engagement status from DB whenever conversation changes
+  useEffect(() => {
+    if (!selectedConv) { setEngagedWithUserId(null); setEngagementProposerId(null); setWeddingStatus('none'); return; }
+    api.get(`/matches/${selectedConv.otherUserId}/engagement`)
+      .then((res: any) => {
+        const { status, proposerId } = res.data?.data || {};
+        setEngagedWithUserId(status === 'accepted' ? selectedConv.otherUserId : null);
+        setEngagementProposerId(status === 'proposed' ? (proposerId || null) : null);
+      })
+      .catch(() => {});
+    // Fetch wedding status for this partner
+    weddingService.getProject()
+      .then((res: any) => {
+        const project = res?.data;
+        if (!project) { setWeddingStatus('none'); return; }
+        const isCoupled = Array.isArray(project.coupleUserIds) && project.coupleUserIds.length >= 2 &&
+          project.coupleUserIds.some((u: any) => {
+            const uid = typeof u === 'object' ? (u._id || u.id) : u;
+            return String(uid) === String(selectedConv.otherUserId);
+          });
+        if (isCoupled) { setWeddingStatus('coupled'); return; }
+        const isInvited = project.pendingInvite?.status === 'pending';
+        setWeddingStatus(isInvited ? 'invited' : 'none');
+      })
+      .catch(() => setWeddingStatus('none'));
+  }, [selectedConv]);
+
+  // Show engagement acceptance banner — set from navigation state (notification click)
+  // or from unread notifications when a conversation is selected.
+  useEffect(() => {
+    if (!selectedConv) return;
+    // If we arrived here from an engagement_invite notification, show banner immediately
+    if (deepLinkEngagementProposerId && deepLinkEngagementProposerId === selectedConv.otherUserId) {
+      setEngagementBannerUserId(selectedConv.otherUserId);
+      return;
+    }
+    // Fallback: check unread notifications (covers landing directly on messages page)
+    // Skip if already engaged — the invite was already handled
+    if (engagedWithUserId === selectedConv.otherUserId) {
+      setEngagementBannerUserId(null);
+      return;
+    }
+    api.get('/notifications').then((res: any) => {
+      const items: any[] = res.data?.data?.notifications || [];
+      const invite = items.find(
+        (n) => n.type === 'engagement_invite' && n.fromUserId === selectedConv.otherUserId
+      );
+      setEngagementBannerUserId(invite ? selectedConv.otherUserId : null);
+    }).catch(() => setEngagementBannerUserId(null));
+  }, [selectedConv, deepLinkEngagementProposerId, engagedWithUserId]);
 
   /** Find an existing conversation by partner userId, or call the server to create one */
   const getOrOpenConversation = useCallback(async (userId: string): Promise<Conversation | null> => {
@@ -258,7 +324,7 @@ export default function MessagesPage() {
     }
   };
 
-  // Real-time: add new mutual match to allMutualMatches so they appear under Eligible Chats
+  // Real-time: add new mutual match + handle engagement events without page refresh
   useRealtimeUpdates({
     onMutualMatch: (data) => {
       if (!data.fromUserId) return;
@@ -276,7 +342,61 @@ export default function MessagesPage() {
         ];
       });
     },
+    // Partner sent us an engagement proposal — show the accept banner instantly
+    onEngagementInvite: (data) => {
+      if (!data.fromUserId) return;
+      setSelectedConv((conv) => {
+        if (conv && conv.otherUserId === data.fromUserId) {
+          setEngagementBannerUserId(data.fromUserId);
+          setEngagementProposerId(data.fromUserId);
+        }
+        return conv;
+      });
+    },
+    // Partner accepted our proposal — mark button as engaged instantly
+    onEngagementAccepted: (data) => {
+      if (!data.fromUserId) return;
+      setEngagedWithUserId(data.fromUserId);
+      setEngagementProposerId(null);
+      setInviteSnack({
+        open: true,
+        msg: `${data.fromUserName} accepted your engagement proposal! 💎 Start planning your wedding together.`,
+        severity: 'success',
+      });
+      setSelectedConv((conv) => {
+        if (conv && conv.otherUserId === data.fromUserId) {
+          setTimeout(() => setWeddingInviteOpen(true), 400);
+        }
+        return conv;
+      });
+    },
+    // Either party cancelled — reset engagement state in real time
+    onEngagementCancelled: (data) => {
+      if (!data.fromUserId) return;
+      setSelectedConv((conv) => {
+        if (conv && conv.otherUserId === data.fromUserId) {
+          setEngagedWithUserId(null);
+          setEngagementProposerId(null);
+          setEngagementBannerUserId(null);
+          setInviteSnack({ open: true, msg: `${data.fromUserName} cancelled the engagement.`, severity: 'error' });
+        }
+        return conv;
+      });
+    },
   });
+
+  // wedding_reset socket: partner cancelled invite or left couple
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token) return;
+    const socket = connectSocket(token);
+    const handler = () => {
+      setWeddingStatus('none');
+      setInviteSnack({ open: true, msg: 'The wedding planning was cancelled by the other party.', severity: 'error' });
+    };
+    socket.on('wedding_reset', handler);
+    return () => { socket.off('wedding_reset', handler); };
+  }, []);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -430,16 +550,6 @@ export default function MessagesPage() {
           </Typography>
           <Typography variant="caption" color="text.secondary">Mutual match</Typography>
         </Box>
-        <Tooltip title="Plan Wedding Together">
-          <IconButton
-            size="small"
-            onClick={() => setWeddingInviteOpen(true)}
-            sx={{ color: '#8B1A2E', mr: 0.5 }}
-            aria-label="Plan Wedding Together"
-          >
-            <Heart size={18} />
-          </IconButton>
-        </Tooltip>
         <IconButton
           size="small"
           onClick={() => setDeleteTarget(selectedConv)}
@@ -449,6 +559,263 @@ export default function MessagesPage() {
           <Trash2 size={18} />
         </IconButton>
       </Box>
+
+      {/* Journey step-action bar */}
+      {(() => {
+        const isEngaged = engagedWithUserId === selectedConv.otherUserId;
+        const iProposed = !isEngaged && engagementProposerId === currentUserId;
+        const theyProposed = !isEngaged && engagementProposerId === selectedConv.otherUserId;
+        return (
+          <Box sx={{
+            px: 2, py: 1, bgcolor: '#FAFAFA', borderBottom: '1px solid', borderColor: 'divider',
+            display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap',
+          }}>
+            <Typography variant="caption" color="text.disabled" sx={{ mr: 0.5 }}>Next step:</Typography>
+
+            {/* Step 2: Engagement */}
+            {isEngaged ? (
+              <>
+                <Chip
+                  icon={<Diamond size={12} fill="white" color="white" />}
+                  label="Engaged 💎"
+                  size="small"
+                  sx={{ bgcolor: '#C9A84C', color: 'white', fontWeight: 700, fontSize: '0.72rem',
+                    '& .MuiChip-icon': { color: 'white' } }}
+                />
+                <Tooltip title="Undo engagement">
+                  <IconButton
+                    size="small"
+                    disabled={cancellingEngagement}
+                    onClick={async () => {
+                      setCancellingEngagement(true);
+                      try {
+                        await api.delete(`/matches/${selectedConv.otherUserId}/engagement`);
+                        setEngagedWithUserId(null);
+                        setEngagementProposerId(null);
+                        setInviteSnack({ open: true, msg: 'Engagement cancelled.', severity: 'error' });
+                      } catch {
+                        setInviteSnack({ open: true, msg: 'Failed to cancel. Try again.', severity: 'error' });
+                      } finally {
+                        setCancellingEngagement(false);
+                      }
+                    }}
+                    sx={{ color: 'text.disabled', p: 0.25 }}
+                  >
+                    {cancellingEngagement ? <CircularProgress size={12} /> : <X size={13} />}
+                  </IconButton>
+                </Tooltip>
+              </>
+            ) : iProposed ? (
+              <>
+                <Chip
+                  icon={<Diamond size={12} color="#C9A84C" />}
+                  label="⏳ Waiting for response…"
+                  size="small"
+                  variant="outlined"
+                  sx={{ color: '#C9A84C', borderColor: '#C9A84C', fontSize: '0.72rem',
+                    '& .MuiChip-icon': { color: '#C9A84C' } }}
+                />
+                <Tooltip title="Cancel proposal">
+                  <IconButton
+                    size="small"
+                    disabled={cancellingEngagement}
+                    onClick={async () => {
+                      setCancellingEngagement(true);
+                      try {
+                        await api.delete(`/matches/${selectedConv.otherUserId}/engagement`);
+                        setEngagementProposerId(null);
+                        setInviteSnack({ open: true, msg: 'Proposal cancelled.', severity: 'error' });
+                      } catch {
+                        setInviteSnack({ open: true, msg: 'Failed to cancel. Try again.', severity: 'error' });
+                      } finally {
+                        setCancellingEngagement(false);
+                      }
+                    }}
+                    sx={{ color: 'text.disabled', p: 0.25 }}
+                  >
+                    {cancellingEngagement ? <CircularProgress size={12} /> : <X size={13} />}
+                  </IconButton>
+                </Tooltip>
+              </>
+            ) : theyProposed ? (
+              <Chip
+                icon={<Diamond size={12} color="#C9A84C" />}
+                label="Engagement proposal received — accept below ↓"
+                size="small"
+                variant="outlined"
+                sx={{ color: '#C9A84C', borderColor: '#C9A84C', fontSize: '0.72rem',
+                  '& .MuiChip-icon': { color: '#C9A84C' } }}
+              />
+            ) : (
+              <Chip
+                icon={<Diamond size={12} color="#C9A84C" />}
+                label="Propose Engagement"
+                size="small"
+                variant="outlined"
+                clickable
+                onClick={() => setEngagementOpen(true)}
+                sx={{ color: '#C9A84C', borderColor: '#C9A84C', fontSize: '0.72rem', cursor: 'pointer',
+                  '&:hover': { bgcolor: '#FFF8E7' },
+                  '& .MuiChip-icon': { color: '#C9A84C' } }}
+              />
+            )}
+
+            <Typography variant="caption" color="text.disabled">›</Typography>
+
+            {/* Step 3: Wedding */}
+            {isEngaged && weddingStatus === 'coupled' ? (
+              <>
+                <Chip
+                  icon={<Heart size={12} color="white" />}
+                  label="Planning Together 💒"
+                  size="small"
+                  sx={{ bgcolor: '#8B1A2E', color: 'white', fontWeight: 700, fontSize: '0.72rem',
+                    '& .MuiChip-icon': { color: 'white' } }}
+                />
+                <Tooltip title="Leave wedding plan">
+                  <IconButton
+                    size="small"
+                    disabled={cancellingWedding}
+                    onClick={async () => {
+                      setCancellingWedding(true);
+                      try {
+                        await weddingService.resetWedding();
+                        setWeddingStatus('none');
+                        setInviteSnack({ open: true, msg: 'Left the shared wedding plan.', severity: 'error' });
+                      } catch {
+                        setInviteSnack({ open: true, msg: 'Failed to leave. Try again.', severity: 'error' });
+                      } finally {
+                        setCancellingWedding(false);
+                      }
+                    }}
+                    sx={{ color: 'text.disabled', p: 0.25 }}
+                  >
+                    {cancellingWedding ? <CircularProgress size={12} /> : <X size={13} />}
+                  </IconButton>
+                </Tooltip>
+              </>
+            ) : isEngaged && weddingStatus === 'invited' ? (
+              <>
+                <Chip
+                  icon={<Heart size={12} color="#8B1A2E" />}
+                  label="⏳ Invite sent…"
+                  size="small"
+                  variant="outlined"
+                  sx={{ color: '#8B1A2E', borderColor: '#8B1A2E', fontSize: '0.72rem',
+                    '& .MuiChip-icon': { color: '#8B1A2E' } }}
+                />
+                <Tooltip title="Cancel invite">
+                  <IconButton
+                    size="small"
+                    disabled={cancellingWedding}
+                    onClick={async () => {
+                      setCancellingWedding(true);
+                      try {
+                        await weddingService.resetWedding();
+                        setWeddingStatus('none');
+                        setInviteSnack({ open: true, msg: 'Wedding invite cancelled.', severity: 'error' });
+                      } catch {
+                        setInviteSnack({ open: true, msg: 'Failed to cancel. Try again.', severity: 'error' });
+                      } finally {
+                        setCancellingWedding(false);
+                      }
+                    }}
+                    sx={{ color: 'text.disabled', p: 0.25 }}
+                  >
+                    {cancellingWedding ? <CircularProgress size={12} /> : <X size={13} />}
+                  </IconButton>
+                </Tooltip>
+              </>
+            ) : isEngaged ? (
+              <Chip
+                icon={<Heart size={12} color="white" />}
+                label="Plan Wedding Together 💒"
+                size="small"
+                clickable
+                onClick={() => setWeddingInviteOpen(true)}
+                sx={{ bgcolor: '#8B1A2E', color: 'white', fontWeight: 700, fontSize: '0.72rem', cursor: 'pointer',
+                  '&:hover': { bgcolor: '#6B1422' },
+                  '& .MuiChip-icon': { color: 'white' } }}
+              />
+            ) : (
+              <Tooltip title="Complete the engagement step first">
+                <span>
+                  <Chip
+                    icon={<Heart size={12} />}
+                    label="Plan Wedding"
+                    size="small"
+                    disabled
+                    sx={{ fontSize: '0.72rem' }}
+                  />
+                </span>
+              </Tooltip>
+            )}
+          </Box>
+        );
+      })()}
+
+      {/* Engagement acceptance banner */}
+      {engagementBannerUserId === selectedConv.otherUserId && (
+        <Box sx={{ px: 2, py: 1.25, bgcolor: '#FFF8E7', borderBottom: '1px solid #F0D88A', display: 'flex', alignItems: 'center', gap: 1.5 }}>
+          <Diamond size={18} color="#C9A84C" />
+          <Box sx={{ flex: 1 }}>
+            <Typography variant="body2" sx={{ fontWeight: 700, color: '#7A6020' }}>
+              {selectedConv.title} proposed engagement! 💎
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              Accept to move forward together, or decline to keep chatting.
+            </Typography>
+          </Box>
+          <Button
+            size="small"
+            variant="contained"
+            disabled={acceptingEngagement || cancellingEngagement}
+            onClick={async () => {
+              setAcceptingEngagement(true);
+              try {
+                await api.post(`/matches/${selectedConv.otherUserId}/engagement/accept`);
+                setEngagementBannerUserId(null);
+                setEngagedWithUserId(selectedConv.otherUserId);
+                setEngagementProposerId(null);
+                // Don't open the wedding dialog here — the proposer receives the
+                // engagement_accepted socket event and will be prompted to plan.
+                // The acceptor gets the wedding step bar to act when ready.
+                setInviteSnack({ open: true, msg: 'Engagement accepted! 💎 You can plan your wedding together now.', severity: 'success' });
+              } catch {
+                setInviteSnack({ open: true, msg: 'Failed to accept. Please try again.', severity: 'error' });
+              } finally {
+                setAcceptingEngagement(false);
+              }
+            }}
+            startIcon={acceptingEngagement ? <CircularProgress size={12} color="inherit" /> : <Diamond size={12} />}
+            sx={{ bgcolor: '#C9A84C', '&:hover': { bgcolor: '#A8883E' }, color: 'white', flexShrink: 0, fontSize: '0.72rem' }}
+          >
+            {acceptingEngagement ? 'Accepting…' : 'Accept 💎'}
+          </Button>
+          <Button
+            size="small"
+            variant="outlined"
+            color="error"
+            disabled={acceptingEngagement || cancellingEngagement}
+            onClick={async () => {
+              setCancellingEngagement(true);
+              try {
+                await api.delete(`/matches/${selectedConv.otherUserId}/engagement`);
+                setEngagementBannerUserId(null);
+                setEngagementProposerId(null);
+                setInviteSnack({ open: true, msg: 'Engagement proposal declined.', severity: 'error' });
+              } catch {
+                setInviteSnack({ open: true, msg: 'Failed to decline. Try again.', severity: 'error' });
+              } finally {
+                setCancellingEngagement(false);
+              }
+            }}
+            sx={{ flexShrink: 0, fontSize: '0.72rem' }}
+          >
+            {cancellingEngagement ? <CircularProgress size={12} /> : 'Decline'}
+          </Button>
+        </Box>
+      )}
 
       {/* Messages */}
       <Box sx={{ flex: 1, overflowY: 'auto', p: 2, display: 'flex', flexDirection: 'column', gap: 1 }}>
@@ -579,9 +946,12 @@ export default function MessagesPage() {
       <Dialog open={weddingInviteOpen} onClose={() => !sendingInvite && setWeddingInviteOpen(false)} maxWidth="xs" fullWidth>
         <DialogTitle sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
           <Heart size={20} color="#8B1A2E" />
-          Plan Wedding Together
+          Start Planning Your Wedding 🎉
         </DialogTitle>
         <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            Congratulations on your engagement! 💎
+          </Typography>
           <Typography variant="body2" color="text.secondary">
             Send <strong>{selectedConv?.title}</strong> an invitation to start planning your wedding together on RaashiLink. You'll both share a wedding dashboard, checklist, budget, and vendor list.
           </Typography>
@@ -595,6 +965,7 @@ export default function MessagesPage() {
               setSendingInvite(true);
               try {
                 await weddingService.invitePartner(selectedConv.otherUserId);
+                setWeddingStatus('invited');
                 setInviteSnack({ open: true, msg: `Invitation sent to ${selectedConv.title}! They need to accept to link your wedding project.`, severity: 'success' });
                 setWeddingInviteOpen(false);
               } catch {
@@ -608,6 +979,46 @@ export default function MessagesPage() {
             sx={{ bgcolor: '#8B1A2E', '&:hover': { bgcolor: '#6B1422' } }}
           >
             {sendingInvite ? 'Sending…' : 'Send Invite'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Engagement Proposal Dialog */}
+      <Dialog open={engagementOpen} onClose={() => !proposingEngagement && setEngagementOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Diamond size={20} color="#C9A84C" />
+          Propose Engagement
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+            Send <strong>{selectedConv?.title}</strong> a formal engagement proposal. This is the next step after chatting — confirming you'd both like to move forward together.
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            They'll receive a notification to accept. Once confirmed, you can both start planning your wedding together.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setEngagementOpen(false)} disabled={proposingEngagement}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={async () => {
+              if (!selectedConv) return;
+              setProposingEngagement(true);
+              try {
+                await api.post(`/matches/${selectedConv.otherUserId}/engagement/propose`);
+                setInviteSnack({ open: true, msg: `Engagement proposal sent to ${selectedConv.title}! Waiting for their response.`, severity: 'success' });
+                setEngagementOpen(false);
+              } catch {
+                setInviteSnack({ open: true, msg: 'Failed to send proposal. Please try again.', severity: 'error' });
+              } finally {
+                setProposingEngagement(false);
+              }
+            }}
+            disabled={proposingEngagement}
+            startIcon={proposingEngagement ? <CircularProgress size={14} color="inherit" /> : <Diamond size={14} />}
+            sx={{ bgcolor: '#C9A84C', '&:hover': { bgcolor: '#A8883E' }, color: 'white' }}
+          >
+            {proposingEngagement ? 'Sending…' : 'Send Proposal'}
           </Button>
         </DialogActions>
       </Dialog>
