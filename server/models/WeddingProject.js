@@ -56,7 +56,7 @@ const weddingProjectSchema = new Schema(
     vendors: { type: [bookedVendorSchema], default: [] },
     pendingInvite: {
       inviteeId: { type: Schema.Types.ObjectId, ref: 'User', default: null },
-      status: { type: String, enum: ['pending', 'accepted', 'declined'], default: 'pending' },
+      status: { type: String, enum: ['pending', 'accepted', 'declined'], default: 'declined' },
     },
   },
   {
