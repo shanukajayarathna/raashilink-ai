@@ -162,6 +162,39 @@ export const addExpense = asyncHandler(async (req, res) => {
   });
 });
 
+export const updateExpense = asyncHandler(async (req, res) => {
+  const { index } = req.params;
+  const idx = Number(index);
+  const { title, category, amount, notes, paid } = req.body ?? {};
+
+  const project = await getOrCreateProject(req.user._id);
+  if (idx < 0 || idx >= project.expenses.length) throw new ApiError(404, 'Expense not found');
+
+  const expense = project.expenses[idx];
+  if (title !== undefined) expense.title = title;
+  if (category !== undefined) expense.category = category;
+  if (amount !== undefined) expense.amount = Number(amount);
+  if (notes !== undefined) expense.notes = notes;
+  if (paid !== undefined) expense.paid = Boolean(paid);
+
+  await project.save();
+  notifyPartner(project, req.user._id);
+  res.status(200).json({ success: true, data: calculateBudget(project) });
+});
+
+export const deleteExpense = asyncHandler(async (req, res) => {
+  const { index } = req.params;
+  const idx = Number(index);
+
+  const project = await getOrCreateProject(req.user._id);
+  if (idx < 0 || idx >= project.expenses.length) throw new ApiError(404, 'Expense not found');
+
+  project.expenses.splice(idx, 1);
+  await project.save();
+  notifyPartner(project, req.user._id);
+  res.status(200).json({ success: true, data: calculateBudget(project) });
+});
+
 export const getBudget = asyncHandler(async (req, res) => {
   const project = await getOrCreateProject(req.user._id);
 
