@@ -114,6 +114,10 @@ export default function WeddingDashboard() {
     try { return localStorage.getItem('wedding_onboarding_dismissed') === '1'; } catch { return false; }
   });
 
+  const [editBudgetOpen, setEditBudgetOpen] = useState(false);
+  const [editBudgetValue, setEditBudgetValue] = useState('');
+  const [savingBudget, setSavingBudget] = useState(false);
+
   const { token, user } = useSelector((state: RootState) => state.auth);
 
   const fetchData = async () => {
@@ -735,7 +739,13 @@ export default function WeddingDashboard() {
           value={`LKR ${stats.totalBudget.toLocaleString()}`} 
           icon={<DollarSign size={24} />} 
           color={COLORS.primary}
-          action={<IconButton size="small"><Edit3 size={16} /></IconButton>}
+          action={
+            <Tooltip title="Edit budget">
+              <IconButton size="small" onClick={() => { setEditBudgetValue(String(stats.totalBudget)); setEditBudgetOpen(true); }}>
+                <Edit3 size={16} />
+              </IconButton>
+            </Tooltip>
+          }
           delay={0.1}
         />
         <StatCard 
@@ -802,10 +812,45 @@ export default function WeddingDashboard() {
           {activeTab === 0 && <OverviewTab data={weddingData} onSwitchTab={setActiveTab} project={rawProject} budget={rawBudget} />}
           {activeTab === 1 && <ChecklistTab checklist={rawProject?.checklist || []} onChecklistChange={(updated) => setRawProject((p: any) => ({ ...p, checklist: updated }))} />}
           {activeTab === 2 && <VendorTab vendors={rawVendors} bookedVendorIds={rawProject?.vendors || []} onStatusChange={fetchData} />}
-          {activeTab === 3 && <BudgetTab totalBudget={rawBudget?.totalBudget || rawProject?.totalBudget || 0} totalSpent={rawBudget?.totalSpent || 0} expenses={rawProject?.expenses || []} onExpenseAdded={fetchData} />}
-          {activeTab === 4 && <TimelineTab weddingDate={rawProject?.weddingDate || couple.date} />}
+          {activeTab === 3 && <BudgetTab totalBudget={rawBudget?.totalBudget || rawProject?.totalBudget || 0} totalSpent={rawBudget?.totalSpent || 0} expenses={rawBudget?.expenses || rawProject?.expenses || []} onExpenseAdded={fetchData} onBudgetUpdated={fetchData} />}
+          {activeTab === 4 && <TimelineTab weddingDate={rawProject?.weddingDate || couple.date} checklist={rawProject?.checklist || []} onChecklistChange={fetchData} />}
         </motion.div>
       </AnimatePresence>
+
+      {/* Edit Total Budget Dialog */}
+      <Dialog open={editBudgetOpen} onClose={() => !savingBudget && setEditBudgetOpen(false)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: 4 } }}>
+        <DialogTitle sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <DollarSign size={20} color="#C9A84C" /> Edit Total Budget
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Update your total wedding budget. This affects the budget overview and spending breakdown.
+          </Typography>
+          <TextField
+            fullWidth type="number" label="Total Budget (LKR)" value={editBudgetValue}
+            onChange={(e) => setEditBudgetValue(e.target.value)}
+            InputProps={{ startAdornment: <InputAdornment position="start">LKR</InputAdornment> }}
+            inputProps={{ min: 0 }}
+            autoFocus
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setEditBudgetOpen(false)} disabled={savingBudget}>Cancel</Button>
+          <Button variant="contained" disabled={!editBudgetValue || Number(editBudgetValue) < 0 || savingBudget}
+            onClick={async () => {
+              setSavingBudget(true);
+              try {
+                await weddingService.updateProject({ totalBudget: Number(editBudgetValue) });
+                setEditBudgetOpen(false);
+                await fetchData();
+              } catch { /* ignore */ } finally { setSavingBudget(false); }
+            }}
+            sx={{ bgcolor: '#C9A84C', '&:hover': { bgcolor: '#A8883E' } }}
+          >
+            {savingBudget ? <CircularProgress size={16} color="inherit" /> : 'Save Budget'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Reset / Cancel Wedding Confirmation Dialog — removed, inline confirm used instead */}
     </Container>
