@@ -147,6 +147,7 @@ export default function OverviewTab({ data, onSwitchTab, project, budget }: { da
                   variant="contained" 
                   size="small" 
                   startIcon={<Plus size={16} />}
+                  onClick={() => onSwitchTab(1)}
                   sx={{ bgcolor: COLORS.primary, borderRadius: 3, fontWeight: 700, textTransform: 'none' }}
                 >
                   Quick Add
