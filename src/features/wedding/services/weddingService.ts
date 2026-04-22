@@ -110,6 +110,16 @@ const weddingService = {
   resetWedding: async (): Promise<void> => {
     await axiosInstance.post('/wedding/couple/reset');
   },
+
+  updateExpense: async (index: number, data: { title?: string; category?: string; amount?: number; notes?: string; paid?: boolean }) => {
+    const response = await axiosInstance.patch(`/wedding/expenses/${index}`, data);
+    return response.data;
+  },
+
+  deleteExpense: async (index: number) => {
+    const response = await axiosInstance.delete(`/wedding/expenses/${index}`);
+    return response.data;
+  },
 };
 
 export default weddingService;
