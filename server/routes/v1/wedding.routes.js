@@ -5,6 +5,8 @@ import {
   updateProject,
   addTask,
   addExpense,
+  updateExpense,
+  deleteExpense,
   getBudget,
   getWeddingVendors,
   requestQuote,
@@ -24,6 +26,8 @@ router.put('/project', updateProject);
 router.post('/tasks', addTask);
 router.patch('/tasks/:index/toggle', toggleTask);
 router.post('/expenses', addExpense);
+router.patch('/expenses/:index', updateExpense);
+router.delete('/expenses/:index', deleteExpense);
 router.get('/budget', getBudget);
 router.get('/vendors', getWeddingVendors);
 router.post('/quotes/request', requestQuote);
