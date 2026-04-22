@@ -236,7 +236,7 @@ export default function CoupleDashboard() {
       title: 'Budget Planner',
       description: 'Track your wedding spend, remaining budget, and category-level costs.',
       icon: <Paid sx={{ fontSize: 28, color: COLORS.secondary }} />,
-      action: () => navigate('/budget'),
+      action: () => navigate('/wedding'),
       cta: 'Manage Budget',
     },
     {
