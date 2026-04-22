@@ -634,25 +634,119 @@ export async function seedDemoUsers() {
   await User.deleteMany({ email: { $in: LEGACY_DEMO_EMAILS } });
 
   const vendorOwner = await User.findOne({ email: 'vendor@raashilink.ai' }).select('_id');
+  const DEMO_VENDORS = [
+    {
+      businessName: 'Golden Lotus Events',
+      category: 'Photography',
+      description: 'Award-winning wedding photography and cinematic videography across Sri Lanka.',
+      serviceArea: ['Colombo', 'Kandy', 'Galle'],
+      pricingRange: { min: 150000, max: 450000, currency: 'LKR' },
+      portfolioImages: [
+        'https://images.unsplash.com/photo-1537633552985-df8429e8048b?w=800&q=75',
+        'https://images.unsplash.com/photo-1519741497674-611481863552?w=800&q=75',
+      ],
+      ratings: { average: 4.8, count: 24 },
+    },
+    {
+      businessName: 'Spice Garden Catering',
+      category: 'Catering',
+      description: 'Premium Sri Lankan and international buffet catering for weddings up to 1500 guests.',
+      serviceArea: ['Colombo', 'Negombo', 'Gampaha'],
+      pricingRange: { min: 200000, max: 1200000, currency: 'LKR' },
+      portfolioImages: [
+        'https://images.unsplash.com/photo-1555244162-803834f70033?w=800&q=75',
+        'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=800&q=75',
+      ],
+      ratings: { average: 4.6, count: 38 },
+    },
+    {
+      businessName: 'Pearl Grand Venue',
+      category: 'Venue',
+      description: 'Luxury ballroom and outdoor garden venues in Colombo with capacity for 500+ guests.',
+      serviceArea: ['Colombo'],
+      pricingRange: { min: 500000, max: 3000000, currency: 'LKR' },
+      portfolioImages: [
+        'https://images.unsplash.com/photo-1519225421980-715cb0215aed?w=800&q=75',
+        'https://images.unsplash.com/photo-1464366400600-7168b8af9bc3?w=800&q=75',
+      ],
+      ratings: { average: 4.9, count: 52 },
+    },
+    {
+      businessName: 'Blossom Floral Decor',
+      category: 'Decor',
+      description: 'Elegant floral arrangements, mandap decorations, and stage design for all wedding styles.',
+      serviceArea: ['Colombo', 'Kandy', 'Kurunegala'],
+      pricingRange: { min: 80000, max: 600000, currency: 'LKR' },
+      portfolioImages: [
+        'https://images.unsplash.com/photo-1522673607200-164d1b6ce486?w=800&q=75',
+        'https://images.unsplash.com/photo-1487530811015-780c2fde6bef?w=800&q=75',
+      ],
+      ratings: { average: 4.7, count: 19 },
+    },
+    {
+      businessName: 'Signature Bridal Couture',
+      category: 'Attire',
+      description: 'Custom bridal lehengas, sarees, and western gowns with full alteration services.',
+      serviceArea: ['Colombo', 'Galle'],
+      pricingRange: { min: 120000, max: 800000, currency: 'LKR' },
+      portfolioImages: [
+        'https://images.unsplash.com/photo-1594552072238-b8a33785b6cd?w=800&q=75',
+        'https://images.unsplash.com/photo-1515934751635-c81c6bc9a2d8?w=800&q=75',
+      ],
+      ratings: { average: 4.5, count: 31 },
+    },
+    {
+      businessName: 'Rhythm & Beats',
+      category: 'Music',
+      description: 'Live bands, DJs, and traditional Baila orchestra for receptions and Poruwa ceremonies.',
+      serviceArea: ['Colombo', 'Kandy', 'Negombo', 'Galle'],
+      pricingRange: { min: 60000, max: 350000, currency: 'LKR' },
+      portfolioImages: [
+        'https://images.unsplash.com/photo-1429962714451-bb934ecdc4ec?w=800&q=75',
+      ],
+      ratings: { average: 4.4, count: 45 },
+    },
+    {
+      businessName: 'Eternal Moments Planning',
+      category: 'Planner',
+      description: 'Full-service wedding coordination from engagement to honeymoon, handling every detail.',
+      serviceArea: ['Colombo', 'Kandy', 'Galle', 'Kurunegala'],
+      pricingRange: { min: 250000, max: 1000000, currency: 'LKR' },
+      portfolioImages: [
+        'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=800&q=75',
+      ],
+      ratings: { average: 4.9, count: 17 },
+    },
+    {
+      businessName: 'Island Horizons Travel',
+      category: 'Travel',
+      description: 'Honeymoon packages, guest transport coordination, and destination wedding logistics.',
+      serviceArea: ['Colombo', 'Galle', 'Nuwara Eliya', 'Mirissa'],
+      pricingRange: { min: 300000, max: 2000000, currency: 'LKR' },
+      portfolioImages: [
+        'https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?w=800&q=75',
+      ],
+      ratings: { average: 4.6, count: 28 },
+    },
+  ];
+
   if (vendorOwner) {
-    await Vendor.findOneAndUpdate(
-      { userId: vendorOwner._id },
-      {
-        $set: {
-          userId: vendorOwner._id,
-          businessName: 'Golden Lotus Events',
-          category: 'Photography',
-          description: 'Wedding photography and pre-shoot services across Sri Lanka.',
-          serviceArea: ['Colombo', 'Kandy', 'Galle'],
-          pricingRange: { min: 150000, max: 450000, currency: 'LKR' },
-          portfolioImages: ['https://picsum.photos/seed/vendor1/1200/800'],
-          ratings: { average: 4.8, count: 24 },
-          reviews: [],
-          verified: true,
-          availabilityCalendar: [],
-        },
-      },
-      { upsert: true, new: true }
+    await Promise.all(
+      DEMO_VENDORS.map((v, idx) =>
+        Vendor.findOneAndUpdate(
+          { businessName: v.businessName },
+          {
+            $set: {
+              userId: vendorOwner._id,
+              ...v,
+              reviews: [],
+              verified: true,
+              availabilityCalendar: [],
+            },
+          },
+          { upsert: true, new: true }
+        )
+      )
     );
   }
 
