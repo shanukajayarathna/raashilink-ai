@@ -259,7 +259,6 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
     { name: 'Horoscope', path: '/horoscope', icon: Star },
     { name: 'Wedding', path: '/wedding', icon: Calendar },
     { name: 'Vendors', path: '/vendors', icon: Search },
-    { name: 'Budget', path: '/budget', icon: Calculator },
     { name: 'Honeymoon', path: '/honeymoon', icon: MapPin },
   ];
   const coupleNavItems = [
@@ -267,7 +266,6 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
     { name: 'Horoscope', path: '/horoscope', icon: Star },
     { name: 'Wedding', path: '/wedding', icon: Calendar },
     { name: 'Vendors', path: '/vendors', icon: Search },
-    { name: 'Budget', path: '/budget', icon: Calculator },
     { name: 'Honeymoon', path: '/honeymoon', icon: MapPin },
   ];
   const navItems = isCouple ? coupleNavItems : partnerNavItems;
