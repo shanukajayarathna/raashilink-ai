@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Box,
   Container,
@@ -134,13 +134,9 @@ function buildBudgetViewModel(budgetPayload: any) {
     categories,
     expenses: expenses.map((expense: any, index: number) => ({
       id: expense?._id || String(index + 1),
+      index,
       date: expense?.date
         ? new Date(expense.date).toISOString().split('T')[0]
-        : new Date().toISOString().split('T')[0],
-      category: expense?.category || 'Others',
-      description: expense?.description || expense?.title || 'Wedding expense',
-      amount: Number(expense?.amount || 0),
-      hasReceipt: !!expense?.receiptUrlnse.date).toISOString().split('T')[0]
         : new Date().toISOString().split('T')[0],
       category: expense?.category || 'Others',
       description: expense?.description || expense?.title || 'Wedding expense',
@@ -153,11 +149,14 @@ function buildBudgetViewModel(budgetPayload: any) {
 export default function BudgetPlanner() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  const token = useSelector((state: RootState) => state.auth.token);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState('doughnut');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isSetBudgetModalOpen, setIsSetBudgetModalOpen] = useState(false);
   const [budgetData, setBudgetData] = useState<any>(null);
+  const [tempTotal, setTempTotal] = useState('0');
+  const [isEditingTotal, setIsEditingTotal] = useState(false);
   const fetchBudget = useCallback(async () => {
     setLoading(true);
     try {
@@ -181,10 +180,6 @@ export default function BudgetPlanner() {
       return;
     }
     const emptyViewModel = buildBudgetViewModel({ data: { totalBudget: 0, totalSpent: 0, expenses: [] } });
-    setBudgetData(emptyViewModel);
-    setTempTotal('0');
-    setLoading(false);
-  }, [token, fetchBudgetmptyViewModel = buildBudgetViewModel({ data: { totalBudget: 0, totalSpent: 0, expenses: [] } });
     setBudgetData(emptyViewModel);
     setTempTotal('0');
     setLoading(false);
@@ -447,7 +442,7 @@ export default function BudgetPlanner() {
                   />
                   <Button variant="outlined" startIcon={<Filter size={16} />} sx={{ borderRadius: 3, textTransform: 'none', fontWeight: 700, color: COLORS.textPrimary, borderColor: 'divider' }}>
                     Filter
-                  </Button>onDelete={fetchBudget} 
+                  </Button>
                 </Stack>
               </Stack>
 
@@ -498,8 +493,14 @@ export default function BudgetPlanner() {
         <Plus size={24} />
       </Fab>
 
-      {/* Modalasync () => {
+      {/* Modals */}
+      <AddExpenseModal
+        open={isAddModalOpen}
+        onClose={async () => {
           setIsAddModalOpen(false);
+          await fetchBudget();
+        }}
+        onAdd={async () => {
           await fetchBudget();
         }}
       />
@@ -510,8 +511,6 @@ export default function BudgetPlanner() {
         categories={budgetData.categories}
         onSave={async (newCategories: any) => {
           setBudgetData((prev: any) => ({ ...prev, categories: newCategories }));
-          setIsSetBudgetModalOpen(false);
-          await fetchBudget(({ ...prev, categories: newCategories }));
           setIsSetBudgetModalOpen(false);
           await fetchBudget();
         }}
@@ -559,6 +558,8 @@ function CategoryTable({ categories }: { categories: any[] }) {
           <TableRow>
             <TableCell sx={{ fontWeight: 800, color: COLORS.primary }}>Category</TableCell>
             <TableCell sx={{ fontWeight: 800, color: COLORS.primary }}>Allocated</TableCell>
+            <TableCell sx={{ fontWeight: 800, color: COLORS.primary }}>Spent</TableCell>
+            <TableCell sx={{ fontWeight: 800, color: COLORS.primary }}>Remaining</TableCell>
             <TableCell sx={{ fontWeight: 800, color: COLORS.primary }}>% Used</TableCell>
             <TableCell sx={{ fontWeight: 800, color: COLORS.primary }}>Status</TableCell>
           </TableRow>
@@ -581,11 +582,6 @@ function CategoryTable({ categories }: { categories: any[] }) {
                 <TableCell sx={{ fontWeight: 700 }}>{usedPct}%</TableCell>
                 <TableCell>
                   <Chip
-                    label={isOver ? 'Over' : isWarning ? 'Warning' : 'On track
-                </TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>{usedPct}%</TableCell>
-                <TableCell>
-                  <Chip
                     label={isOver ? 'Over' : isWarning ? 'Warning' : 'On track'}
                     size="small"
                     sx={{
@@ -601,30 +597,18 @@ function CategoryTable({ categories }: { categories: any[] }) {
             );
           })}
         </TableBody>
-      </Table>, onDelete }: { expenses: any[]; onDelete?: () => void }) {
-  const [deletingId, setDeletingId] = React.useState<string | null>(null);
-
-  const handleDelete = async (id: string) => {
-    setDeletingId(id);
-    try {
-      await weddingService.deleteExpense(id);
-      onDelete?.();
-    } catch (err) {
-      console.error('Failed to delete expense', err);
-    } finally {
-      setDeletingId(null);
-    }
-  };eContainer>
+      </Table>
+    </TableContainer>
   );
 }
 
 function ExpenseList({ expenses, onDelete }: { expenses: any[]; onDelete?: () => void }) {
   const [deletingId, setDeletingId] = React.useState<string | null>(null);
 
-  const handleDelete = async (id: string) => {
-    setDeletingId(id);
+  const handleDelete = async (expense: any) => {
+    setDeletingId(expense.id);
     try {
-      await weddingService.deleteExpense(id);
+      await weddingService.deleteExpense(expense.index);
       onDelete?.();
     } catch (err) {
       console.error('Failed to delete expense', err);
@@ -695,7 +679,7 @@ function ExpenseList({ expenses, onDelete }: { expenses: any[]; onDelete?: () =>
             <IconButton
               size="small"
               disabled={deletingId === expense.id}
-              onClick={() => handleDelete(expense.id)}
+              onClick={() => handleDelete(expense)}
               sx={{ color: COLORS.error }}
             >
               {deletingId === expense.id ? <CircularProgress size={18} /> : <Trash2 size={18} />}
