@@ -131,6 +131,17 @@ export default function MatchRecommendations() {
       .catch(() => {});
   }, []);
 
+  useEffect(() => {
+    const onAppRefresh = () => {
+      refreshMutualMatches();
+      fetchPending();
+    };
+    window.addEventListener('app:refresh', onAppRefresh);
+    return () => {
+      window.removeEventListener('app:refresh', onAppRefresh);
+    };
+  }, [refreshMutualMatches, fetchPending]);
+
   useRealtimeUpdates({
     onInterestReceived: (data) => {
       if (data.senderCard) {
@@ -190,6 +201,7 @@ export default function MatchRecommendations() {
     try {
       await matchService.undoInterest(matchId);
       setMutualMatches((prev) => prev.filter((m) => m.id !== matchId));
+      window.dispatchEvent(new CustomEvent('app:refresh'));
       dispatch(showToast({ type: 'success', message: 'Match removed successfully.' }));
       fetchMatches();
     } catch (err: any) {
@@ -204,6 +216,7 @@ export default function MatchRecommendations() {
     try {
       await matchService.undoInterest(id);
       setPendingSent((prev) => prev.filter((m) => m.id !== id));
+      window.dispatchEvent(new CustomEvent('app:refresh'));
       dispatch(showToast({ type: 'info', message: 'Interest withdrawn.' }));
       fetchMatches();
     } catch (err: any) {
@@ -445,6 +458,14 @@ export default function MatchRecommendations() {
             </Typography>
           </Stack>
 
+          {!mutualLoading && mutualMatches.length > 0 && (
+            <Alert severity="info" sx={{ mb: 2.5, borderRadius: 3 }}>
+              <Typography variant="caption" sx={{ fontWeight: 700 }}>
+                Next step guide: Message first, then propose engagement in chat. Once accepted, send your wedding planning invite.
+              </Typography>
+            </Alert>
+          )}
+
           {mutualLoading ? (
             <Grid container spacing={3}>
               {[...Array(3)].map((_, i) => (
@@ -563,6 +584,14 @@ export default function MatchRecommendations() {
                             <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 1 }}>
                               ⬆️ {match.ascendant} Lagna
                             </Typography>
+                          )}
+
+                          {match.engagementStatus === 'accepted' && (
+                            <Chip
+                              size="small"
+                              label="Engaged 💎"
+                              sx={{ mb: 0.5, bgcolor: 'rgba(201,168,76,0.2)', color: '#7A6020', fontWeight: 800, fontSize: '0.68rem' }}
+                            />
                           )}
 
                           <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
