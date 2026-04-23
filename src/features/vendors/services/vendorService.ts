@@ -35,6 +35,16 @@ const vendorService = {
     return response.data;
   },
 
+  getQuoteInbox: async () => {
+    const response = await axiosInstance.get('/vendors/quotes/inbox');
+    return response.data;
+  },
+
+  updateQuoteRequest: async (quoteRequestId: string, data: any) => {
+    const response = await axiosInstance.patch(`/vendors/quotes/${quoteRequestId}`, data);
+    return response.data;
+  },
+
   /**
    * Get reviews for a specific wedding vendor.
    * @param {string} vendorId - ID of the vendor to retrieve reviews for.
