@@ -128,9 +128,14 @@ function formatWeddingStatus(project: any, budget: any) {
     ? Math.max(0, Math.ceil((weddingDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
     : 0;
 
+  const venueName =
+    typeof project?.venueId === 'object'
+      ? project?.venueId?.businessName || project?.venueId?.name || null
+      : null;
+
   return {
     daysToGo,
-    venue: project?.venueId ? 'Venue selected' : 'Venue not selected yet',
+    venue: venueName || (project?.venueId ? 'Venue selected' : 'Venue not selected yet'),
     budget: {
       spent: Number(budget?.totalSpent || 0),
       total: Number(budget?.totalBudget || 0),
@@ -912,6 +917,17 @@ export default function UserDashboard() {
     } catch { /* silent */ }
   }, []);
 
+  useEffect(() => {
+    const onAppRefresh = () => {
+      refreshMutualMatches();
+      refreshPendingInterests();
+    };
+    window.addEventListener('app:refresh', onAppRefresh);
+    return () => {
+      window.removeEventListener('app:refresh', onAppRefresh);
+    };
+  }, [refreshMutualMatches, refreshPendingInterests]);
+
   // ── Real-time socket events ──────────────────────────────────────────────
   useRealtimeUpdates({
     onInterestReceived: (data) => {
@@ -1170,6 +1186,7 @@ export default function UserDashboard() {
     try {
       await matchService.undoInterest(matchId);
       setMutualMatches((prev) => prev.filter((m) => m.id !== matchId));
+      window.dispatchEvent(new CustomEvent('app:refresh'));
       dispatch(showToast({ type: 'success', message: 'Match removed.' }));
     } catch (err: any) {
       dispatch(showToast({ type: 'error', message: err.response?.data?.message || 'Failed to remove match.' }));
@@ -1456,6 +1473,14 @@ export default function UserDashboard() {
                 </Button>
               </Stack>
 
+              {!mutualMatchesLoading && mutualMatches.length > 0 && (
+                <Alert severity="info" sx={{ mb: 2, borderRadius: 3 }}>
+                  <Typography variant="caption" sx={{ fontWeight: 700 }}>
+                    Next step guide: 1) Open Message with your mutual match. 2) Propose engagement in chat. 3) After acceptance, send wedding invite.
+                  </Typography>
+                </Alert>
+              )}
+
               {mutualMatchesLoading ? (
                 <Stack direction="row" spacing={2} sx={{ overflowX: 'auto', pb: 1 }}>
                   {[...Array(4)].map((_, i) => (
@@ -1525,6 +1550,14 @@ export default function UserDashboard() {
                               <LocationOn sx={{ fontSize: 12, color: '#999' }} />
                               <Typography variant="caption" sx={{ color: '#888' }} noWrap>{match.location}</Typography>
                             </Stack>
+                          )}
+
+                          {match.engagementStatus === 'accepted' && (
+                            <Chip
+                              size="small"
+                              label="Engaged 💎"
+                              sx={{ bgcolor: '#C9A84C22', color: '#7A6020', fontWeight: 800, fontSize: '0.65rem' }}
+                            />
                           )}
 
                           <Stack direction="row" spacing={1} sx={{ mt: 0.5, width: '100%' }}>
@@ -1789,6 +1822,7 @@ export default function UserDashboard() {
                                       try {
                                         await matchService.undoInterest(match.id);
                                         setPendingSent((p) => p.filter((m) => m.id !== match.id));
+                                        window.dispatchEvent(new CustomEvent('app:refresh'));
                                         dispatch(showToast({ type: 'info', message: 'Interest withdrawn.' }));
                                       } catch { dispatch(showToast({ type: 'error', message: 'Failed.' })); }
                                     }}
