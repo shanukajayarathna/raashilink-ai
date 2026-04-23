@@ -96,25 +96,30 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
 
     const onMutualMatch = (payload: any) => {
       fetchNotifications(true);
+      window.dispatchEvent(new CustomEvent('app:refresh'));
       playMatchSound();
       showEventNotifRef.current('🎉', "It's a Match!", `You and ${payload.fromUserName || 'someone'} are now connected!`, '/messages', '#f59e0b');
     };
     const onInterestReceived = (payload: any) => {
       fetchNotifications(true);
+      window.dispatchEvent(new CustomEvent('app:refresh'));
       playInterestSound();
       showEventNotifRef.current('💛', `${payload.fromUserName || 'Someone'} liked you!`, 'They expressed interest in you — check your matches.', '/matches', '#f59e0b');
     };
     const onInterestAccepted = (payload: any) => {
       fetchNotifications(true);
+      window.dispatchEvent(new CustomEvent('app:refresh'));
       playInterestSound();
       showEventNotifRef.current('🥳', `${payload.fromUserName || 'Someone'} accepted your interest!`, 'You can now message each other.', '/messages', '#16a34a');
     };
     const onInterestDeclined = (payload: any) => {
       fetchNotifications(true);
+      window.dispatchEvent(new CustomEvent('app:refresh'));
       showEventNotifRef.current('💔', 'Interest declined', `${payload.fromUserName || 'Someone'} has declined your interest.`, '/matches', '#6b7280');
     };
     const onMatchRemoved = () => {
       fetchNotifications(true);
+      window.dispatchEvent(new CustomEvent('app:refresh'));
       showEventNotifRef.current('👋', 'Match removed', 'Someone removed you from their matches.', '/matches', '#6b7280');
     };
 
@@ -126,6 +131,7 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
 
     // Real-time server-pushed notifications (e.g. wedding invites)
     const onNotification = (payload: AppNotification) => {
+      window.dispatchEvent(new CustomEvent('app:refresh'));
       setNotifications((prev) => {
         if (prev.some((n) => n.id === payload.id)) return prev;
         return [payload, ...prev];
@@ -174,6 +180,7 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
     const onWeddingReset = () => {
       showEventNotifRef.current('💔', 'Wedding project reset', 'Your match removed you — your wedding project has been reset.', '/wedding', '#6b7280');
       window.dispatchEvent(new CustomEvent('wedding:reset'));
+      window.dispatchEvent(new CustomEvent('app:refresh'));
     };
     socket.on('wedding_reset', onWeddingReset);
 
