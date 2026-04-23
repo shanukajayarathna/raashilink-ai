@@ -1,41 +1,39 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  Box, 
-  Typography, 
-  Paper, 
-  Grid, 
-  Button, 
-  Chip, 
-  Avatar, 
-  IconButton, 
-  Dialog, 
-  DialogTitle, 
-  DialogContent, 
-  DialogActions, 
-  TextField, 
-  MenuItem,
-  Skeleton,
-  Badge,
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  Alert,
+  Avatar,
+  Box,
+  Button,
+  Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Divider,
-  useTheme,
-  alpha
+  Grid,
+  MenuItem,
+  Paper,
+  Skeleton,
+  Stack,
+  TextField,
+  Typography,
+  alpha,
 } from '@mui/material';
-import { 
-  MessageSquare, 
-  Calendar, 
-  MapPin, 
-  DollarSign, 
-  CheckCircle2, 
-  XCircle, 
-  Clock, 
-  Send,
-  MoreVertical,
+import {
+  Calendar,
+  CheckCircle2,
+  Clock,
+  DollarSign,
   Filter,
+  MapPin,
+  MessageSquare,
+  Phone,
   Search,
   User,
-  ChevronRight
+  XCircle,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import vendorService from '../../services/vendorService';
 
 const COLORS = {
   primary: '#8B1A2E',
@@ -46,15 +44,30 @@ const COLORS = {
   textSecondary: '#555555',
 };
 
+type QuoteStatus = 'new' | 'responded' | 'accepted' | 'declined';
+
 interface QuoteRequest {
   id: string;
   coupleName: string;
   weddingDate: string;
   location: string;
+  venueName?: string;
   budget: string;
+  guestCount: number;
+  preferredPackage?: string;
+  coverageHours?: number;
   requirements: string;
-  status: 'new' | 'responded' | 'accepted' | 'declined';
+  contactEmail?: string;
+  contactPhone?: string;
+  preferredContactMethod?: string;
+  status: QuoteStatus;
   createdAt: string;
+  response?: {
+    price?: number;
+    packageName?: string;
+    message?: string;
+    respondedAt?: string;
+  } | null;
 }
 
 export default function QuoteInbox() {
@@ -63,347 +76,289 @@ export default function QuoteInbox() {
   const [selectedQuote, setSelectedQuote] = useState<QuoteRequest | null>(null);
   const [isQuoteModalOpen, setIsQuoteModalOpen] = useState(false);
   const [isDeclineModalOpen, setIsDeclineModalOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | QuoteStatus>('all');
+  const [submitting, setSubmitting] = useState(false);
   const [quoteForm, setQuoteForm] = useState({
     price: '',
-    package: 'Standard',
-    message: ''
+    packageName: 'Custom Quote',
+    message: '',
   });
 
-  useEffect(() => {
-    // Simulate API fetch
-    setTimeout(() => {
-      setQuotes([
-        {
-          id: '1',
-          coupleName: 'Amila & Dilini',
-          weddingDate: '2025-12-15',
-          location: 'Colombo',
-          budget: 'LKR 250,000 - 350,000',
-          requirements: 'Full day photography, including homecoming and pre-shoot.',
-          status: 'new',
-          createdAt: '2025-04-01'
-        },
-        {
-          id: '2',
-          coupleName: 'Saman & Kumari',
-          weddingDate: '2026-01-20',
-          location: 'Kandy',
-          budget: 'LKR 150,000 - 200,000',
-          requirements: 'Traditional Kandyan wedding photography.',
-          status: 'responded',
-          createdAt: '2025-03-28'
-        },
-        {
-          id: '3',
-          coupleName: 'Kasun & Erandi',
-          weddingDate: '2025-11-05',
-          location: 'Galle',
-          budget: 'LKR 300,000+',
-          requirements: 'Cinematic video and photography for a beach wedding.',
-          status: 'new',
-          createdAt: '2025-04-03'
-        }
-      ]);
+  const fetchQuotes = async () => {
+    try {
+      setLoading(true);
+      const response = await vendorService.getQuoteInbox();
+      setQuotes(Array.isArray(response?.data?.items) ? response.data.items : []);
+    } catch (error) {
+      console.error('Failed to load quote inbox', error);
+      setQuotes([]);
+    } finally {
       setLoading(false);
-    }, 1000);
+    }
+  };
+
+  useEffect(() => {
+    fetchQuotes();
   }, []);
 
-  const handleSendQuote = () => {
+  const filteredQuotes = useMemo(() => {
+    return quotes.filter((quote) => {
+      const matchesSearch =
+        !search ||
+        quote.coupleName.toLowerCase().includes(search.toLowerCase()) ||
+        quote.location.toLowerCase().includes(search.toLowerCase()) ||
+        quote.requirements.toLowerCase().includes(search.toLowerCase());
+      const matchesStatus = statusFilter === 'all' || quote.status === statusFilter;
+      return matchesSearch && matchesStatus;
+    });
+  }, [quotes, search, statusFilter]);
+
+  const handleRespond = async () => {
     if (!selectedQuote) return;
-    setQuotes(prev => prev.map(q => 
-      q.id === selectedQuote.id ? { ...q, status: 'responded' } : q
-    ));
-    setIsQuoteModalOpen(false);
-    setSelectedQuote(null);
+    setSubmitting(true);
+    try {
+      await vendorService.updateQuoteRequest(selectedQuote.id, {
+        status: 'responded',
+        price: Number(quoteForm.price || 0),
+        packageName: quoteForm.packageName,
+        message: quoteForm.message,
+      });
+      setIsQuoteModalOpen(false);
+      setSelectedQuote(null);
+      await fetchQuotes();
+    } catch (error) {
+      console.error('Failed to respond to quote', error);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  const handleDecline = () => {
+  const handleDecline = async () => {
     if (!selectedQuote) return;
-    setQuotes(prev => prev.map(q => 
-      q.id === selectedQuote.id ? { ...q, status: 'declined' } : q
-    ));
-    setIsDeclineModalOpen(false);
-    setSelectedQuote(null);
+    setSubmitting(true);
+    try {
+      await vendorService.updateQuoteRequest(selectedQuote.id, {
+        status: 'declined',
+        message: quoteForm.message || 'Declined by vendor',
+      });
+      setIsDeclineModalOpen(false);
+      setSelectedQuote(null);
+      await fetchQuotes();
+    } catch (error) {
+      console.error('Failed to decline quote', error);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  const getStatusChip = (status: string) => {
-    const configs: any = {
+  const getStatusChip = (status: QuoteStatus) => {
+    const configs = {
       new: { label: 'New Request', color: COLORS.primary, icon: <Clock size={14} />, bg: alpha(COLORS.primary, 0.1) },
       responded: { label: 'Responded', color: COLORS.accent, icon: <CheckCircle2 size={14} />, bg: alpha(COLORS.accent, 0.1) },
       accepted: { label: 'Accepted', color: '#2e7d32', icon: <CheckCircle2 size={14} />, bg: 'rgba(46, 125, 50, 0.1)' },
-      declined: { label: 'Declined', color: '#d32f2f', icon: <XCircle size={14} />, bg: 'rgba(211, 47, 47, 0.1)' }
-    };
-    const config = configs[status] || configs.new;
-    return (
-      <Chip 
-        label={config.label} 
-        icon={config.icon}
-        sx={{ 
-          bgcolor: config.bg, 
-          color: config.color, 
-          fontWeight: 600,
-          borderRadius: '8px',
-          '& .MuiChip-icon': { color: 'inherit' }
-        }} 
-      />
-    );
+      declined: { label: 'Declined', color: '#d32f2f', icon: <XCircle size={14} />, bg: 'rgba(211, 47, 47, 0.1)' },
+    } as const;
+
+    const config = configs[status];
+    return <Chip label={config.label} icon={config.icon} sx={{ bgcolor: config.bg, color: config.color, fontWeight: 600, borderRadius: '8px', '& .MuiChip-icon': { color: 'inherit' } }} />;
   };
 
-  if (loading) return (
-    <Box>
-      <Skeleton variant="text" width={200} height={40} sx={{ mb: 2 }} />
-      {[1, 2, 3].map(i => (
-        <Skeleton key={i} variant="rectangular" height={150} sx={{ borderRadius: '16px', mb: 2 }} />
-      ))}
-    </Box>
-  );
+  if (loading) {
+    return (
+      <Box>
+        <Skeleton variant="text" width={220} height={40} sx={{ mb: 2 }} />
+        {[1, 2, 3].map((i) => (
+          <Skeleton key={i} variant="rectangular" height={180} sx={{ borderRadius: '16px', mb: 2 }} />
+        ))}
+      </Box>
+    );
+  }
 
   return (
     <Box>
-      <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
         <Box>
           <Typography variant="h5" sx={{ fontFamily: 'Playfair Display', fontWeight: 700, color: COLORS.primary }}>
             Quote Requests Inbox
           </Typography>
           <Typography variant="body2" color="textSecondary">
-            Manage and respond to wedding service inquiries from couples.
+            Real quote requests sent from couples in the marketplace and wedding planner.
           </Typography>
         </Box>
-        <Box sx={{ display: 'flex', gap: 1.5 }}>
+        <Stack direction="row" spacing={1.5} sx={{ flexWrap: 'wrap' }}>
           <Paper elevation={0} sx={{ p: 1, borderRadius: '10px', border: '1px solid rgba(0,0,0,0.08)', display: 'flex', alignItems: 'center', gap: 1 }}>
             <Search size={18} color={COLORS.textSecondary} />
-            <TextField 
-              placeholder="Search couples..." 
-              variant="standard" 
-              InputProps={{ disableUnderline: true }}
-              sx={{ width: 200 }}
-            />
+            <TextField placeholder="Search couples..." variant="standard" value={search} onChange={(e) => setSearch(e.target.value)} InputProps={{ disableUnderline: true }} sx={{ width: 200 }} />
           </Paper>
-          <IconButton sx={{ bgcolor: 'white', border: '1px solid rgba(0,0,0,0.08)', borderRadius: '10px' }}>
-            <Filter size={18} />
-          </IconButton>
-        </Box>
+          <TextField select size="small" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as any)} sx={{ minWidth: 160, bgcolor: 'white' }}>
+            <MenuItem value="all">All statuses</MenuItem>
+            <MenuItem value="new">New</MenuItem>
+            <MenuItem value="responded">Responded</MenuItem>
+            <MenuItem value="accepted">Accepted</MenuItem>
+            <MenuItem value="declined">Declined</MenuItem>
+          </TextField>
+        </Stack>
       </Box>
 
-      <Grid container spacing={2}>
-        <AnimatePresence>
-          {quotes.map((quote) => (
-            <Grid size={{ xs: 12 }} key={quote.id}>
-              <motion.div
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 20 }}
-                transition={{ duration: 0.2 }}
-              >
-                <Paper
-                  elevation={0}
-                  sx={{
-                    p: 3,
-                    borderRadius: '16px',
-                    border: '1px solid rgba(139,26,46,0.08)',
-                    boxShadow: '0 2px 16px rgba(139,26,46,0.04)',
-                    transition: 'all 0.2s',
-                    '&:hover': {
-                      boxShadow: '0 4px 20px rgba(139,26,46,0.08)',
-                      borderColor: alpha(COLORS.primary, 0.2)
-                    }
-                  }}
-                >
-                  <Grid container spacing={3} alignItems="center">
-                    <Grid size={{ xs: 12, md: 4 }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                        <Avatar sx={{ width: 56, height: 56, bgcolor: alpha(COLORS.primary, 0.1), color: COLORS.primary }}>
-                          <User size={28} />
-                        </Avatar>
-                        <Box>
-                          <Typography variant="h6" sx={{ fontWeight: 700 }}>{quote.coupleName}</Typography>
-                          <Typography variant="caption" color="textSecondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                            <Clock size={12} /> Received {quote.createdAt}
-                          </Typography>
+      {filteredQuotes.length === 0 ? (
+        <Alert severity="info" sx={{ borderRadius: 3 }}>
+          No quote requests matched your current filters.
+        </Alert>
+      ) : (
+        <Grid container spacing={2}>
+          <AnimatePresence>
+            {filteredQuotes.map((quote) => (
+              <Grid size={{ xs: 12 }} key={quote.id}>
+                <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} transition={{ duration: 0.2 }}>
+                  <Paper elevation={0} sx={{ p: 3, borderRadius: '16px', border: '1px solid rgba(139,26,46,0.08)', boxShadow: '0 2px 16px rgba(139,26,46,0.04)' }}>
+                    <Grid container spacing={3} alignItems="center">
+                      <Grid size={{ xs: 12, md: 4 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                          <Avatar sx={{ width: 56, height: 56, bgcolor: alpha(COLORS.primary, 0.1), color: COLORS.primary }}>
+                            <User size={28} />
+                          </Avatar>
+                          <Box>
+                            <Typography variant="h6" sx={{ fontWeight: 700 }}>{quote.coupleName}</Typography>
+                            <Typography variant="caption" color="textSecondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                              <Clock size={12} /> Received {new Date(quote.createdAt).toLocaleDateString()}
+                            </Typography>
+                          </Box>
                         </Box>
-                      </Box>
-                    </Grid>
+                      </Grid>
 
-                    <Grid size={{ xs: 12, md: 5 }}>
-                      <Grid container spacing={2}>
-                        <Grid size={{ xs: 6 }}>
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, color: COLORS.textSecondary }}>
-                            <Calendar size={16} color={COLORS.primary} />
-                            <Typography variant="body2">{quote.weddingDate}</Typography>
-                          </Box>
-                        </Grid>
-                        <Grid size={{ xs: 6 }}>
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, color: COLORS.textSecondary }}>
-                            <MapPin size={16} color={COLORS.primary} />
-                            <Typography variant="body2">{quote.location}</Typography>
-                          </Box>
-                        </Grid>
-                        <Grid size={{ xs: 12 }}>
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, color: COLORS.textSecondary }}>
-                            <DollarSign size={16} color={COLORS.primary} />
-                            <Typography variant="body2" sx={{ fontWeight: 600 }}>{quote.budget}</Typography>
-                          </Box>
+                      <Grid size={{ xs: 12, md: 5 }}>
+                        <Grid container spacing={2}>
+                          <Grid size={{ xs: 6 }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, color: COLORS.textSecondary }}>
+                              <Calendar size={16} color={COLORS.primary} />
+                              <Typography variant="body2">{quote.weddingDate ? new Date(quote.weddingDate).toLocaleDateString() : 'Not set'}</Typography>
+                            </Box>
+                          </Grid>
+                          <Grid size={{ xs: 6 }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, color: COLORS.textSecondary }}>
+                              <MapPin size={16} color={COLORS.primary} />
+                              <Typography variant="body2">{quote.location || 'Location pending'}</Typography>
+                            </Box>
+                          </Grid>
+                          <Grid size={{ xs: 6 }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, color: COLORS.textSecondary }}>
+                              <DollarSign size={16} color={COLORS.primary} />
+                              <Typography variant="body2" sx={{ fontWeight: 600 }}>{quote.budget}</Typography>
+                            </Box>
+                          </Grid>
+                          <Grid size={{ xs: 6 }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, color: COLORS.textSecondary }}>
+                              <Phone size={16} color={COLORS.primary} />
+                              <Typography variant="body2">{quote.contactPhone || 'No phone provided'}</Typography>
+                            </Box>
+                          </Grid>
                         </Grid>
                       </Grid>
-                    </Grid>
 
-                    <Grid size={{ xs: 12, md: 3 }} sx={{ display: 'flex', flexDirection: 'column', alignItems: { md: 'flex-end' }, gap: 2 }}>
-                      {getStatusChip(quote.status)}
-                      <Box sx={{ display: 'flex', gap: 1 }}>
-                        {quote.status === 'new' ? (
-                          <>
-                            <Button
-                              variant="contained"
-                              size="small"
-                              onClick={() => { setSelectedQuote(quote); setIsQuoteModalOpen(true); }}
-                              sx={{ 
-                                bgcolor: COLORS.primary, 
-                                borderRadius: '8px', 
-                                textTransform: 'none',
-                                '&:hover': { bgcolor: '#6b1423' }
-                              }}
-                            >
-                              Send Quote
-                            </Button>
-                            <Button
-                              variant="outlined"
-                              size="small"
-                              onClick={() => { setSelectedQuote(quote); setIsDeclineModalOpen(true); }}
-                              sx={{ 
-                                color: COLORS.textSecondary, 
-                                borderColor: 'rgba(0,0,0,0.1)', 
-                                borderRadius: '8px', 
-                                textTransform: 'none',
-                                '&:hover': { borderColor: COLORS.primary, color: COLORS.primary }
-                              }}
-                            >
-                              Decline
-                            </Button>
-                          </>
-                        ) : (
-                          <Button
-                            variant="text"
-                            size="small"
-                            endIcon={<ChevronRight size={16} />}
-                            sx={{ color: COLORS.primary, fontWeight: 600, textTransform: 'none' }}
-                          >
-                            View Details
-                          </Button>
-                        )}
-                      </Box>
-                    </Grid>
+                      <Grid size={{ xs: 12, md: 3 }} sx={{ display: 'flex', flexDirection: 'column', alignItems: { md: 'flex-end' }, gap: 2 }}>
+                        {getStatusChip(quote.status)}
+                        <Box sx={{ display: 'flex', gap: 1 }}>
+                          {quote.status === 'new' ? (
+                            <>
+                              <Button
+                                variant="contained"
+                                size="small"
+                                onClick={() => {
+                                  setSelectedQuote(quote);
+                                  setQuoteForm({ price: '', packageName: quote.preferredPackage || 'Custom Quote', message: '' });
+                                  setIsQuoteModalOpen(true);
+                                }}
+                                sx={{ bgcolor: COLORS.primary, borderRadius: '8px', textTransform: 'none', '&:hover': { bgcolor: '#6b1423' } }}
+                              >
+                                Send Quote
+                              </Button>
+                              <Button
+                                variant="outlined"
+                                size="small"
+                                onClick={() => {
+                                  setSelectedQuote(quote);
+                                  setQuoteForm({ price: '', packageName: '', message: '' });
+                                  setIsDeclineModalOpen(true);
+                                }}
+                                sx={{ color: COLORS.textSecondary, borderColor: 'rgba(0,0,0,0.1)', borderRadius: '8px', textTransform: 'none' }}
+                              >
+                                Decline
+                              </Button>
+                            </>
+                          ) : null}
+                        </Box>
+                      </Grid>
 
-                    <Grid size={{ xs: 12 }}>
-                      <Divider sx={{ my: 1, borderStyle: 'dashed' }} />
-                      <Typography variant="body2" sx={{ color: COLORS.textSecondary, fontStyle: 'italic' }}>
-                        "{quote.requirements}"
-                      </Typography>
+                      <Grid size={{ xs: 12 }}>
+                        <Divider sx={{ my: 1, borderStyle: 'dashed' }} />
+                        <Stack spacing={1}>
+                          {quote.venueName ? <Typography variant="body2" sx={{ color: COLORS.textSecondary }}><strong>Venue:</strong> {quote.venueName}</Typography> : null}
+                          {quote.guestCount ? <Typography variant="body2" sx={{ color: COLORS.textSecondary }}><strong>Guests:</strong> {quote.guestCount}</Typography> : null}
+                          {quote.coverageHours ? <Typography variant="body2" sx={{ color: COLORS.textSecondary }}><strong>Coverage:</strong> {quote.coverageHours} hours</Typography> : null}
+                          {quote.preferredPackage ? <Typography variant="body2" sx={{ color: COLORS.textSecondary }}><strong>Preferred package:</strong> {quote.preferredPackage}</Typography> : null}
+                          <Typography variant="body2" sx={{ color: COLORS.textSecondary, fontStyle: 'italic' }}>
+                            "{quote.requirements || 'No extra requirements added.'}"
+                          </Typography>
+                          {quote.response?.message ? (
+                            <Box sx={{ mt: 1, p: 2, borderRadius: 2, bgcolor: alpha(COLORS.accent, 0.08) }}>
+                              <Typography variant="caption" sx={{ fontWeight: 700, color: COLORS.accent }}>Your last response</Typography>
+                              <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>{quote.response.message}</Typography>
+                            </Box>
+                          ) : null}
+                        </Stack>
+                      </Grid>
                     </Grid>
-                  </Grid>
-                </Paper>
-              </motion.div>
-            </Grid>
-          ))}
-        </AnimatePresence>
-      </Grid>
+                  </Paper>
+                </motion.div>
+              </Grid>
+            ))}
+          </AnimatePresence>
+        </Grid>
+      )}
 
-      {/* Send Quote Modal */}
-      <Dialog 
-        open={isQuoteModalOpen} 
-        onClose={() => setIsQuoteModalOpen(false)}
-        maxWidth="sm"
-        fullWidth
-        PaperProps={{ sx: { borderRadius: '20px', p: 1 } }}
-      >
+      <Dialog open={isQuoteModalOpen} onClose={() => setIsQuoteModalOpen(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: '20px', p: 1 } }}>
         <DialogTitle sx={{ fontWeight: 700, fontFamily: 'Playfair Display', color: COLORS.primary }}>
           Send Quote to {selectedQuote?.coupleName}
         </DialogTitle>
         <DialogContent>
           <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 3 }}>
-            <TextField
-              label="Quoted Price (LKR)"
-              fullWidth
-              value={quoteForm.price}
-              onChange={(e) => setQuoteForm({ ...quoteForm, price: e.target.value })}
-              placeholder="e.g. 250,000"
-              InputProps={{ startAdornment: <DollarSign size={18} style={{ marginRight: 8 }} /> }}
-            />
-            <TextField
-              select
-              label="Select Package"
-              fullWidth
-              value={quoteForm.package}
-              onChange={(e) => setQuoteForm({ ...quoteForm, package: e.target.value })}
-            >
-              <MenuItem value="Basic">Basic Package</MenuItem>
-              <MenuItem value="Standard">Standard Package</MenuItem>
-              <MenuItem value="Premium">Premium Package</MenuItem>
-              <MenuItem value="Custom">Custom Quote</MenuItem>
-            </TextField>
-            <TextField
-              label="Personal Message"
-              fullWidth
-              multiline
-              rows={4}
-              value={quoteForm.message}
-              onChange={(e) => setQuoteForm({ ...quoteForm, message: e.target.value })}
-              placeholder="Describe what's included in this quote..."
-            />
+            <TextField label="Quoted Price (LKR)" fullWidth value={quoteForm.price} onChange={(e) => setQuoteForm({ ...quoteForm, price: e.target.value })} placeholder="e.g. 250000" />
+            <TextField label="Package Name" fullWidth value={quoteForm.packageName} onChange={(e) => setQuoteForm({ ...quoteForm, packageName: e.target.value })} />
+            <TextField label="Personal Message" fullWidth multiline rows={4} value={quoteForm.message} onChange={(e) => setQuoteForm({ ...quoteForm, message: e.target.value })} placeholder="Describe what is included, any limits, and next steps." />
           </Box>
         </DialogContent>
         <DialogActions sx={{ p: 3 }}>
           <Button onClick={() => setIsQuoteModalOpen(false)} sx={{ color: COLORS.textSecondary }}>Cancel</Button>
-          <Button 
-            variant="contained" 
-            onClick={handleSendQuote}
-            startIcon={<Send size={18} />}
-            sx={{ bgcolor: COLORS.primary, borderRadius: '10px', px: 4, '&:hover': { bgcolor: '#6b1423' } }}
-          >
-            Send Quote
+          <Button variant="contained" onClick={handleRespond} disabled={submitting} startIcon={<MessageSquare size={18} />} sx={{ bgcolor: COLORS.primary, borderRadius: '10px', px: 4, '&:hover': { bgcolor: '#6b1423' } }}>
+            {submitting ? 'Sending...' : 'Send Quote'}
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* Decline Modal */}
-      <Dialog 
-        open={isDeclineModalOpen} 
-        onClose={() => setIsDeclineModalOpen(false)}
-        maxWidth="xs"
-        fullWidth
-        PaperProps={{ sx: { borderRadius: '20px', p: 1 } }}
-      >
+      <Dialog open={isDeclineModalOpen} onClose={() => setIsDeclineModalOpen(false)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: '20px', p: 1 } }}>
         <DialogTitle sx={{ fontWeight: 700, color: '#d32f2f' }}>
           Decline Request
         </DialogTitle>
         <DialogContent>
-          <Typography variant="body2" color="textSecondary" sx={{ mb: 3 }}>
-            Please select a reason for declining this request. This helps us improve your matching.
-          </Typography>
           <TextField
-            select
             label="Reason"
             fullWidth
-            defaultValue="Not available on this date"
-          >
-            <MenuItem value="Not available on this date">Not available on this date</MenuItem>
-            <MenuItem value="Budget too low">Budget too low</MenuItem>
-            <MenuItem value="Location too far">Location too far</MenuItem>
-            <MenuItem value="Service not offered">Service not offered</MenuItem>
-            <MenuItem value="Other">Other</MenuItem>
-          </TextField>
+            multiline
+            minRows={3}
+            value={quoteForm.message}
+            onChange={(e) => setQuoteForm({ ...quoteForm, message: e.target.value })}
+            placeholder="Tell the couple why you are declining."
+            sx={{ mt: 1 }}
+          />
         </DialogContent>
         <DialogActions sx={{ p: 3 }}>
           <Button onClick={() => setIsDeclineModalOpen(false)} sx={{ color: COLORS.textSecondary }}>Cancel</Button>
-          <Button 
-            variant="contained" 
-            onClick={handleDecline}
-            sx={{ bgcolor: '#d32f2f', borderRadius: '10px', px: 4, '&:hover': { bgcolor: '#b71c1c' } }}
-          >
-            Decline
+          <Button variant="contained" onClick={handleDecline} disabled={submitting} sx={{ bgcolor: '#d32f2f', borderRadius: '10px', px: 4, '&:hover': { bgcolor: '#b71c1c' } }}>
+            {submitting ? 'Declining...' : 'Decline'}
           </Button>
         </DialogActions>
       </Dialog>
     </Box>
   );
 }
-
