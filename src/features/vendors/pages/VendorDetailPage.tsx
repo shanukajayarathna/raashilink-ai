@@ -49,7 +49,9 @@ function mapVendorDetail(vendor: any, reviewsPayload: any) {
   const minPrice = Number(vendor?.pricingRange?.min || 0);
   const maxPrice = Number(vendor?.pricingRange?.max || 0);
   const serviceArea = Array.isArray(vendor?.serviceArea) && vendor.serviceArea.length > 0 ? vendor.serviceArea : ['Sri Lanka'];
-  const services = [vendor?.category, ...serviceArea.slice(0, 2)].filter(Boolean);
+  const services = Array.isArray(vendor?.featuredServices) && vendor.featuredServices.length > 0
+    ? vendor.featuredServices
+    : [vendor?.category, ...serviceArea.slice(0, 2)].filter(Boolean);
 
   return {
     id: String(vendor?.id || vendor?._id || ''),
@@ -57,7 +59,7 @@ function mapVendorDetail(vendor: any, reviewsPayload: any) {
     category: vendor?.category || 'Vendor',
     rating: Number.isFinite(ratingValue) ? Number(ratingValue.toFixed(1)) : 0,
     reviewCount,
-    location: serviceArea.join(', '),
+    location: vendor?.city || serviceArea.join(', '),
     priceRange: `LKR ${minPrice.toLocaleString()} — ${maxPrice.toLocaleString()}`,
     description: vendor?.description || 'Professional wedding services tailored for your celebration.',
     image: portfolioImages[0],
@@ -65,10 +67,10 @@ function mapVendorDetail(vendor: any, reviewsPayload: any) {
     verified: Boolean(vendor?.verified),
     popular: Boolean(vendor?.verified && reviewCount > 2),
     isFavorite: false,
-    experience: `${Math.max(1, reviewCount)}+ Reviews`,
-    teamSize: `${Math.max(1, serviceArea.length)}+ Areas`,
+    experience: vendor?.responseTime || `${Math.max(1, reviewCount)}+ Reviews`,
+    teamSize: vendor?.capacity?.maxGuests ? `Up to ${vendor.capacity.maxGuests} guests` : `${Math.max(1, serviceArea.length)}+ Areas`,
     coverage: serviceArea,
-    hours: 'Contact for latest availability',
+    hours: vendor?.responseTime || 'Contact for latest availability',
     social: {
       facebook: '',
       instagram: '',
@@ -76,23 +78,29 @@ function mapVendorDetail(vendor: any, reviewsPayload: any) {
     },
     services: services.length > 0 ? services : ['Wedding Services'],
     portfolio: portfolioImages.map((url: string) => ({ type: 'image', url })),
-    packages: [
-      {
-        name: 'Standard Package',
-        price: `LKR ${minPrice.toLocaleString()}`,
-        includes: ['Core service delivery', 'Planning consultation', 'Event-day coordination'],
-      },
-      {
-        name: 'Premium Package',
-        price: `LKR ${Math.max(minPrice, Math.round((minPrice + maxPrice) / 2)).toLocaleString()}`,
-        includes: ['Extended service coverage', 'Priority scheduling', 'Enhanced customisation'],
-      },
-      {
-        name: 'Signature Package',
-        price: `LKR ${maxPrice.toLocaleString()}`,
-        includes: ['Full-service package', 'Premium support', 'Flexible event-day execution'],
-      },
-    ],
+    packages: (vendor?.packageSummary || []).length > 0
+      ? vendor.packageSummary.map((item: string, index: number) => ({
+          name: item,
+          price: `LKR ${[minPrice, Math.max(minPrice, Math.round((minPrice + maxPrice) / 2)), maxPrice][Math.min(index, 2)].toLocaleString()}`,
+          includes: [item, ...(vendor?.featuredServices || []).slice(0, 2)],
+        }))
+      : [
+          {
+            name: 'Standard Package',
+            price: `LKR ${minPrice.toLocaleString()}`,
+            includes: ['Core service delivery', 'Planning consultation', 'Event-day coordination'],
+          },
+          {
+            name: 'Premium Package',
+            price: `LKR ${Math.max(minPrice, Math.round((minPrice + maxPrice) / 2)).toLocaleString()}`,
+            includes: ['Extended service coverage', 'Priority scheduling', 'Enhanced customisation'],
+          },
+          {
+            name: 'Signature Package',
+            price: `LKR ${maxPrice.toLocaleString()}`,
+            includes: ['Full-service package', 'Premium support', 'Flexible event-day execution'],
+          },
+        ],
     reviews: reviews.map((review: any, index: number) => ({
       id: review?._id || index + 1,
       user: typeof review?.reviewerId === 'string' ? review.reviewerId : `Client ${index + 1}`,
@@ -101,9 +109,9 @@ function mapVendorDetail(vendor: any, reviewsPayload: any) {
       comment: review?.comment || 'Verified review from a RaashiLink customer.',
       response: null,
     })),
-    contactPhone: 'Available on request',
-    contactEmail: vendor?.owner?.email || 'Not listed',
-    website: 'Available on request',
+    contactPhone: vendor?.contactPhone || 'Available on request',
+    contactEmail: vendor?.contactEmail || vendor?.owner?.email || 'Not listed',
+    website: vendor?.website || 'Available on request',
   };
 }
 
@@ -117,6 +125,7 @@ export default function VendorDetailPage() {
   const [vendor, setVendor] = useState<any>(null);
   const [isQuoteModalOpen, setIsQuoteModalOpen] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const { user } = useSelector((state: RootState) => state.auth);
 
   useEffect(() => {
     const fetchVendorDetail = async () => {
@@ -289,7 +298,11 @@ export default function VendorDetailPage() {
       <QuoteRequestModal 
         open={isQuoteModalOpen} 
         onClose={() => setIsQuoteModalOpen(false)} 
-        vendor={vendor} 
+        vendor={vendor}
+        weddingDate={user?.weddingProject?.weddingDate ? new Date(user.weddingProject.weddingDate).toISOString().split('T')[0] : ''}
+        userPhone={user?.phone || ''}
+        userEmail={user?.email || ''}
+        userName={user?.name || user?.firstName || ''}
       />
     </Box>
   );
@@ -613,5 +626,3 @@ const X = ({ size, color }: any) => (
     <CheckCircle2 size={size} color={color} style={{ transform: 'rotate(45deg)' }} />
   </Box>
 );
-
-
