@@ -13,6 +13,7 @@ import {
   acceptEngagement,
   cancelEngagement,
   getEngagementStatus,
+  getMyEngagementSummary,
 } from '../../controllers/matches.controller.js';
 
 const router = Router();
@@ -20,6 +21,7 @@ const router = Router();
 router.use(authenticate);
 router.get('/today', getTodayMatches);
 router.get('/mutual', getMutualMatches);
+router.get('/engagement/me', getMyEngagementSummary);
 router.get('/pending', getPendingInterests);
 router.get('/recommendations', getRecommendations);
 router.get('/:id', getMatchDetail);
