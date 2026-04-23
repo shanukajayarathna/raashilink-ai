@@ -547,32 +547,32 @@ const Testimonials = () => {
 const ImageGallery = () => {
   const images = [
     {
-      url: "https://picsum.photos/seed/sl-bride/800/1000",
+      url: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcR605huzSbivNR5GqJ5HG3cv63_zZif7uETuQ&s",
       title: "Traditional Kandyan Bride",
       description: "The timeless elegance of Sri Lankan wedding traditions."
     },
     {
-      url: "https://picsum.photos/seed/sl-poruwa/800/1000",
+      url: "https://assets.roar.media/Life/2017/07/Cover-Image.jpg?w=1200",
       title: "The Poruwa Ceremony",
       description: "Sacred rituals that bind two souls together in harmony."
     },
     {
-      url: "https://picsum.photos/seed/sl-decor/800/1000",
+      url: "https://thumbs.dreamstime.com/b/exquisite-floral-archway-wedding-stage-decor-lush-greenery-soft-drapes-stunning-wedding-stage-backdrop-adorned-412493550.jpg",
       title: "Exquisite Floral Decor",
       description: "Transforming venues into magical, auspicious spaces."
     },
     {
-      url: "https://picsum.photos/seed/sl-celebration/800/1000",
+      url: "https://wp.onethreeonefour.com/wp-content/uploads/2019/01/Screenshot-2019-01-03-at-12.57.24-PM-770x509.png",
       title: "Grand Wedding Celebrations",
       description: "Unforgettable moments shared with family and friends."
     },
     {
-      url: "https://picsum.photos/seed/sl-couple/800/1000",
+      url: "https://media-cdn.tripadvisor.com/media/photo-s/1b/3e/1b/ba/a-happy-couple-in-ella.jpg",
       title: "The Happy Couple",
       description: "Starting a new journey filled with love and prosperity."
     },
     {
-      url: "https://picsum.photos/seed/sl-vows/800/1000",
+      url: "https://static.wixstatic.com/media/13710d_20e0b02bd1fc466ea884d9ab5b2aae65~mv2.jpg/v1/fill/w_735,h_490,al_c,q_85,enc_avif,quality_auto/13710d_20e0b02bd1fc466ea884d9ab5b2aae65~mv2.jpg",
       title: "Sacred Vows",
       description: "The moment two hearts become one forever."
     }
@@ -649,10 +649,10 @@ const ImageGallery = () => {
 // --- Main Page Component ---
 
 const HERO_CAROUSEL_IMAGES = [
-  "https://picsum.photos/seed/sl-wedding-hero-1/1920/1080",
-  "https://picsum.photos/seed/sl-wedding-hero-2/1920/1080",
-  "https://picsum.photos/seed/sl-wedding-hero-3/1920/1080",
-  "https://picsum.photos/seed/sl-wedding-hero-4/1920/1080",
+  "https://www.yamu.lk/wp-content/uploads/2023/07/WhatsApp-Image-2023-07-10-at-3.41.05-PM.jpeg",
+  "https://do6raq9h04ex.cloudfront.net/sites/6/2024/06/1920x1080_0003_1.jpg",
+  "https://www.eatsandretreats.com/travel/wp-content/uploads/2018/09/shutterstock_1012448875-1.jpg",
+  "https://stanburyphotography.co.uk/wp-content/uploads/2018/11/sri-lanka-destination-wedding-photographers-048-1.jpg",
 ];
 
 export default function LandingPage() {
@@ -690,8 +690,8 @@ export default function LandingPage() {
           <AnimatePresence>
             <MotionBox
               key={bgIndex}
-              initial={{ opacity: 0, scale: 1.1 }}
-              animate={{ opacity: 0.4, scale: 1 }}
+              initial={{ opacity: 0.6, scale: 1.1 }}
+              animate={{ opacity: 0.6, scale: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 2 }}
               sx={{
