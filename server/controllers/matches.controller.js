@@ -859,6 +859,16 @@ export const undoInterest = asyncHandler(async (req, res) => {
   ensureObjectId(req.params.id, 'matchId');
   const otherId = req.params.id;
 
+  // Reset relationship progression state on the shared Match record.
+  // Removing a match must always clear engagement/wedding journey state.
+  const existingMatch = await findMatchRecord(req.user._id, otherId);
+  if (existingMatch) {
+    existingMatch.mutualInterest = false;
+    existingMatch.engagementStatus = 'none';
+    existingMatch.engagementProposerId = null;
+    await existingMatch.save();
+  }
+
   // Delete both directions so a mutual match is fully removed
   await MatchInterest.deleteMany({
     $or: [
@@ -876,11 +886,41 @@ export const undoInterest = asyncHandler(async (req, res) => {
     await conversation.deleteOne();
   }
 
-  // Delete mutual_match and interest_received notifications between both users
+  // Delete relationship-flow notifications between both users
   await Notification.deleteMany({
     $or: [
-      { userId: req.user._id, fromUserId: otherId, type: { $in: ['mutual_match', 'interest_received'] } },
-      { userId: otherId, fromUserId: req.user._id, type: { $in: ['mutual_match', 'interest_received'] } },
+      {
+        userId: req.user._id,
+        fromUserId: otherId,
+        type: {
+          $in: [
+            'mutual_match',
+            'interest_received',
+            'interest_accepted',
+            'engagement_invite',
+            'engagement_accepted',
+            'engagement_cancelled',
+            'wedding_invite',
+            'wedding_accepted',
+          ],
+        },
+      },
+      {
+        userId: otherId,
+        fromUserId: req.user._id,
+        type: {
+          $in: [
+            'mutual_match',
+            'interest_received',
+            'interest_accepted',
+            'engagement_invite',
+            'engagement_accepted',
+            'engagement_cancelled',
+            'wedding_invite',
+            'wedding_accepted',
+          ],
+        },
+      },
     ],
   });
 
@@ -895,11 +935,13 @@ export const undoInterest = asyncHandler(async (req, res) => {
     await resetBothWeddingProjects(req.user._id, otherId);
     // resetBothWeddingProjects emits wedding_reset to both users
   } else {
-    // Check if there's a pending invite between them (not yet coupled)
+    // Check if there's a pending invite between them (not yet coupled), either direction.
     const pendingProject = await WeddingProject.findOne({
-      coupleUserIds: req.user._id,
-      'pendingInvite.inviteeId': otherId,
       'pendingInvite.status': 'pending',
+      $or: [
+        { coupleUserIds: req.user._id, 'pendingInvite.inviteeId': otherId },
+        { coupleUserIds: otherId, 'pendingInvite.inviteeId': req.user._id },
+      ],
     });
     if (pendingProject) {
       pendingProject.pendingInvite = { inviteeId: null, status: 'declined' };
@@ -1070,7 +1112,7 @@ export const getMutualMatches = asyncHandler(async (req, res) => {
     String(mi.fromUser) === String(userId) ? mi.toUser : mi.fromUser
   );
 
-  const [otherUsers, currentUserData, conversations] = await Promise.all([
+  const [otherUsers, currentUserData, conversations, matchRecords] = await Promise.all([
     User.find({ _id: { $in: otherIds } })
       .select([
         '_id', 'personalInfo.firstName', 'personalInfo.lastName', 'personalInfo.age',
@@ -1082,6 +1124,14 @@ export const getMutualMatches = asyncHandler(async (req, res) => {
     Conversation.find({
       participants: { $in: [userId] },
     }).lean(),
+    Match.find({
+      $or: [
+        { userAId: userId, userBId: { $in: otherIds } },
+        { userBId: userId, userAId: { $in: otherIds } },
+      ],
+    })
+      .select('userAId userBId engagementStatus engagementProposerId')
+      .lean(),
   ]);
 
   // Build a map: otherUserId → conversationId
@@ -1091,10 +1141,23 @@ export const getMutualMatches = asyncHandler(async (req, res) => {
     if (otherId) convByUser[String(otherId)] = String(conv._id);
   }
 
+  const engagementByUser = {};
+  for (const m of matchRecords) {
+    const otherId = String(m.userAId) === String(userId)
+      ? String(m.userBId)
+      : String(m.userAId);
+    engagementByUser[otherId] = {
+      status: m.engagementStatus || 'none',
+      proposerId: m.engagementProposerId ? String(m.engagementProposerId) : null,
+    };
+  }
+
   const items = otherUsers.map((u) => {
     const compat = calculateCompatibilityFromData(currentUserData, u);
     const card = buildCard(u, compat, true);
     card.conversationId = convByUser[String(u._id)] || null;
+    card.engagementStatus = engagementByUser[String(u._id)]?.status || 'none';
+    card.engagementProposerId = engagementByUser[String(u._id)]?.proposerId || null;
     return card;
   });
 
@@ -1260,6 +1323,36 @@ export const getEngagementStatus = asyncHandler(async (req, res) => {
   res.status(200).json({ success: true, data: { status, proposerId } });
 });
 
+export const getMyEngagementSummary = asyncHandler(async (req, res) => {
+  const currentUserId = req.user._id;
+
+  const match = await Match.findOne({
+    $or: [
+      { userAId: currentUserId, engagementStatus: { $in: ['proposed', 'accepted'] } },
+      { userBId: currentUserId, engagementStatus: { $in: ['proposed', 'accepted'] } },
+    ],
+  })
+    .sort({ updatedAt: -1 })
+    .lean();
+
+  if (!match) {
+    return res.status(200).json({ success: true, data: { status: 'none', proposerId: null, partnerId: null } });
+  }
+
+  const partnerId = String(match.userAId) === String(currentUserId)
+    ? String(match.userBId)
+    : String(match.userAId);
+
+  res.status(200).json({
+    success: true,
+    data: {
+      status: match.engagementStatus || 'none',
+      proposerId: match.engagementProposerId ? String(match.engagementProposerId) : null,
+      partnerId,
+    },
+  });
+});
+
 export const proposeEngagement = asyncHandler(async (req, res) => {
   const currentUserId = req.user._id;
   const partnerId = req.params.id;
@@ -1292,6 +1385,12 @@ export const proposeEngagement = asyncHandler(async (req, res) => {
     await match.save();
   }
 
+  const conversation = await Conversation.findOne({
+    participants: { $all: [currentUserId, partnerId] },
+  })
+    .select('_id')
+    .lean();
+
   // Send notification to partner
   const notification = await Notification.create({
     userId: partnerId,
@@ -1299,7 +1398,11 @@ export const proposeEngagement = asyncHandler(async (req, res) => {
     fromUserId: currentUserId,
     fromUserName: currentUser.name || currentUser.personalInfo?.firstName || 'Someone',
     fromUserProfilePic: currentUser.profilePic || currentUser.personalInfo?.photos?.[0]?.url || null,
-    metadata: { proposerId: String(currentUserId) },
+    conversationId: conversation?._id || null,
+    metadata: {
+      proposerId: String(currentUserId),
+      conversationId: conversation?._id ? String(conversation._id) : null,
+    },
   });
 
   emitToUser(String(partnerId), 'notification', {
@@ -1435,4 +1538,5 @@ export default {
   acceptEngagement,
   cancelEngagement,
   getEngagementStatus,
+  getMyEngagementSummary,
 };
