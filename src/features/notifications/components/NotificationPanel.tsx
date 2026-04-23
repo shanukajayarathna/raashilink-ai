@@ -48,7 +48,14 @@ export default function NotificationPanel({
       navigate('/wedding');
     } else if (n.type === 'engagement_invite') {
       // Pass proposer id in state so MessagesPage shows the accept banner directly
-      navigate('/messages', { state: { openUserId: n.fromUserId, engagementProposerId: n.fromUserId } });
+      navigate('/messages', {
+        state: {
+          conversationId: n.conversationId || undefined,
+          openUserId: n.fromUserId,
+          startConversation: true,
+          engagementProposerId: n.fromUserId,
+        },
+      });
     } else if (n.type === 'engagement_accepted') {
       // Go to messages with partner open and mark as engaged so button turns solid
       navigate('/messages', { state: { openUserId: n.fromUserId, engagedUserId: n.fromUserId } });
