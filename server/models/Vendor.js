@@ -1,6 +1,10 @@
 import mongoose from 'mongoose';
 
 const { Schema } = mongoose;
+const httpUrlValidator = {
+  validator: (value) => !value || /^https?:\/\/.+/i.test(value),
+  message: 'Must be a valid URL',
+};
 
 const reviewSchema = new Schema(
   {
@@ -37,6 +41,14 @@ const availabilityEntrySchema = new Schema(
   { _id: false }
 );
 
+const capacitySchema = new Schema(
+  {
+    minGuests: { type: Number, min: 0, default: 0 },
+    maxGuests: { type: Number, min: 0, default: 0 },
+  },
+  { _id: false }
+);
+
 const vendorSchema = new Schema(
   {
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, unique: true, index: true },
@@ -45,9 +57,14 @@ const vendorSchema = new Schema(
       type: String,
       required: true,
       trim: true,
-      enum: ['Photography', 'Catering', 'Venue', 'Attire', 'Music', 'Decor', 'Planner', 'Travel'],
+      enum: ['Photography', 'Catering', 'Venue', 'Attire', 'Music', 'Decor', 'Planner', 'Travel', 'Makeup'],
     },
     description: { type: String, required: true, trim: true, maxlength: 4000 },
+    city: { type: String, trim: true, maxlength: 120 },
+    address: { type: String, trim: true, maxlength: 240 },
+    contactPhone: { type: String, trim: true, maxlength: 40 },
+    contactEmail: { type: String, trim: true, maxlength: 160 },
+    website: { type: String, trim: true, validate: httpUrlValidator },
     serviceArea: {
       type: [String],
       required: true,
@@ -58,6 +75,11 @@ const vendorSchema = new Schema(
       default: [],
     },
     pricingRange: { type: pricingRangeSchema, required: true },
+    featuredServices: { type: [String], default: [] },
+    packageSummary: { type: [String], default: [] },
+    responseTime: { type: String, trim: true, maxlength: 120 },
+    leadTimeDays: { type: Number, min: 0, default: 0 },
+    capacity: { type: capacitySchema, default: () => ({}) },
     portfolioImages: {
       type: [String],
       default: [],
