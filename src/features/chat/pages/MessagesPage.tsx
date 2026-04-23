@@ -68,6 +68,7 @@ export default function MessagesPage() {
   const [showList, setShowList] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const prevMsgIdsRef = useRef<Set<string>>(new Set());
+  const isInitialMount = useRef(true);
   const [deleteTarget, setDeleteTarget] = useState<Conversation | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [weddingInviteOpen, setWeddingInviteOpen] = useState(false);
@@ -87,32 +88,77 @@ export default function MessagesPage() {
   const [engagementBannerUserId, setEngagementBannerUserId] = useState<string | null>(null);
   const [acceptingEngagement, setAcceptingEngagement] = useState(false);
 
+  const refreshConversationsList = useCallback(async () => {
+    try {
+      const convRes: any = await api.get('/chat/conversations');
+      const items: Conversation[] = convRes.data?.data?.items || [];
+      setConversations(items);
+      setSelectedConv((current) => {
+        if (!current) return current;
+        const stillExists = items.find((c) => c.id === current.id);
+        if (stillExists) return stillExists;
+        setMessages([]);
+        setEngagedWithUserId(null);
+        setEngagementProposerId(null);
+        setEngagementBannerUserId(null);
+        setWeddingStatus('none');
+        if (isMobile) setShowList(true);
+        return null;
+      });
+    } catch {
+      // silent
+    }
+  }, [isMobile]);
+
+  const refreshJourneyState = useCallback(async () => {
+    if (!selectedConv) {
+      setEngagedWithUserId(null);
+      setEngagementProposerId(null);
+      setWeddingStatus('none');
+      return;
+    }
+
+    try {
+      const engagementRes: any = await api.get(`/matches/${selectedConv.otherUserId}/engagement`);
+      const { status, proposerId } = engagementRes.data?.data || {};
+      setEngagedWithUserId(status === 'accepted' ? selectedConv.otherUserId : null);
+      setEngagementProposerId(status === 'proposed' ? (proposerId || null) : null);
+    } catch {
+      // silent
+    }
+
+    try {
+      const weddingRes: any = await weddingService.getProject();
+      const project = weddingRes?.data;
+      if (!project) { setWeddingStatus('none'); return; }
+      const isCoupled = Array.isArray(project.coupleUserIds) && project.coupleUserIds.length >= 2 &&
+        project.coupleUserIds.some((u: any) => {
+          const uid = typeof u === 'object' ? (u._id || u.id) : u;
+          return String(uid) === String(selectedConv.otherUserId);
+        });
+      if (isCoupled) { setWeddingStatus('coupled'); return; }
+      const isInvited = project.pendingInvite?.status === 'pending';
+      setWeddingStatus(isInvited ? 'invited' : 'none');
+    } catch {
+      setWeddingStatus('none');
+    }
+  }, [selectedConv]);
+
   // Fetch persistent engagement status from DB whenever conversation changes
   useEffect(() => {
-    if (!selectedConv) { setEngagedWithUserId(null); setEngagementProposerId(null); setWeddingStatus('none'); return; }
-    api.get(`/matches/${selectedConv.otherUserId}/engagement`)
-      .then((res: any) => {
-        const { status, proposerId } = res.data?.data || {};
-        setEngagedWithUserId(status === 'accepted' ? selectedConv.otherUserId : null);
-        setEngagementProposerId(status === 'proposed' ? (proposerId || null) : null);
-      })
-      .catch(() => {});
-    // Fetch wedding status for this partner
-    weddingService.getProject()
-      .then((res: any) => {
-        const project = res?.data;
-        if (!project) { setWeddingStatus('none'); return; }
-        const isCoupled = Array.isArray(project.coupleUserIds) && project.coupleUserIds.length >= 2 &&
-          project.coupleUserIds.some((u: any) => {
-            const uid = typeof u === 'object' ? (u._id || u.id) : u;
-            return String(uid) === String(selectedConv.otherUserId);
-          });
-        if (isCoupled) { setWeddingStatus('coupled'); return; }
-        const isInvited = project.pendingInvite?.status === 'pending';
-        setWeddingStatus(isInvited ? 'invited' : 'none');
-      })
-      .catch(() => setWeddingStatus('none'));
-  }, [selectedConv]);
+    refreshJourneyState();
+  }, [refreshJourneyState]);
+
+  useEffect(() => {
+    const onAppRefresh = () => {
+      refreshJourneyState();
+      refreshConversationsList();
+    };
+    window.addEventListener('app:refresh', onAppRefresh);
+    return () => {
+      window.removeEventListener('app:refresh', onAppRefresh);
+    };
+  }, [refreshJourneyState, refreshConversationsList]);
 
   // Show engagement acceptance banner — set from navigation state (notification click)
   // or from unread notifications when a conversation is selected.
@@ -210,6 +256,47 @@ export default function MessagesPage() {
     .finally(() => setLoadingConvs(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Handle re-navigation to this page while it's already mounted (e.g. clicking a notification
+  // when the user is already on /messages). location.key changes on every navigate() call.
+  useEffect(() => {
+    if (isInitialMount.current) { isInitialMount.current = false; return; }
+    if (!deepLinkConvId && !deepLinkUserId) return;
+
+    const doNav = async () => {
+      // Refresh conversations first so we have an up-to-date list
+      let items = conversations;
+      try {
+        const res: any = await api.get('/chat/conversations');
+        items = res.data?.data?.items || conversations;
+        setConversations(items);
+      } catch { /* use cached */ }
+
+      if (deepLinkConvId) {
+        const target = items.find((c) => c.id === deepLinkConvId);
+        if (target) { setSelectedConv(target); if (isMobile) setShowList(false); return; }
+      }
+      if (deepLinkUserId) {
+        const existing = items.find((c) => c.otherUserId === deepLinkUserId);
+        if (existing) {
+          setSelectedConv(existing);
+          if (isMobile) setShowList(false);
+        } else if (deepLinkStartConv) {
+          setOpeningConvFor(deepLinkUserId);
+          try {
+            const r: any = await api.post('/chat/conversations/open', { userId: deepLinkUserId });
+            const conv: Conversation = r.data.data.conversation;
+            setConversations((prev) => prev.some((c) => c.id === conv.id) ? prev : [conv, ...prev]);
+            setSelectedConv(conv);
+            if (isMobile) setShowList(false);
+          } catch { /* fail silently */ }
+          finally { setOpeningConvFor(null); }
+        }
+      }
+    };
+    doNav();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.key]);
 
   /** Start or open an existing conversation with a mutual match contact */
   const handleStartChat = async (match: MutualMatch) => {
@@ -345,13 +432,22 @@ export default function MessagesPage() {
     // Partner sent us an engagement proposal — show the accept banner instantly
     onEngagementInvite: (data) => {
       if (!data.fromUserId) return;
+      setEngagementProposerId(data.fromUserId);
       setSelectedConv((conv) => {
         if (conv && conv.otherUserId === data.fromUserId) {
           setEngagementBannerUserId(data.fromUserId);
-          setEngagementProposerId(data.fromUserId);
         }
         return conv;
       });
+      if (!selectedConv) {
+        const target = conversations.find((c) => c.otherUserId === data.fromUserId);
+        if (target) {
+          setSelectedConv(target);
+          setEngagementBannerUserId(data.fromUserId);
+          if (isMobile) setShowList(false);
+        }
+      }
+      setInviteSnack({ open: true, msg: `${data.fromUserName} proposed engagement. Open this chat to accept.`, severity: 'success' });
     },
     // Partner accepted our proposal — mark button as engaged instantly
     onEngagementAccepted: (data) => {
@@ -383,19 +479,43 @@ export default function MessagesPage() {
         return conv;
       });
     },
+    onMatchRemoved: (data) => {
+      if (!data.byUserId) return;
+      setConversations((prev) => prev.filter((c) => c.otherUserId !== data.byUserId));
+      setSelectedConv((conv) => {
+        if (conv && conv.otherUserId === data.byUserId) {
+          setMessages([]);
+          setEngagedWithUserId(null);
+          setEngagementProposerId(null);
+          setEngagementBannerUserId(null);
+          setWeddingStatus('none');
+          if (isMobile) setShowList(true);
+          setInviteSnack({ open: true, msg: 'This match was removed. You are back to searching for a partner.', severity: 'error' });
+          return null;
+        }
+        return conv;
+      });
+    },
   });
 
-  // wedding_reset socket: partner cancelled invite or left couple
+  // wedding socket: real-time status updates
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (!token) return;
     const socket = connectSocket(token);
-    const handler = () => {
+    const onReset = () => {
       setWeddingStatus('none');
       setInviteSnack({ open: true, msg: 'The wedding planning was cancelled by the other party.', severity: 'error' });
     };
-    socket.on('wedding_reset', handler);
-    return () => { socket.off('wedding_reset', handler); };
+    const onAccepted = () => {
+      setWeddingStatus('coupled');
+    };
+    socket.on('wedding_reset', onReset);
+    socket.on('wedding_accepted', onAccepted);
+    return () => {
+      socket.off('wedding_reset', onReset);
+      socket.off('wedding_accepted', onAccepted);
+    };
   }, []);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -1006,6 +1126,7 @@ export default function MessagesPage() {
               setProposingEngagement(true);
               try {
                 await api.post(`/matches/${selectedConv.otherUserId}/engagement/propose`);
+                setEngagementProposerId(currentUserId);
                 setInviteSnack({ open: true, msg: `Engagement proposal sent to ${selectedConv.title}! Waiting for their response.`, severity: 'success' });
                 setEngagementOpen(false);
               } catch {
