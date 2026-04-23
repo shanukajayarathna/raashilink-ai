@@ -137,8 +137,12 @@ export default function VendorPortal() {
       try {
         setLoading(true);
 
-        const response = await vendorService.searchVendors();
+        const [response, quoteInbox] = await Promise.all([
+          vendorService.searchVendors(),
+          vendorService.getQuoteInbox().catch(() => ({ data: { items: [] } })),
+        ]);
         const items = Array.isArray(response?.data?.items) ? response.data.items : [];
+        const quoteItems = Array.isArray(quoteInbox?.data?.items) ? quoteInbox.data.items : [];
         const currentUserId = String(user?.id || user?._id || '');
         const currentVendor = items.find((entry: any) => String(entry?.userId) === currentUserId);
 
@@ -147,8 +151,8 @@ export default function VendorPortal() {
           category: currentVendor?.category || user?.vendorProfile?.businessCategory || 'Vendor',
           stats: {
             views: String(currentVendor?.reviews?.length || 0),
-            quotes: String(currentVendor?.availabilityCalendar?.length || 0),
-            bookings: String((currentVendor?.availabilityCalendar || []).filter((item: any) => item?.status === 'booked').length),
+            quotes: String(quoteItems.length || 0),
+            bookings: String(quoteItems.filter((item: any) => item?.status === 'accepted').length),
             rating: Number(currentVendor?.ratings?.average || user?.vendorProfile?.rating || 0).toFixed(1),
           },
           vendorProfile: user?.vendorProfile || null,
@@ -602,5 +606,4 @@ const DashboardOverview = ({ stats, vendorProfile, verification }: any) => {
     </Box>
   );
 };
-
 
