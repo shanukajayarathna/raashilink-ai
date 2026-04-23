@@ -149,7 +149,7 @@ const LoginPage = () => {
         <Grid size={{ xs: 12, md: 6 }} sx={{ 
           display: { xs: 'none', md: 'flex' },
           bgcolor: COLORS.primary,
-          backgroundImage: 'linear-gradient(rgba(139, 26, 46, 0.85), rgba(139, 26, 46, 0.85)), url("https://images.unsplash.com/photo-1511795409834-ef04bbd61622?auto=format&fit=crop&q=80&w=1920")',
+          backgroundImage: 'linear-gradient(rgba(139, 26, 46, 0.85), rgba(139, 26, 46, 0.85)), url("https://bolenbliss.com/storage/blog/featured/weddings-in-sri-lanka/sri-lankan-fusion-wedding-in-california.jpg")',
           backgroundSize: 'cover',
           backgroundPosition: 'center',
           position: 'relative',
@@ -157,7 +157,7 @@ const LoginPage = () => {
           justifyContent: 'center',
           alignItems: 'center',
           color: 'white',
-          p: 6,
+          p: 5,
           overflow: 'hidden'
         }}>
           <MandalaBackground
