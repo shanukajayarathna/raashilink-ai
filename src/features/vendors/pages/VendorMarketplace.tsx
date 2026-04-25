@@ -61,6 +61,16 @@ const CATEGORY_LABELS: Record<string, string> = {
   Planner: 'Wedding Planner',
 };
 
+const CATEGORY_MATCHERS: Record<string, string[]> = {
+  venue: ['Venue'],
+  photography: ['Photography'],
+  catering: ['Catering'],
+  decoration: ['Decor', 'Decoration'],
+  attire: ['Attire', 'Bridal Wear'],
+  makeup: ['Makeup'],
+  entertainment: ['Music', 'Entertainment'],
+};
+
 function mapVendorCard(vendor: any) {
   const portfolio = Array.isArray(vendor?.portfolioImages) && vendor.portfolioImages.length > 0
     ? vendor.portfolioImages
@@ -75,7 +85,7 @@ function mapVendorCard(vendor: any) {
     category,
     rating: Number(vendor?.ratings?.average || 0),
     reviewCount: Number(vendor?.ratings?.count || vendor?.reviews?.length || 0),
-    location: Array.isArray(vendor?.serviceArea) && vendor.serviceArea.length > 0 ? vendor.serviceArea.join(', ') : 'Sri Lanka',
+    location: vendor?.city || (Array.isArray(vendor?.serviceArea) && vendor.serviceArea.length > 0 ? vendor.serviceArea.join(', ') : 'Sri Lanka'),
     priceRange: `LKR ${minPrice.toLocaleString()} — ${maxPrice.toLocaleString()}`,
     description: vendor?.description || 'Professional wedding services for your celebration.',
     image: portfolio[0],
@@ -83,6 +93,7 @@ function mapVendorCard(vendor: any) {
     verified: Boolean(vendor?.verified),
     popular: Boolean(vendor?.verified && Number(vendor?.ratings?.count || 0) >= 3),
     isFavorite: false,
+    city: vendor?.city || '',
   };
 }
 
@@ -103,7 +114,7 @@ export default function VendorMarketplace() {
   const [selectedDistricts, setSelectedDistricts] = useState<string[]>([]);
   const [availableOnly, setAvailableOnly] = useState(false);
 
-  const { token } = useSelector((state: RootState) => state.auth);
+  const { token, user } = useSelector((state: RootState) => state.auth);
 
   useEffect(() => {
     const fetchVendors = async () => {
@@ -146,7 +157,8 @@ export default function VendorMarketplace() {
   };
 
   const filteredVendors = vendors.filter(v => {
-    const matchesCategory = activeCategory === 'all' || v.category.toLowerCase().includes(activeCategory.toLowerCase());
+    const allowedCategories = CATEGORY_MATCHERS[activeCategory] || [];
+    const matchesCategory = activeCategory === 'all' || allowedCategories.includes(v.category);
     const matchesSearch = v.name.toLowerCase().includes(searchQuery.toLowerCase()) || v.description.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesRating = v.rating >= parseFloat(minRating);
     return matchesCategory && matchesSearch && matchesRating;
@@ -318,7 +330,11 @@ export default function VendorMarketplace() {
       <QuoteRequestModal 
         open={isQuoteModalOpen} 
         onClose={() => setIsQuoteModalOpen(false)} 
-        vendor={selectedVendor} 
+        vendor={selectedVendor}
+        weddingDate={user?.weddingProject?.weddingDate ? new Date(user.weddingProject.weddingDate).toISOString().split('T')[0] : ''}
+        userPhone={user?.phone || ''}
+        userEmail={user?.email || ''}
+        userName={user?.name || user?.firstName || ''}
       />
     </Box>
   );
@@ -411,5 +427,3 @@ const AlertCircle = ({ size, color, style }: any) => (
     <CheckCircle2 size={size} color={color} />
   </Box>
 );
-
-
