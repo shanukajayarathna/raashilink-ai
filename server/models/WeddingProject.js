@@ -17,6 +17,7 @@ const expenseSchema = new Schema(
 const checklistItemSchema = new Schema(
   {
     title: { type: String, required: true, trim: true, maxlength: 160 },
+    category: { type: String, trim: true, maxlength: 80 },
     completed: { type: Boolean, default: false },
     dueDate: { type: Date },
     assignedTo: { type: String, trim: true, maxlength: 120 },
@@ -29,6 +30,10 @@ const bookedVendorSchema = new Schema(
     vendorId: { type: Schema.Types.ObjectId, ref: 'Vendor', required: true },
     category: { type: String, trim: true, maxlength: 80 },
     quotedAmount: { type: Number, min: 0, default: 0 },
+    quoteRequestId: { type: Schema.Types.ObjectId, ref: 'QuoteRequest' },
+    requestedAt: { type: Date },
+    vendorName: { type: String, trim: true, maxlength: 160 },
+    notes: { type: String, trim: true, maxlength: 2000 },
     status: {
       type: String,
       enum: ['shortlisted', 'requested', 'booked', 'cancelled'],
