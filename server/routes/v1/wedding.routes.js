@@ -4,6 +4,8 @@ import {
   getProject,
   updateProject,
   addTask,
+  updateTask,
+  deleteTask,
   addExpense,
   updateExpense,
   deleteExpense,
@@ -24,6 +26,8 @@ router.use(authenticate);
 router.get('/project', getProject);
 router.put('/project', updateProject);
 router.post('/tasks', addTask);
+router.patch('/tasks/:index', updateTask);
+router.delete('/tasks/:index', deleteTask);
 router.patch('/tasks/:index/toggle', toggleTask);
 router.post('/expenses', addExpense);
 router.patch('/expenses/:index', updateExpense);
@@ -38,4 +42,3 @@ router.post('/couple/reset', resetWedding);
 router.get('/couple/pending-invite', getPendingInvite);
 
 export default router;
-
