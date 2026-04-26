@@ -4,6 +4,7 @@ import Notification from '../models/Notification.js';
 import User from '../models/User.js';
 import { emitToUser } from '../lib/socket.js';
 import Vendor from '../models/Vendor.js';
+import QuoteRequest from '../models/QuoteRequest.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import ApiError from '../utils/ApiError.js';
 
@@ -13,11 +14,11 @@ function ensureObjectId(id, field) {
   }
 }
 
-function notifyPartner(project, currentUserId) {
+function notifyPartner(project, currentUserId, type = null) {
   if (!Array.isArray(project.coupleUserIds) || project.coupleUserIds.length < 2) return;
   const partnerId = project.coupleUserIds.find((id) => String(id) !== String(currentUserId));
   if (partnerId) {
-    emitToUser(partnerId, 'wedding_updated', { projectId: String(project._id) });
+    emitToUser(partnerId, 'wedding_updated', { projectId: String(project._id), type });
   }
 }
 
@@ -51,7 +52,6 @@ export async function resetBothWeddingProjects(userIdA, userIdB) {
   ]);
 
   // Notify both users so their dashboards refresh
-  emitToUser(String(userIdA), 'wedding_reset', { message: 'Wedding project has been reset' });
   emitToUser(String(userIdB), 'wedding_reset', { message: 'Wedding project has been reset' });
 }
 
@@ -86,6 +86,8 @@ export const getProject = asyncHandler(async (req, res) => {
   const project = await getOrCreateProject(req.user._id);
   // Select 'personalInfo' (real DB field) so virtuals (firstName, lastName, profilePic) are computed on serialisation
   await project.populate({ path: 'coupleUserIds', select: 'personalInfo' });
+  await project.populate({ path: 'venueId', select: 'businessName city address serviceArea category' });
+  await project.populate({ path: 'vendors.vendorId', select: 'businessName city category serviceArea pricingRange portfolioImages' });
 
   res.status(200).json({
     success: true,
@@ -117,7 +119,7 @@ export const updateProject = asyncHandler(async (req, res) => {
 });
 
 export const addTask = asyncHandler(async (req, res) => {
-  const { title, dueDate, assignedTo } = req.body ?? {};
+  const { title, category, dueDate, assignedTo } = req.body ?? {};
   if (!title) {
     throw new ApiError(400, 'Task title is required');
   }
@@ -125,6 +127,7 @@ export const addTask = asyncHandler(async (req, res) => {
   const project = await getOrCreateProject(req.user._id);
   project.checklist.push({
     title,
+    category,
     dueDate,
     assignedTo,
     completed: false,
@@ -138,8 +141,61 @@ export const addTask = asyncHandler(async (req, res) => {
   });
 });
 
+export const updateTask = asyncHandler(async (req, res) => {
+  const { index } = req.params;
+  const idx = Number(index);
+  const { title, category, dueDate, assignedTo, completed } = req.body ?? {};
+  const project = await getOrCreateProject(req.user._id);
+
+  if (isNaN(idx) || idx < 0 || idx >= project.checklist.length) {
+    throw new ApiError(400, 'Invalid task index');
+  }
+
+  const task = project.checklist[idx];
+  if (title !== undefined) {
+    if (!String(title).trim()) throw new ApiError(400, 'Task title is required');
+    task.title = String(title).trim();
+  }
+  if (category !== undefined) task.category = category;
+  if (dueDate !== undefined) task.dueDate = dueDate || undefined;
+  if (assignedTo !== undefined) task.assignedTo = assignedTo;
+  if (completed !== undefined) task.completed = Boolean(completed);
+
+  await project.save();
+  notifyPartner(project, req.user._id);
+
+  res.status(200).json({
+    success: true,
+    data: {
+      item: project.checklist[idx],
+      checklist: project.checklist,
+    },
+  });
+});
+
+export const deleteTask = asyncHandler(async (req, res) => {
+  const { index } = req.params;
+  const idx = Number(index);
+  const project = await getOrCreateProject(req.user._id);
+
+  if (isNaN(idx) || idx < 0 || idx >= project.checklist.length) {
+    throw new ApiError(400, 'Invalid task index');
+  }
+
+  project.checklist.splice(idx, 1);
+  await project.save();
+  notifyPartner(project, req.user._id);
+
+  res.status(200).json({
+    success: true,
+    data: {
+      checklist: project.checklist,
+    },
+  });
+});
+
 export const addExpense = asyncHandler(async (req, res) => {
-  const { title, category, amount, dueDate, notes } = req.body ?? {};
+  const { title, category, amount, dueDate, notes, paid } = req.body ?? {};
   if (!title || !category || amount === undefined) {
     throw new ApiError(400, 'Expense title, category, and amount are required');
   }
@@ -151,7 +207,7 @@ export const addExpense = asyncHandler(async (req, res) => {
     amount: Number(amount),
     dueDate,
     notes,
-    paid: false,
+    paid: Boolean(paid),
   });
   await project.save();
   notifyPartner(project, req.user._id);
@@ -207,7 +263,7 @@ export const getBudget = asyncHandler(async (req, res) => {
 export const getWeddingVendors = asyncHandler(async (req, res) => {
   const vendors = await Vendor.find({ verified: true })
     .sort({ 'ratings.average': -1 })
-    .limit(20)
+    .limit(100)
     .lean();
 
   res.status(200).json({
@@ -220,7 +276,25 @@ export const getWeddingVendors = asyncHandler(async (req, res) => {
 });
 
 export const requestQuote = asyncHandler(async (req, res) => {
-  const { vendorId, quotedAmount, category } = req.body ?? {};
+  const {
+    vendorId,
+    quotedAmount,
+    category,
+    eventType,
+    weddingDate,
+    guestCount,
+    location,
+    venueName,
+    preferredPackage,
+    coverageHours,
+    budgetMin,
+    budgetMax,
+    requirements,
+    contactName,
+    contactEmail,
+    contactPhone,
+    preferredContactMethod,
+  } = req.body ?? {};
   ensureObjectId(vendorId, 'vendorId');
 
   const vendor = await Vendor.findById(vendorId).lean();
@@ -228,18 +302,56 @@ export const requestQuote = asyncHandler(async (req, res) => {
     throw new ApiError(404, 'Vendor not found');
   }
 
+  const requestWeddingDate = weddingDate || undefined;
+  const parsedBudgetMin = Number(budgetMin || 0);
+  const parsedBudgetMax = Number(budgetMax || quotedAmount || 0);
   const project = await getOrCreateProject(req.user._id);
+  const requesterName = req.user?.name || [req.user?.firstName, req.user?.lastName].filter(Boolean).join(' ').trim() || 'RaashiLink Couple';
+  const quoteRequest = await QuoteRequest.create({
+    vendorId: vendor._id,
+    vendorUserId: vendor.userId,
+    requesterUserId: req.user._id,
+    projectId: project._id,
+    category: category || vendor.category,
+    requestDetails: {
+      eventType: eventType || 'Wedding',
+      weddingDate: requestWeddingDate || project.weddingDate,
+      guestCount: Number(guestCount || 0),
+      location: location || venueName || req.user?.location || '',
+      venueName: venueName || '',
+      preferredPackage: preferredPackage || '',
+      coverageHours: Number(coverageHours || 0),
+      budgetRange: {
+        min: parsedBudgetMin,
+        max: parsedBudgetMax,
+        currency: 'LKR',
+      },
+      contactName: contactName || requesterName,
+      contactEmail: contactEmail || req.user?.email || '',
+      contactPhone: contactPhone || req.user?.phone || '',
+      preferredContactMethod: preferredContactMethod || 'platform',
+      requirements: requirements || '',
+    },
+  });
   const existing = project.vendors.find((entry) => String(entry.vendorId) === String(vendorId));
 
   if (existing) {
     existing.status = 'requested';
     existing.category = category || existing.category;
-    existing.quotedAmount = Number(quotedAmount || existing.quotedAmount || 0);
+    existing.quotedAmount = Number(quotedAmount || existing.quotedAmount || parsedBudgetMax || 0);
+    existing.quoteRequestId = quoteRequest._id;
+    existing.requestedAt = new Date();
+    existing.vendorName = vendor.businessName;
+    existing.notes = requirements || existing.notes || '';
   } else {
     project.vendors.push({
       vendorId,
       category: category || vendor.category,
-      quotedAmount: Number(quotedAmount || 0),
+      quotedAmount: Number(quotedAmount || parsedBudgetMax || 0),
+      quoteRequestId: quoteRequest._id,
+      requestedAt: new Date(),
+      vendorName: vendor.businessName,
+      notes: requirements || '',
       status: 'requested',
     });
   }
@@ -252,6 +364,7 @@ export const requestQuote = asyncHandler(async (req, res) => {
     data: {
       projectId: String(project._id),
       vendorId,
+      quoteRequestId: String(quoteRequest._id),
       status: 'requested',
     },
   });
@@ -271,6 +384,13 @@ export const updateVendorStatus = asyncHandler(async (req, res) => {
     throw new ApiError(404, 'Vendor not found in project');
   }
   entry.status = status;
+  const vendor = await Vendor.findById(vendorId).select('category businessName').lean();
+  if (status === 'booked' && vendor?.category === 'Venue') {
+    project.venueId = vendorId;
+  }
+  if (status === 'cancelled' && String(project.venueId || '') === String(vendorId)) {
+    project.venueId = undefined;
+  }
   await project.save();
   notifyPartner(project, req.user._id);
 
@@ -396,6 +516,8 @@ export const acceptInvite = asyncHandler(async (req, res) => {
   });
   // Let the inviter's WeddingDashboard refresh immediately
   emitToUser(inviterId, 'wedding_accepted', { acceptorId: String(req.user._id), acceptorName });
+  // Also notify the acceptor so their MessagesPage updates to 'coupled' in real-time
+  emitToUser(String(req.user._id), 'wedding_accepted', { acceptorId: String(req.user._id), acceptorName });
 
   res.status(200).json({
     success: true,
@@ -509,6 +631,8 @@ export default {
   getProject,
   updateProject,
   addTask,
+  updateTask,
+  deleteTask,
   addExpense,
   getBudget,
   getWeddingVendors,
@@ -520,4 +644,3 @@ export default {
   getPendingInvite,
   resetWedding,
 };
-
