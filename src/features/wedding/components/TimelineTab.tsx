@@ -79,10 +79,13 @@ function buildTimeline(weddingDate: Date) {
 interface TimelineTabProps {
   weddingDate?: string;
   checklist?: any[];
-  onChecklistChange?: () => void;
+  onChecklistChange?: (updated: any[]) => void;
 }
 
 export default function TimelineTab({ weddingDate, checklist = [], onChecklistChange }: TimelineTabProps) {
+    const [localChecklist, setLocalChecklist] = useState<any[]>(checklist);
+    React.useEffect(() => { setLocalChecklist(checklist); }, [checklist]);
+
   const parsedDate = weddingDate ? new Date(weddingDate) : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
   const timeline = buildTimeline(parsedDate);
   const currentIdx = timeline.findIndex(m => m.status === 'in-progress');
@@ -90,33 +93,48 @@ export default function TimelineTab({ weddingDate, checklist = [], onChecklistCh
   const [togglingIdx, setTogglingIdx] = useState<number | null>(null);
   const [addTaskModal, setAddTaskModal] = useState<{ open: boolean; title: string; saving: boolean }>({ open: false, title: '', saving: false });
 
-  const totalTasks = checklist.length;
-  const completedTasks = checklist.filter((t: any) => t.completed).length;
+  const totalTasks = localChecklist.length;
+  const completedTasks = localChecklist.filter((t: any) => t.completed).length;
   const overallProgress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
 
   const findTaskIdx = (title: string) =>
-    checklist.findIndex((t: any) => t.title?.toLowerCase().trim() === title.toLowerCase().trim());
+    localChecklist.findIndex((t: any) => t.title?.toLowerCase().trim() === title.toLowerCase().trim());
 
   const handleToggleTask = async (taskTitle: string) => {
     const idx = findTaskIdx(taskTitle);
     if (idx === -1) return;
     setTogglingIdx(idx);
+    const prev = [...localChecklist];
+    const updated = localChecklist.map((t, i) => i === idx ? { ...t, completed: !t.completed } : t);
+    setLocalChecklist(updated);
     try {
       await weddingService.toggleTask(idx);
-      onChecklistChange?.();
-    } catch { /* silent */ }
-    finally { setTogglingIdx(null); }
+      onChecklistChange?.(updated);
+    } catch {
+      setLocalChecklist(prev);
+    } finally { setTogglingIdx(null); }
   };
 
   const handleAddToChecklist = async () => {
     if (!addTaskModal.title.trim()) return;
     setAddTaskModal(s => ({ ...s, saving: true }));
+    const newItem = { title: addTaskModal.title.trim(), completed: false };
+    const updated = [...localChecklist, newItem];
+    setLocalChecklist(updated);
     try {
       await weddingService.addTask({ title: addTaskModal.title.trim() });
-      onChecklistChange?.();
+      const projectRes = await weddingService.getProject();
+      const serverChecklist = projectRes?.data?.checklist;
+      if (Array.isArray(serverChecklist)) {
+        setLocalChecklist(serverChecklist);
+        onChecklistChange?.(serverChecklist);
+      } else {
+        onChecklistChange?.(updated);
+      }
       setAddTaskModal({ open: false, title: '', saving: false });
-    } catch { /* silent */ }
-    finally { setAddTaskModal(s => ({ ...s, saving: false })); }
+    } catch {
+      setLocalChecklist(prev => prev.filter(t => t !== newItem));
+    } finally { setAddTaskModal(s => ({ ...s, saving: false })); }
   };
 
   return (
@@ -164,7 +182,7 @@ export default function TimelineTab({ weddingDate, checklist = [], onChecklistCh
             const milestoneItems = milestone.taskTemplates.map(t => ({
               title: t,
               idx: findTaskIdx(t),
-              completed: findTaskIdx(t) >= 0 ? !!checklist[findTaskIdx(t)]?.completed : false,
+              completed: findTaskIdx(t) >= 0 ? !!localChecklist[findTaskIdx(t)]?.completed : false,
               inChecklist: findTaskIdx(t) >= 0,
             }));
             const doneCount = milestoneItems.filter(t => t.completed).length;
