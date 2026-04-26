@@ -54,9 +54,11 @@ export default function BudgetTab({ totalBudget = 0, totalSpent = 0, expenses = 
   const [form, setForm] = useState<any>(EMPTY_EXPENSE);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState<number | null>(null);
+  const [togglingPaid, setTogglingPaid] = useState<number | null>(null);
   const [budgetDialogOpen, setBudgetDialogOpen] = useState(false);
   const [budgetInput, setBudgetInput] = useState(String(totalBudget));
   const [savingBudget, setSavingBudget] = useState(false);
+    const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
@@ -87,7 +89,7 @@ export default function BudgetTab({ totalBudget = 0, totalSpent = 0, expenses = 
     setSaving(true);
     try {
       if (expenseModal.mode === 'add') {
-        await weddingService.addExpense({ title: form.title.trim(), category: form.category, amount: Number(form.amount), notes: form.notes });
+        await weddingService.addExpense({ title: form.title.trim(), category: form.category, amount: Number(form.amount), notes: form.notes, paid: !!form.paid });
       } else if (expenseModal.index !== null) {
         await weddingService.updateExpense(expenseModal.index, { title: form.title.trim(), category: form.category, amount: Number(form.amount), notes: form.notes, paid: form.paid });
       }
@@ -97,13 +99,33 @@ export default function BudgetTab({ totalBudget = 0, totalSpent = 0, expenses = 
     finally { setSaving(false); }
   };
 
-  const handleDelete = async (idx: number) => {
+  const handleDelete = async (idx: number, confirmed = false) => {
+    if (!confirmed) { setDeleteConfirm(idx); return; }
+    setDeleteConfirm(null);
     setDeleting(idx);
     try {
       await weddingService.deleteExpense(idx);
       onExpenseAdded?.();
     } catch { /* silent */ }
     finally { setDeleting(null); }
+  };
+
+  const handleTogglePaid = async (idx: number, paid: boolean, expense: any) => {
+    setTogglingPaid(idx);
+    try {
+      await weddingService.updateExpense(idx, {
+        title: expense.title,
+        category: expense.category,
+        amount: Number(expense.amount),
+        notes: expense.notes,
+        paid,
+      });
+      onExpenseAdded?.();
+    } catch {
+      // silent
+    } finally {
+      setTogglingPaid(null);
+    }
   };
 
   const handleSaveBudget = async () => {
@@ -191,7 +213,22 @@ export default function BudgetTab({ totalBudget = 0, totalSpent = 0, expenses = 
                   </TableCell>
                   <TableCell sx={{ fontWeight: 700 }}>{Number(e.amount).toLocaleString()}</TableCell>
                   <TableCell>
-                    {e.paid ? <CheckCircle2 size={18} color={COLORS.success} /> : <AlertCircle size={18} color={COLORS.warning} />}
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <Switch
+                        size="small"
+                        color="success"
+                        checked={!!e.paid}
+                        disabled={togglingPaid === i}
+                        onChange={(evt) => handleTogglePaid(i, evt.target.checked, e)}
+                      />
+                      {togglingPaid === i ? (
+                        <CircularProgress size={14} color="inherit" />
+                      ) : e.paid ? (
+                        <CheckCircle2 size={16} color={COLORS.success} />
+                      ) : (
+                        <AlertCircle size={16} color={COLORS.warning} />
+                      )}
+                    </Stack>
                   </TableCell>
                   <TableCell sx={{ color: 'text.secondary', fontSize: '0.8rem' }}>{e.notes || '—'}</TableCell>
                   <TableCell align="right">
@@ -202,7 +239,7 @@ export default function BudgetTab({ totalBudget = 0, totalSpent = 0, expenses = 
                         </IconButton>
                       </Tooltip>
                       <Tooltip title="Delete">
-                        <IconButton size="small" disabled={deleting === i} onClick={() => handleDelete(i)} sx={{ color: COLORS.error }}>
+                        <IconButton size="small" disabled={deleting === i} onClick={() => setDeleteConfirm(i)} sx={{ color: COLORS.error }}>
                           {deleting === i ? <CircularProgress size={14} color="inherit" /> : <Trash2 size={15} />}
                         </IconButton>
                       </Tooltip>
@@ -214,6 +251,25 @@ export default function BudgetTab({ totalBudget = 0, totalSpent = 0, expenses = 
           </Table>
         </TableContainer>
       )}
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteConfirm !== null} onClose={() => deleting === null && setDeleteConfirm(null)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: 4 } }}>
+        <DialogTitle sx={{ fontWeight: 800, color: COLORS.error }}>Delete Expense?</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2">
+            Are you sure you want to delete <strong>"{deleteConfirm !== null ? expenses[deleteConfirm]?.title : ''}"</strong>? This cannot be undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setDeleteConfirm(null)} disabled={deleting !== null}>Cancel</Button>
+          <Button variant="contained" color="error" disabled={deleting !== null}
+            onClick={() => deleteConfirm !== null && handleDelete(deleteConfirm, true)}
+            startIcon={deleting !== null ? <CircularProgress size={14} color="inherit" /> : undefined}
+            sx={{ borderRadius: 3, fontWeight: 700 }}>
+            {deleting !== null ? 'Deleting…' : 'Delete'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Add / Edit Expense Dialog */}
       <Dialog open={expenseModal.open} onClose={() => !saving && setExpenseModal(s => ({ ...s, open: false }))} fullWidth maxWidth="sm" PaperProps={{ sx: { borderRadius: 6 } }}>
@@ -231,12 +287,10 @@ export default function BudgetTab({ totalBudget = 0, totalSpent = 0, expenses = 
             </FormControl>
             <TextField fullWidth label="Amount (LKR)" type="number" value={form.amount} onChange={(e) => setForm((x: any) => ({ ...x, amount: e.target.value }))} inputProps={{ min: 0 }} />
             <TextField fullWidth label="Notes (optional)" multiline rows={2} value={form.notes} onChange={(e) => setForm((x: any) => ({ ...x, notes: e.target.value }))} />
-            {expenseModal.mode === 'edit' && (
-              <Stack direction="row" alignItems="center" spacing={1}>
-                <Typography variant="body2" sx={{ fontWeight: 600 }}>Mark as Paid</Typography>
-                <Switch checked={!!form.paid} onChange={(e) => setForm((x: any) => ({ ...x, paid: e.target.checked }))} color="success" />
-              </Stack>
-            )}
+            <Stack direction="row" alignItems="center" spacing={1}>
+              <Typography variant="body2" sx={{ fontWeight: 600 }}>Mark as Paid</Typography>
+              <Switch checked={!!form.paid} onChange={(e) => setForm((x: any) => ({ ...x, paid: e.target.checked }))} color="success" />
+            </Stack>
           </Stack>
         </DialogContent>
         <DialogActions sx={{ p: 3 }}>
