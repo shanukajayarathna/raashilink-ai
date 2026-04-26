@@ -35,6 +35,22 @@ const weddingService = {
   },
 
   /**
+   * Update a checklist task by index.
+   */
+  updateTask: async (index: number, taskData: any) => {
+    const response = await axiosInstance.patch(`/wedding/tasks/${index}`, taskData);
+    return response.data;
+  },
+
+  /**
+   * Delete a checklist task by index.
+   */
+  deleteTask: async (index: number) => {
+    const response = await axiosInstance.delete(`/wedding/tasks/${index}`);
+    return response.data;
+  },
+
+  /**
    * Add an expense to the wedding budget.
    * @param {object} expenseData - Expense details (category, amount, etc.).
    * @returns {Promise<object>} - Created expense data.
@@ -123,5 +139,4 @@ const weddingService = {
 };
 
 export default weddingService;
-
 
