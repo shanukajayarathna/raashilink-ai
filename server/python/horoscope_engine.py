@@ -125,7 +125,7 @@ RAJJU_BY_NAKSHATRA = {
     "Ashwini": "Pada",         "Bharani": "Pada",         "Krittika": "Pada",
     "Rohini": "Kanta",         "Mrigashira": "Kanta",     "Ardra": "Kanta",
     "Punarvasu": "Shiro",      "Pushya": "Shiro",         "Ashlesha": "Shiro",
-    "Magha": "Kanti",          "Purva Phalguni": "Kanti", "Uttara Phalguni": "Kanti",
+    "Magha": "Kanta",          "Purva Phalguni": "Kanta", "Uttara Phalguni": "Kanta",
     "Hasta": "Udara",          "Chitra": "Udara",         "Swati": "Udara",
     "Vishakha": "Kati",        "Anuradha": "Kati",        "Jyeshtha": "Kati",
     "Mula": "Pada",            "Purva Ashadha": "Pada",   "Uttara Ashadha": "Pada",
