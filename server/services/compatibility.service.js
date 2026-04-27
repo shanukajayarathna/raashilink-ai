@@ -15,7 +15,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const SCORER_PATH = path.resolve(__dirname, '../python/compatibility/scorer.py');
 const CACHE_TTL_SECONDS = 60 * 60 * 24;
-const COMPATIBILITY_VERSION = 2;
+const COMPATIBILITY_VERSION = 3;
 const MANGLIK_HOUSES = new Set([1, 2, 4, 7, 8, 12]);
 
 export function buildCacheKey(userAId, userBId) {
@@ -295,7 +295,7 @@ async function runCompatibilityEngine(payload) {
   });
 }
 
-export async function calculateCompatibility({ userAId, userBId, fastMode = false }) {
+export async function calculateCompatibility({ userAId, userBId, fastMode = false, skipCache = false }) {
   validateObjectId(userAId, 'userAId');
   validateObjectId(userBId, 'userBId');
 
@@ -305,14 +305,16 @@ export async function calculateCompatibility({ userAId, userBId, fastMode = fals
 
   const cacheKey = buildCacheKey(userAId, userBId);
 
-  try {
-    const cached = await redisClient.get(cacheKey);
-    if (cached) {
-      logger.info('Compatibility cache hit', { cacheKey });
-      return JSON.parse(cached);
+  if (!skipCache) {
+    try {
+      const cached = await redisClient.get(cacheKey);
+      if (cached) {
+        logger.info('Compatibility cache hit', { cacheKey });
+        return JSON.parse(cached);
+      }
+    } catch (error) {
+      logger.warn('Redis read failed, continuing without cache', { message: error.message, cacheKey });
     }
-  } catch (error) {
-    logger.warn('Redis read failed, continuing without cache', { message: error.message, cacheKey });
   }
 
   const compatibilityFieldSelection = [
