@@ -33,5 +33,15 @@
       "**/server/python/ephe",
       "**/server/python/recommendation"
     ]
+  },
+  "chat.tools.terminal.autoApprove": {
+    "git add": true,
+    "git commit": true,
+    "git push": true,
+    "read": true,
+    "/^cd \"/c/Projects/raashilink\\.ai Project\" && python - <<'PY'\nimport os, subprocess, shlex, sys\nfrom pathlib import Path\n\nrepo = Path\\('\\.'\\)\n# Step 2: gather changed/untracked files from porcelain\nres = subprocess\\.run\\(\\['git','status','--porcelain'\\], capture_output=True, text=True, check=True\\)\npaths = \\[\\]\nfor line in res\\.stdout\\.splitlines\\(\\):\n    if not line\\.strip\\(\\):\n        continue\n    status = line\\[:2\\]\n    p = line\\[3:\\]\n    if ' -> ' in p:  # rename/copy\n        p = p\\.split\\(' -> ',1\\)\\[1\\]\n    paths\\.append\\(\\(status, p\\)\\)\n\n# dedupe preserving latest status\nseen = \\{\\}\nfor st,p in paths:\n    seen\\[p\\]=st\nitems=\\[\\]\nfor p,st in seen\\.items\\(\\):\n    fp = repo / p\n    try:\n        mt = fp\\.stat\\(\\)\\.st_mtime\n    except FileNotFoundError:\n        mt = float\\('inf'\\)\n    items\\.append\\(\\(mt,p,st\\)\\)\nitems\\.sort\\(key=lambda x:\\(x\\[0\\],x\\[1\\]\\)\\)\n\nprint\\('=== Step 2: Changed/untracked files with mtimes \\(oldest-first\\) ==='\\)\nfor mt,p,st in items:\n    if mt==float\\('inf'\\):\n        mts='MISSING'\n    else:\n        import datetime\n        mts=datetime\\.datetime\\.fromtimestamp\\(mt\\)\\.strftime\\('%Y-%m-%d %H:%M:%S'\\)\n    print\\(f'\\{mts\\} \\| \\{st\\} \\| \\{p\\}'\\)\n\noldest = items\\[:5\\]\nprint\\('\\\\n=== Step 3: Oldest five paths ==='\\)\nfor _,p,_ in oldest:\n    print\\(p\\)\n\nprint\\('\\\\n=== Step 4: Concise content summaries ==='\\)\nfor _,p,st in oldest:\n    print\\(f'--- \\{p\\} \\(\\{st\\}\\) ---'\\)\n    if st == '\\?\\?':\n        print\\('\\[untracked\\] first 220 lines:'\\)\n        try:\n            with open\\(p,'r',encoding='utf-8',errors='replace'\\) as f:\n                for i,line in enumerate\\(f\\):\n                    if i>=220:\n                        print\\('\\.\\.\\. \\[truncated\\]'\\)\n                        break\n                    print\\(line\\.rstrip\\('\\\\n'\\)\\)\n        except Exception as e:\n            print\\(f'Could not read file: \\{e\\}'\\)\n    else:\n        stat = subprocess\\.run\\(\\['git','diff','--stat','--',p\\], capture_output=True, text=True\\)\n        print\\('\\[git diff --stat\\]'\\)\n        out = stat\\.stdout\\.strip\\(\\)\n        print\\(out if out else '\\(no stat output\\)'\\)\n        diff = subprocess\\.run\\(\\['git','diff','--',p\\], capture_output=True, text=True\\)\n        print\\('\\[git diff first 120 lines\\]'\\)\n        lines = diff\\.stdout\\.splitlines\\(\\)\n        for l in lines\\[:120\\]:\n            print\\(l\\)\n        if len\\(lines\\) > 120:\n            print\\('\\.\\.\\. \\[truncated\\]'\\)\n    print\\(\\)\nPY$/": {
+      "approve": true,
+      "matchCommandLine": true
+    }
   }
 }
