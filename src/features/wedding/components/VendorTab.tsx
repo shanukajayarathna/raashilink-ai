@@ -1,19 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Box, Typography, Grid, Card, CardContent, 
-  Stack, Button, IconButton, TextField, 
+  Stack, Button, TextField, 
   MenuItem, Select, FormControl, InputLabel,
-  Avatar, Chip, Rating, Divider, Badge,
-  useTheme, useMediaQuery, Dialog, DialogTitle,
-  DialogContent, DialogActions, Alert, CircularProgress
+  Chip, Divider, CircularProgress, Pagination
 } from '@mui/material';
 import { 
-  Search, Filter, MapPin, Phone, Mail, 
-  CheckCircle2, Star, DollarSign, MessageSquare,
-  ArrowRight, Heart, ExternalLink, Info
+  Search, MapPin, CheckCircle2, Star
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion } from 'motion/react';
+import { useSelector } from 'react-redux';
 import weddingService from '../services/weddingService';
+import { RootState } from '@/app/store/store';
+import QuoteRequestModal from '@/features/vendors/components/QuoteRequestModal';
 
 const COLORS = {
   primary: '#8B1A2E',
@@ -33,6 +32,16 @@ const CATEGORIES = [
   'Attire', 'Entertainment', 'Makeup'
 ];
 
+const CATEGORY_ALIASES: Record<string, string[]> = {
+  Venue: ['Venue'],
+  Catering: ['Catering'],
+  Photography: ['Photography'],
+  Decoration: ['Decor', 'Decoration'],
+  Attire: ['Attire', 'Bridal Wear'],
+  Entertainment: ['Music', 'Entertainment'],
+  Makeup: ['Makeup'],
+};
+
 const STATUS_COLORS: Record<string, string> = {
   shortlisted: COLORS.warning,
   requested: COLORS.accent,
@@ -49,16 +58,20 @@ interface VendorTabProps {
 export default function VendorTab({ vendors = [], bookedVendorIds = [], onStatusChange }: VendorTabProps) {
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('All');
+  const [vendorPage, setVendorPage] = useState(1);
+  const VENDORS_PER_PAGE = 6; // 2 rows × 3 columns
   const [isQuoteModalOpen, setIsQuoteModalOpen] = useState(false);
   const [selectedVendor, setSelectedVendor] = useState<any>(null);
-  const [quoteAmount, setQuoteAmount] = useState('');
-  const [sendingQuote, setSendingQuote] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState<string | null>(null);
+  const { user } = useSelector((state: RootState) => state.auth);
 
   // Build status map from project.vendors
   const statusMap: Record<string, { status: string; quotedAmount: number }> = {};
   bookedVendorIds.forEach((bv: any) => {
-    statusMap[String(bv.vendorId)] = { status: bv.status, quotedAmount: bv.quotedAmount };
+    const vendorId = typeof bv.vendorId === 'object' ? String(bv.vendorId?._id || bv.vendorId?.id || '') : String(bv.vendorId);
+    if (vendorId) {
+      statusMap[vendorId] = { status: bv.status, quotedAmount: bv.quotedAmount };
+    }
   });
 
   const bookedVendors = vendors.filter((v: any) => {
@@ -68,30 +81,23 @@ export default function VendorTab({ vendors = [], bookedVendorIds = [], onStatus
   const availableVendors = vendors.filter((v: any) => {
     const s = statusMap[String(v._id)];
     const notBooked = !s || s.status === 'shortlisted' || s.status === 'cancelled';
-    const matchCategory = category === 'All' || v.category === category;
-    const matchSearch = !search || v.name?.toLowerCase().includes(search.toLowerCase());
+    const allowedCategories = CATEGORY_ALIASES[category] || [category];
+    const matchCategory = category === 'All' || allowedCategories.includes(v.category);
+    const displayName = v.businessName || v.name || '';
+    const matchSearch = !search || displayName.toLowerCase().includes(search.toLowerCase());
     return notBooked && matchCategory && matchSearch;
   });
 
+  useEffect(() => {
+    setVendorPage(1);
+  }, [search, category]);
+
+  const totalVendorPages = Math.ceil(availableVendors.length / VENDORS_PER_PAGE);
+  const pagedVendors = availableVendors.slice((vendorPage - 1) * VENDORS_PER_PAGE, vendorPage * VENDORS_PER_PAGE);
+
   const handleRequestQuote = (vendor: any) => {
     setSelectedVendor(vendor);
-    setQuoteAmount('');
     setIsQuoteModalOpen(true);
-  };
-
-  const handleSendQuote = async () => {
-    if (!selectedVendor) return;
-    setSendingQuote(true);
-    try {
-      await weddingService.requestQuote({
-        vendorId: selectedVendor._id,
-        quotedAmount: Number(quoteAmount) || 0,
-        category: selectedVendor.category,
-      });
-      onStatusChange?.();
-      setIsQuoteModalOpen(false);
-    } catch { /* silent */ }
-    finally { setSendingQuote(false); }
   };
 
   const handleStatusChange = async (vendorId: string, newStatus: string) => {
@@ -117,7 +123,7 @@ export default function VendorTab({ vendors = [], bookedVendorIds = [], onStatus
           </Box>
         ) : (
         <Grid container spacing={3}>
-          {bookedVendors.map((vendor: any, i: number) => {
+                {bookedVendors.map((vendor: any, i: number) => {
             const entry = statusMap[String(vendor._id)];
             return (
               <Grid key={vendor._id} size={{ xs: 12, md: 6 }}>
@@ -134,15 +140,20 @@ export default function VendorTab({ vendors = [], bookedVendorIds = [], onStatus
                   }}
                 >
                   <CardContent sx={{ p: 3 }}>
-                    <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
-                      <Box>
+                    <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 2 }}>
+                      <Box sx={{ width: 64, height: 64, borderRadius: 3, overflow: 'hidden', bgcolor: `${COLORS.primary}10`, flexShrink: 0 }}>
+                        {vendor.portfolioImages?.[0] ? (
+                          <Box component="img" src={vendor.portfolioImages[0]} sx={{ width: '100%', height: '100%', objectFit: 'cover' }} referrerPolicy="no-referrer" />
+                        ) : null}
+                      </Box>
+                      <Box sx={{ minWidth: 0, flex: 1 }}>
                         <Chip 
                           label={vendor.category} 
                           size="small" 
                           sx={{ bgcolor: COLORS.primary, color: 'white', fontWeight: 700, mb: 1, fontSize: '0.65rem' }} 
                         />
-                        <Typography variant="h6" sx={{ fontWeight: 800, color: COLORS.textPrimary }}>{vendor.name}</Typography>
-                        <Typography variant="caption" color="text.secondary">{vendor.city || vendor.location || ''}</Typography>
+                        <Typography variant="h6" sx={{ fontWeight: 800, color: COLORS.textPrimary }}>{vendor.businessName || vendor.name}</Typography>
+                        <Typography variant="caption" color="text.secondary">{vendor.city || vendor.location || vendor.serviceArea?.[0] || ''}</Typography>
                       </Box>
                       <Chip 
                         label={entry?.status?.toUpperCase()} 
@@ -226,8 +237,9 @@ export default function VendorTab({ vendors = [], bookedVendorIds = [], onStatus
           <Typography variant="body2">No vendors found. Try a different category or search.</Typography>
         </Box>
       ) : (
+      <>
       <Grid container spacing={3}>
-        {availableVendors.map((vendor: any, i: number) => (
+        {pagedVendors.map((vendor: any, i: number) => (
           <Grid key={vendor._id} size={{ xs: 12, sm: 6, lg: 4 }}>
             <MotionCard
               initial={{ opacity: 0, scale: 0.95 }}
@@ -245,10 +257,10 @@ export default function VendorTab({ vendors = [], bookedVendorIds = [], onStatus
               }}
             >
               <Box sx={{ position: 'relative', height: 200, bgcolor: `${COLORS.primary}10`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                {vendor.photos?.[0] ? (
-                  <Box component="img" src={vendor.photos[0]} sx={{ width: '100%', height: '100%', objectFit: 'cover' }} referrerPolicy="no-referrer" />
+                {vendor.portfolioImages?.[0] ? (
+                  <Box component="img" src={vendor.portfolioImages[0]} sx={{ width: '100%', height: '100%', objectFit: 'cover' }} referrerPolicy="no-referrer" />
                 ) : (
-                  <Typography variant="h3" sx={{ color: COLORS.primary, opacity: 0.2, fontFamily: 'Playfair Display' }}>{vendor.name?.[0]}</Typography>
+                  <Typography variant="h3" sx={{ color: COLORS.primary, opacity: 0.2, fontFamily: 'Playfair Display' }}>{(vendor.businessName || vendor.name)?.[0]}</Typography>
                 )}
                 {vendor.ratings?.average && (
                   <Box sx={{ position: 'absolute', top: 12, right: 12, bgcolor: 'rgba(255,255,255,0.9)', px: 1, py: 0.5, borderRadius: 2, display: 'flex', alignItems: 'center', gap: 0.5 }}>
@@ -263,11 +275,11 @@ export default function VendorTab({ vendors = [], bookedVendorIds = [], onStatus
                     {vendor.category}
                   </Typography>
                 </Stack>
-                <Typography variant="h6" sx={{ fontWeight: 800, color: COLORS.textPrimary, mb: 1 }}>{vendor.name}</Typography>
-                {vendor.city && (
+                <Typography variant="h6" sx={{ fontWeight: 800, color: COLORS.textPrimary, mb: 1 }}>{vendor.businessName || vendor.name}</Typography>
+                {(vendor.city || vendor.serviceArea?.[0]) && (
                   <Stack direction="row" spacing={1} alignItems="center" sx={{ color: 'text.secondary', mb: 2 }}>
                     <MapPin size={14} />
-                    <Typography variant="caption">{vendor.city}</Typography>
+                    <Typography variant="caption">{vendor.city || vendor.serviceArea?.[0]}</Typography>
                   </Stack>
                 )}
                 <Box sx={{ mt: 'auto' }}>
@@ -285,41 +297,44 @@ export default function VendorTab({ vendors = [], bookedVendorIds = [], onStatus
           </Grid>
         ))}
       </Grid>
+      {totalVendorPages > 1 && (
+        <Stack alignItems="center" sx={{ mt: 4 }}>
+          <Pagination
+            count={totalVendorPages}
+            page={vendorPage}
+            onChange={(_, page) => { setVendorPage(page); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+            color="primary"
+            sx={{
+              '& .MuiPaginationItem-root': { fontWeight: 700, borderRadius: 2 },
+              '& .Mui-selected': { bgcolor: '#8B1A2E !important', color: 'white' },
+            }}
+          />
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
+            Showing {(vendorPage - 1) * VENDORS_PER_PAGE + 1}–{Math.min(vendorPage * VENDORS_PER_PAGE, availableVendors.length)} of {availableVendors.length} vendors
+          </Typography>
+        </Stack>
       )}
-
-      {/* Quote Modal */}
-      <Dialog open={isQuoteModalOpen} onClose={() => setIsQuoteModalOpen(false)} fullWidth maxWidth="sm" PaperProps={{ sx: { borderRadius: 6 } }}>
-        <DialogTitle sx={{ fontWeight: 800, fontFamily: 'Playfair Display', color: COLORS.primary }}>Request a Quote</DialogTitle>
-        <DialogContent>
-          {selectedVendor && (
-            <Stack spacing={3} sx={{ mt: 1 }}>
-              <Alert icon={<Info size={18} />} severity="info" sx={{ borderRadius: 3 }}>
-                Requesting a quote from <strong>{selectedVendor.name}</strong>
-              </Alert>
-              <TextField
-                fullWidth
-                label="Quoted Amount (LKR, optional)"
-                type="number"
-                value={quoteAmount}
-                onChange={(e) => setQuoteAmount(e.target.value)}
-                inputProps={{ min: 0 }}
-              />
-            </Stack>
-          )}
-        </DialogContent>
-        <DialogActions sx={{ p: 3 }}>
-          <Button onClick={() => setIsQuoteModalOpen(false)} disabled={sendingQuote} sx={{ color: 'text.secondary', fontWeight: 700 }}>Cancel</Button>
-          <Button
-            variant="contained"
-            onClick={handleSendQuote}
-            disabled={sendingQuote}
-            startIcon={sendingQuote ? <CircularProgress size={14} color="inherit" /> : undefined}
-            sx={{ bgcolor: COLORS.primary, borderRadius: 3, px: 4, fontWeight: 700 }}
-          >
-            {sendingQuote ? 'Sending...' : 'Send Request'}
-          </Button>
-        </DialogActions>
-      </Dialog>
+      </>
+      )}
+      <QuoteRequestModal
+        open={isQuoteModalOpen}
+        onClose={() => {
+          setIsQuoteModalOpen(false);
+        }}
+        vendor={selectedVendor ? {
+          id: selectedVendor._id,
+          name: selectedVendor.businessName || selectedVendor.name,
+          category: selectedVendor.category,
+        } : null}
+        weddingDate={user?.weddingProject?.weddingDate ? new Date(user.weddingProject.weddingDate).toISOString().split('T')[0] : ''}
+        userPhone={user?.phone || ''}
+        userEmail={user?.email || ''}
+        userName={user?.name || user?.firstName || ''}
+        onSubmitSuccess={() => {
+          setIsQuoteModalOpen(false);
+          onStatusChange?.();
+        }}
+      />
     </Box>
   );
 }
