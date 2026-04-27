@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Box, Container, Typography, Grid, Card, CardContent, 
   Tabs, Tab, Button, Stack, Avatar, IconButton, 
@@ -16,9 +16,11 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useSelector } from 'react-redux';
+import { useNavigate } from 'react-router-dom';
 import { RootState } from '@/app/store/store';
 import weddingService from '../services/weddingService';
 import { connectSocket } from '@/shared/hooks/useRealtimeUpdates';
+import api from '@/shared/config/axiosConfig';
 
 // Sub-components
 import OverviewTab from '../components/OverviewTab';
@@ -67,6 +69,10 @@ function buildWeddingDashboardData(project: any, budgetSummary: any, vendorsPayl
   const weddingDateValue =
     project?.weddingDate || user?.weddingProject?.weddingDate || new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString();
 
+  const venueName =
+    typeof project?.venueId === 'object'
+      ? project?.venueId?.businessName || project?.venueId?.name || null
+      : null;
   return {
     couple: {
       partner1,
@@ -75,7 +81,7 @@ function buildWeddingDashboardData(project: any, budgetSummary: any, vendorsPayl
       partner2Pic,
       isCoupled: isCoupledProject,
       date: new Date(weddingDateValue).toISOString().split('T')[0],
-      venue: project?.venueId ? 'Venue selected' : 'Venue planning in progress',
+      venue: venueName || (project?.venueId ? 'Venue selected' : 'Venue planning in progress'),
       // When coupled use partner's pic as hero bg if no dedicated cover photo
       heroImage: user?.coverPhoto || (isCoupledProject ? partner2Pic : null) || user?.profilePic || DEFAULT_WEDDING_HERO_IMAGE,
     },
@@ -93,6 +99,7 @@ function buildWeddingDashboardData(project: any, budgetSummary: any, vendorsPayl
 export default function WeddingDashboard() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -101,6 +108,10 @@ export default function WeddingDashboard() {
   const [rawBudget, setRawBudget] = useState<any>(null);
   const [rawVendors, setRawVendors] = useState<any[]>([]);
   const [pendingInvite, setPendingInvite] = useState<{ inviterId: string; inviterName: string; inviterProfilePic: string | null } | null>(null);
+  const [engagementSummary, setEngagementSummary] = useState<{ status: 'none' | 'proposed' | 'accepted'; partnerId: string | null }>({
+    status: 'none',
+    partnerId: null,
+  });
   const [acceptingInvite, setAcceptingInvite] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [stopConfirm, setStopConfirm] = useState(false);
@@ -120,7 +131,25 @@ export default function WeddingDashboard() {
 
   const { token, user } = useSelector((state: RootState) => state.auth);
 
-  const fetchData = async () => {
+  const fetchEngagementSummary = useCallback(async () => {
+    if (!token) {
+      setEngagementSummary({ status: 'none', partnerId: null });
+      return;
+    }
+    try {
+      const res: any = await api.get('/matches/engagement/me');
+      const status = res?.data?.data?.status;
+      const partnerId = res?.data?.data?.partnerId || null;
+      setEngagementSummary({
+        status: status === 'accepted' || status === 'proposed' ? status : 'none',
+        partnerId,
+      });
+    } catch {
+      setEngagementSummary({ status: 'none', partnerId: null });
+    }
+  }, [token]);
+
+  const fetchData = useCallback(async () => {
     setLoading(true);
     try {
       const [projectResponse, budgetResponse, vendorsResponse, pendingInviteData] = await Promise.all([
@@ -148,7 +177,37 @@ export default function WeddingDashboard() {
     } finally {
       setLoading(false);
     }
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
+
+  // Lightweight partial refresh helpers — update local state only, no full page reload
+  const refreshBudget = useCallback(async () => {
+    try {
+      const budgetResponse = await weddingService.getBudget();
+      const budget = budgetResponse?.data;
+      setRawBudget(budget);
+      setWeddingData((prev: any) => prev ? {
+        ...prev,
+        stats: { ...prev.stats, totalBudget: Number(budget?.totalBudget || 0), spentSoFar: Number(budget?.totalSpent || 0) }
+      } : prev);
+    } catch { /* silent */ }
+  }, []);
+
+  const refreshChecklist = useCallback(async () => {
+    try {
+      const projectResponse = await weddingService.getProject();
+      const checklist = projectResponse?.data?.checklist || [];
+      setRawProject((p: any) => ({ ...p, checklist }));
+    } catch { /* silent */ }
+  }, []);
+
+  const refreshVendors = useCallback(async () => {
+    try {
+      const projectResponse = await weddingService.getProject();
+      const vendors = projectResponse?.data?.vendors || [];
+      setRawProject((p: any) => ({ ...p, vendors }));
+    } catch { /* silent */ }
+  }, []);
 
   const handleResetWedding = async () => {
     setResetting(true);
@@ -189,46 +248,64 @@ export default function WeddingDashboard() {
   useEffect(() => {
     if (token) {
       fetchData();
+      fetchEngagementSummary();
       return;
     }
     setRawProject(null);
     setRawBudget(null);
     setRawVendors([]);
     setWeddingData(buildWeddingDashboardData(null, null, null, user));
+    setEngagementSummary({ status: 'none', partnerId: null });
     setLoading(false);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, user]);
+  }, [token, user, fetchEngagementSummary]);
 
   // Refresh when the inviter's partner accepts (socket event dispatched from MainLayout)
   useEffect(() => {
     const onPartnerAccepted = () => fetchData();
     const onReset = () => fetchData();
+    const onAppRefresh = () => {
+      fetchData();
+      fetchEngagementSummary();
+    };
     window.addEventListener('wedding:partnerAccepted', onPartnerAccepted);
     window.addEventListener('wedding:reset', onReset);
+    window.addEventListener('app:refresh', onAppRefresh);
     return () => {
       window.removeEventListener('wedding:partnerAccepted', onPartnerAccepted);
       window.removeEventListener('wedding:reset', onReset);
+      window.removeEventListener('app:refresh', onAppRefresh);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [fetchEngagementSummary]);
+
+  const fetchDataFromPartner = useCallback((payload?: any) => {
+    // Granular update: only refresh the slice that changed
+    const type = payload?.type as string | undefined;
+    if (type === 'checklist') { refreshChecklist(); return; }
+    if (type === 'budget') { refreshBudget(); return; }
+    if (type === 'vendor') { refreshVendors(); return; }
+    // Fallback: refresh everything
+    fetchData();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshChecklist, refreshBudget, refreshVendors]);
 
   // Real-time: refresh on all wedding socket events
   useEffect(() => {
     if (!token) return;
     const socket = connectSocket(token);
-    const onRefresh = () => fetchData();
-    socket.on('wedding_updated', onRefresh);
-    socket.on('wedding_invite', onRefresh);    // invitee's dashboard refreshes when invite arrives
-    socket.on('wedding_accepted', onRefresh);  // inviter's dashboard refreshes when accepted
-    socket.on('wedding_reset', onRefresh);     // both dashboards refresh on dissolution
+    socket.on('wedding_updated', fetchDataFromPartner);
+    socket.on('wedding_invite', fetchData);    // invitee's dashboard refreshes when invite arrives
+    socket.on('wedding_accepted', fetchData);  // inviter's dashboard refreshes when accepted
+    socket.on('wedding_reset', fetchData);     // both dashboards refresh on dissolution
     return () => {
-      socket.off('wedding_updated', onRefresh);
-      socket.off('wedding_invite', onRefresh);
-      socket.off('wedding_accepted', onRefresh);
-      socket.off('wedding_reset', onRefresh);
+      socket.off('wedding_updated', fetchDataFromPartner);
+      socket.off('wedding_invite', fetchData);
+      socket.off('wedding_accepted', fetchData);
+      socket.off('wedding_reset', fetchData);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token]);
+  }, [token, fetchDataFromPartner]);
 
   const handleTabChange = (_: React.SyntheticEvent, newValue: number) => {
     setActiveTab(newValue);
@@ -247,12 +324,14 @@ export default function WeddingDashboard() {
     !isCoupled &&
     !pendingInvite &&  // invitee (who has an incoming invite) never sees this as their own outgoing invite
     rawProject?.pendingInvite?.status === 'pending' &&
+    rawProject?.pendingInvite?.inviteeId != null &&              // guard: must have a real invitee (not a default null)
     String(rawProject?.pendingInvite?.inviteeId) !== currentUserId; // guard: must not be the invitee
+  const canShowNextStepBanner = engagementSummary.status === 'accepted' && !pendingInvite && !isCoupled && !hasSentInvite;
 
   return (
     <Container maxWidth="xl" sx={{ py: 4, pb: 10 }}>
       {/* Next-step banner: engaged but wedding project not yet linked */}
-      {!pendingInvite && !isCoupled && !hasSentInvite && (
+      {canShowNextStepBanner && (
         <Alert
           icon={<Heart size={20} />}
           severity="success"
@@ -266,7 +345,13 @@ export default function WeddingDashboard() {
             <Button
               size="small"
               variant="contained"
-              onClick={() => window.history.back()}
+              onClick={() => {
+                if (engagementSummary.partnerId) {
+                  navigate('/messages', { state: { openUserId: engagementSummary.partnerId, startConversation: true } });
+                } else {
+                  navigate('/messages');
+                }
+              }}
               sx={{ bgcolor: '#C9A84C', '&:hover': { bgcolor: '#A8883E' }, color: 'white', borderRadius: 3, fontWeight: 700, textTransform: 'none', px: 2, whiteSpace: 'nowrap' }}
             >
               Go to Messages
@@ -334,7 +419,7 @@ export default function WeddingDashboard() {
       )}
 
       {/* ── Getting Started Onboarding (newly coupled, nothing set up yet) ── */}
-      {isCoupled && !onboardingDismissed && stats.totalBudget === 0 && stats.totalTasks === 0 && (
+      {isCoupled && !onboardingDismissed && (
         <Card sx={{ mb: 4, borderRadius: 4, border: '2px solid #C9A84C', bgcolor: '#FFFDF5', boxShadow: '0 4px 20px rgba(201,168,76,0.15)' }}>
           <CardContent sx={{ p: 3 }}>
             <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
@@ -629,6 +714,20 @@ export default function WeddingDashboard() {
                 size="small" 
                 sx={{ bgcolor: COLORS.secondary, color: COLORS.primary, fontWeight: 700, ml: 2 }} 
               />
+              {isCoupled && (
+                <Tooltip title="Edit wedding date">
+                  <IconButton
+                    size="small"
+                    onClick={() => {
+                      setSetupDate(new Date(couple.date).toISOString().split('T')[0]);
+                      setSetupDateOpen(true);
+                    }}
+                    sx={{ color: 'rgba(255,255,255,0.8)', '&:hover': { color: '#fff', bgcolor: 'rgba(255,255,255,0.15)' } }}
+                  >
+                    <Edit3 size={14} />
+                  </IconButton>
+                </Tooltip>
+              )}
             </Stack>
             <Stack direction="row" spacing={1} alignItems="center" sx={{ color: 'rgba(255,255,255,0.9)' }}>
               <MapPin size={18} />
@@ -811,9 +910,9 @@ export default function WeddingDashboard() {
         >
           {activeTab === 0 && <OverviewTab data={weddingData} onSwitchTab={setActiveTab} project={rawProject} budget={rawBudget} />}
           {activeTab === 1 && <ChecklistTab checklist={rawProject?.checklist || []} onChecklistChange={(updated) => setRawProject((p: any) => ({ ...p, checklist: updated }))} />}
-          {activeTab === 2 && <VendorTab vendors={rawVendors} bookedVendorIds={rawProject?.vendors || []} onStatusChange={fetchData} />}
-          {activeTab === 3 && <BudgetTab totalBudget={rawBudget?.totalBudget || rawProject?.totalBudget || 0} totalSpent={rawBudget?.totalSpent || 0} expenses={rawBudget?.expenses || rawProject?.expenses || []} onExpenseAdded={fetchData} onBudgetUpdated={fetchData} />}
-          {activeTab === 4 && <TimelineTab weddingDate={rawProject?.weddingDate || couple.date} checklist={rawProject?.checklist || []} onChecklistChange={fetchData} />}
+          {activeTab === 2 && <VendorTab vendors={rawVendors} bookedVendorIds={rawProject?.vendors || []} onStatusChange={refreshVendors} />}
+          {activeTab === 3 && <BudgetTab totalBudget={rawBudget?.totalBudget || rawProject?.totalBudget || 0} totalSpent={rawBudget?.totalSpent || 0} expenses={rawBudget?.expenses || rawProject?.expenses || []} onExpenseAdded={refreshBudget} onBudgetUpdated={refreshBudget} />}
+          {activeTab === 4 && <TimelineTab weddingDate={rawProject?.weddingDate || couple.date} checklist={rawProject?.checklist || []} onChecklistChange={(updated: any[]) => setRawProject((p: any) => ({ ...p, checklist: updated }))} />}
         </motion.div>
       </AnimatePresence>
 
@@ -953,4 +1052,3 @@ function WeddingError({ error, onRetry }: { error: string, onRetry: () => void }
 }
 
 const MotionBox = motion(Box);
-
