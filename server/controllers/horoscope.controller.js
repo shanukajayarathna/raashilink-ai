@@ -1010,7 +1010,7 @@ export const calculateCompatibility = asyncHandler(async (req, res) => {
     );
   }
 
-  const result = await compatibilityService.calculateCompatibility({ userAId, userBId });
+  const result = await compatibilityService.calculateCompatibility({ userAId, userBId, skipCache: Boolean(forceRefresh) });
   await persistMatchResult(userAId, userBId, result);
 
   res.status(200).json({
