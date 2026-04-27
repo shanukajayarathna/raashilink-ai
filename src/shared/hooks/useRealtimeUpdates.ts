@@ -58,7 +58,7 @@ export type RealtimeCallbacks = {
   /** Fired for both parties when a mutual match is formed */
   onMutualMatch?: (data: { fromUserId: string; fromUserName: string; fromUserProfilePic: string | null; conversationId: string | null }) => void;
   /** Fired when someone removes you from their mutual matches */
-  onMatchRemoved?: (data: { byUserId: string }) => void;
+  onMatchRemoved?: (data: { byUserId: string; byUserName?: string }) => void;
   /** Fired when someone accepted your interest */
   onInterestAccepted?: (data: { fromUserId: string; fromUserName: string; fromUserProfilePic: string | null }) => void;
   /** Fired when someone declined your interest */
