@@ -77,10 +77,8 @@ function rashiIdx(r) { return RASHIS.indexOf(String(r || '').trim()); }
 
 function scoreVarna(nak1, nak2) {
   const i1 = nakIdx(nak1); const i2 = nakIdx(nak2);
-  if (i1 === -1 || i2 === -1) return 0.5; // neutral fallback
-  const r1 = VARNA_RANK[VARNA_GROUPS[i1]] ?? 0;
-  const r2 = VARNA_RANK[VARNA_GROUPS[i2]] ?? 0;
-  return r2 >= r1 ? 1 : 0;
+  if (i1 === -1 || i2 === -1) return 0;
+  return VARNA_GROUPS[i1] === VARNA_GROUPS[i2] ? 1 : 0;
 }
 
 function scoreVashya(rashi1, rashi2) {
