@@ -36,12 +36,15 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
   const [unreadCount, setUnreadCount] = useState(0);
   const [notifLoading, setNotifLoading] = useState(false);
   const bellRef = useRef<HTMLButtonElement>(null);
+  const userMenuRef = useRef<HTMLDivElement>(null);
   const prevIdsRef = useRef<Set<string>>(new Set());
   const convPrevRef = useRef<Record<string, string>>({});
   const convSeeded = useRef(false);
   const clientMsgCountRef = useRef(0);
   const [msgNotif, setMsgNotif] = useState<{ name: string; content: string; conversationId?: string } | null>(null);
   const [eventNotif, setEventNotif] = useState<{ icon: string; title: string; body: string; path?: string; color?: string } | null>(null);
+  const [pendingMatchCount, setPendingMatchCount] = useState(0);
+  const [pendingWeddingAcceptCount, setPendingWeddingAcceptCount] = useState(0);
   const eventNotifTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const notifTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const navigate = useNavigate();
@@ -53,6 +56,37 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
   const isLargeScreen = useMediaQuery(theme.breakpoints.up('lg'));
   const isCouple = user?.profileType === 'couple';
   const avatarSrc = user?.profilePic || user?.photos?.find?.((photo: any) => photo?.isMain)?.url || undefined;
+
+  const fetchPendingMatchCount = useCallback(async () => {
+    if (!token) return;
+    try {
+      const res: any = await api.get('/matches/pending');
+      setPendingMatchCount((res.data?.data?.received || []).length);
+    } catch {
+      // silent fail
+    }
+  }, [token]);
+
+  const fetchPendingWeddingCount = useCallback(async () => {
+    if (!token) return;
+    try {
+      const res: any = await api.get('/wedding/couple/pending-invite');
+      setPendingWeddingAcceptCount(res.data?.data ? 1 : 0);
+    } catch {
+      // silent fail
+    }
+  }, [token]);
+
+  const pendingMessageActionCount = notifications.filter(
+    (n) => n.type === 'message_received' || n.type === 'engagement_invite'
+  ).length;
+
+  const getNavBadgeCount = (path: string) => {
+    if (path === '/matches') return pendingMatchCount;
+    if (path === '/messages') return pendingMessageActionCount;
+    if (path === '/wedding') return pendingWeddingAcceptCount;
+    return 0;
+  };
 
   const fetchNotifications = useCallback(async (silent = false) => {
     if (!token) return;
@@ -82,10 +116,56 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
 
   useEffect(() => {
     fetchNotifications();
+    fetchPendingMatchCount();
+    fetchPendingWeddingCount();
     if (!token) return;
     const interval = setInterval(() => fetchNotifications(true), 30_000);
-    return () => clearInterval(interval);
-  }, [fetchNotifications, token]);
+    const pendingInterval = setInterval(() => fetchPendingMatchCount(), 30_000);
+    const pendingWeddingInterval = setInterval(() => fetchPendingWeddingCount(), 30_000);
+    return () => {
+      clearInterval(interval);
+      clearInterval(pendingInterval);
+      clearInterval(pendingWeddingInterval);
+    };
+  }, [fetchNotifications, fetchPendingMatchCount, fetchPendingWeddingCount, token]);
+
+  // Close the profile menu when clicking anywhere outside it or pressing Escape.
+  useEffect(() => {
+    if (!isUserMenuOpen) return;
+
+    const handlePointerDown = (event: MouseEvent | TouchEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (userMenuRef.current?.contains(target)) return;
+      setIsUserMenuOpen(false);
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsUserMenuOpen(false);
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('touchstart', handlePointerDown, { passive: true });
+    document.addEventListener('keydown', handleEscape);
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('touchstart', handlePointerDown);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [isUserMenuOpen]);
+
+  useEffect(() => {
+    const onAppRefresh = () => {
+      fetchNotifications(true);
+      fetchPendingMatchCount();
+      fetchPendingWeddingCount();
+    };
+    window.addEventListener('app:refresh', onAppRefresh);
+    return () => {
+      window.removeEventListener('app:refresh', onAppRefresh);
+    };
+  }, [fetchNotifications, fetchPendingMatchCount, fetchPendingWeddingCount]);
 
   // ── Real-time notification bell updates ──────────────────────────────────
   // Listen to match/interest socket events and immediately refresh the bell
@@ -96,31 +176,42 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
 
     const onMutualMatch = (payload: any) => {
       fetchNotifications(true);
+      fetchPendingMatchCount();
+      fetchPendingWeddingCount();
       window.dispatchEvent(new CustomEvent('app:refresh'));
       playMatchSound();
       showEventNotifRef.current('🎉', "It's a Match!", `You and ${payload.fromUserName || 'someone'} are now connected!`, '/messages', '#f59e0b');
     };
     const onInterestReceived = (payload: any) => {
       fetchNotifications(true);
+      fetchPendingMatchCount();
+      fetchPendingWeddingCount();
       window.dispatchEvent(new CustomEvent('app:refresh'));
       playInterestSound();
       showEventNotifRef.current('💛', `${payload.fromUserName || 'Someone'} liked you!`, 'They expressed interest in you — check your matches.', '/matches', '#f59e0b');
     };
     const onInterestAccepted = (payload: any) => {
       fetchNotifications(true);
+      fetchPendingMatchCount();
+      fetchPendingWeddingCount();
       window.dispatchEvent(new CustomEvent('app:refresh'));
       playInterestSound();
       showEventNotifRef.current('🥳', `${payload.fromUserName || 'Someone'} accepted your interest!`, 'You can now message each other.', '/messages', '#16a34a');
     };
     const onInterestDeclined = (payload: any) => {
       fetchNotifications(true);
+      fetchPendingMatchCount();
+      fetchPendingWeddingCount();
       window.dispatchEvent(new CustomEvent('app:refresh'));
       showEventNotifRef.current('💔', 'Interest declined', `${payload.fromUserName || 'Someone'} has declined your interest.`, '/matches', '#6b7280');
     };
-    const onMatchRemoved = () => {
+    const onMatchRemoved = (payload: any) => {
       fetchNotifications(true);
+      fetchPendingMatchCount();
+      fetchPendingWeddingCount();
       window.dispatchEvent(new CustomEvent('app:refresh'));
-      showEventNotifRef.current('👋', 'Match removed', 'Someone removed you from their matches.', '/matches', '#6b7280');
+      const removedBy = payload?.byUserName || 'Someone';
+      showEventNotifRef.current('👋', 'Match removed', `${removedBy} removed you from their matches.`, '/matches', '#6b7280');
     };
 
     socket.on('interest_received', onInterestReceived);
@@ -132,6 +223,7 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
     // Real-time server-pushed notifications (e.g. wedding invites)
     const onNotification = (payload: AppNotification) => {
       window.dispatchEvent(new CustomEvent('app:refresh'));
+      fetchPendingWeddingCount();
       setNotifications((prev) => {
         if (prev.some((n) => n.id === payload.id)) return prev;
         return [payload, ...prev];
@@ -194,7 +286,7 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
       socket.off('wedding_reset', onWeddingReset);
       window.removeEventListener('wedding:accepted', onWeddingAcceptedSelf);
     };
-  }, [token, fetchNotifications]);
+  }, [token, fetchNotifications, fetchPendingMatchCount, fetchPendingWeddingCount]);
 
   const handleMarkRead = async (id: string) => {
     const notif = notifications.find((n) => n.id === id);
@@ -361,7 +453,19 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
         let notifUserId = '';
         fresh.forEach((c) => {
           const known = convPrevRef.current[c.id];
-          if (known !== undefined && c.preview !== known && !consumeSentPreview(c.id, c.preview)) {
+          const normalizedPreview = String(c.preview || '').trim().toLowerCase();
+          const isPlaceholderPreview =
+            normalizedPreview === 'no messages yet' ||
+            normalizedPreview === 'start the conversation!';
+
+          if (
+            known !== undefined &&
+            c.preview !== known &&
+            c.lastSenderId &&
+            c.lastSenderId !== currentUserId &&
+            !isPlaceholderPreview &&
+            !consumeSentPreview(c.id, c.preview)
+          ) {
             notifName = c.title;
             notifContent = c.preview;
             notifConvId = c.id;
@@ -405,7 +509,7 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
       <div className="fixed inset-0 mandala-bg opacity-[0.4] pointer-events-none z-0" />
       
       {/* Top Navigation */}
-      <header className="fixed top-0 left-0 right-0 h-16 bg-white/80 backdrop-blur-md border-b border-primary/10 z-50 px-4 md:px-8 flex items-center justify-between">
+      <header className="fixed top-0 left-0 right-0 h-16 bg-white/80 backdrop-blur-md border-b border-primary/10 z-[1100] px-4 md:px-8 flex items-center justify-between">
         <div className="flex items-center gap-4">
           <button 
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
@@ -428,13 +532,21 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
                 key={item.path}
                 to={item.path}
                 className={cn(
-                  "px-3 py-2 rounded-full text-sm font-medium transition-colors whitespace-nowrap",
+                      "px-3 py-2 rounded-full text-sm font-medium transition-colors whitespace-nowrap inline-flex items-center gap-1.5",
                   location.pathname === item.path 
                     ? "bg-primary text-white" 
                     : "text-textSecondary hover:bg-primary/5 hover:text-primary"
                 )}
               >
-                {item.name}
+                    <span>{item.name}</span>
+                    {getNavBadgeCount(item.path) > 0 && (
+                      <span className={cn(
+                        "min-w-[16px] h-[16px] rounded-full text-[10px] font-bold px-1 inline-flex items-center justify-center",
+                        location.pathname === item.path ? "bg-white text-primary" : "bg-red-500 text-white"
+                      )}>
+                        {getNavBadgeCount(item.path) > 9 ? '9+' : getNavBadgeCount(item.path)}
+                      </span>
+                    )}
               </Link>
             ))}
           </div>
@@ -453,7 +565,7 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
             )}
           </button>
 
-          <div className="relative">
+          <div ref={userMenuRef} className="relative">
             <button 
               onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
               className="flex items-center gap-2 p-1 hover:bg-primary/5 rounded-full transition-colors"
@@ -475,32 +587,26 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
 
             <AnimatePresence>
               {isUserMenuOpen && (
-                <>
-                  <div 
-                    className="fixed inset-0 z-40" 
-                    onClick={() => setIsUserMenuOpen(false)}
-                  />
-                  <motion.div 
-                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                    className="absolute right-0 mt-2 w-56 bg-white rounded-2xl shadow-xl border border-primary/10 py-2 z-50"
+                <motion.div 
+                  initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                  className="absolute right-0 mt-2 w-56 bg-white rounded-2xl shadow-xl border border-primary/10 py-2 z-[1200]"
+                >
+                  <div className="px-4 py-3 border-b border-primary/5">
+                    <p className="text-sm font-semibold text-textPrimary">{user?.name || 'User'}</p>
+                    <p className="text-xs text-textSecondary truncate">{user?.email || 'user@example.com'}</p>
+                  </div>
+                  <Link to="/profile" onClick={() => setIsUserMenuOpen(false)} className="flex items-center gap-3 px-4 py-2 text-sm text-textSecondary hover:bg-primary/5 hover:text-primary transition-colors">
+                    <User className="w-4 h-4" /> Profile
+                  </Link>
+                  <button 
+                    onClick={handleLogout}
+                    className="w-full flex items-center gap-3 px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
                   >
-                    <div className="px-4 py-3 border-b border-primary/5">
-                      <p className="text-sm font-semibold text-textPrimary">{user?.name || 'User'}</p>
-                      <p className="text-xs text-textSecondary truncate">{user?.email || 'user@example.com'}</p>
-                    </div>
-                    <Link to="/profile" onClick={() => setIsUserMenuOpen(false)} className="flex items-center gap-3 px-4 py-2 text-sm text-textSecondary hover:bg-primary/5 hover:text-primary transition-colors">
-                      <User className="w-4 h-4" /> Profile
-                    </Link>
-                    <button 
-                      onClick={handleLogout}
-                      className="w-full flex items-center gap-3 px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
-                    >
-                      <LogOut className="w-4 h-4" /> Logout
-                    </button>
-                  </motion.div>
-                </>
+                    <LogOut className="w-4 h-4" /> Logout
+                  </button>
+                </motion.div>
               )}
             </AnimatePresence>
           </div>
@@ -547,7 +653,12 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
                     )}
                   >
                     <item.icon className="w-5 h-5" />
-                    {item.name}
+                    <span>{item.name}</span>
+                    {getNavBadgeCount(item.path) > 0 && (
+                      <span className="ml-auto min-w-[18px] h-[18px] rounded-full bg-red-500 text-white text-[10px] font-bold px-1 inline-flex items-center justify-center">
+                        {getNavBadgeCount(item.path) > 9 ? '9+' : getNavBadgeCount(item.path)}
+                      </span>
+                    )}
                   </Link>
                 ))}
               </nav>
@@ -666,7 +777,14 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
               location.pathname === item.path ? "text-primary" : "text-textSecondary"
             )}
           >
-            <item.icon className="w-5 h-5" />
+            <span className="relative">
+              <item.icon className="w-5 h-5" />
+              {getNavBadgeCount(item.path) > 0 && (
+                <span className="absolute -top-2 -right-2 min-w-[14px] h-[14px] rounded-full bg-red-500 text-white text-[9px] font-bold px-[2px] inline-flex items-center justify-center">
+                  {getNavBadgeCount(item.path) > 9 ? '9+' : getNavBadgeCount(item.path)}
+                </span>
+              )}
+            </span>
             <span className="text-[10px] font-medium">{item.name}</span>
           </Link>
         ))}
