@@ -3,7 +3,7 @@ import {
   Box, Typography, Stack, Button, IconButton, 
   Card, CardContent, Collapse, Chip, LinearProgress,
   Dialog, DialogTitle, DialogContent, DialogActions, TextField, CircularProgress,
-  Tooltip
+  Tooltip, FormControl, InputLabel, Select, MenuItem
 } from '@mui/material';
 import { 
   Calendar, CheckCircle2, Circle, ChevronDown, 
@@ -24,6 +24,34 @@ const COLORS = {
   success: '#2E7D32',
   error: '#D32F2F',
   warning: '#ED6C02'
+};
+
+const CATEGORIES = [
+  'Venue & Catering',
+  'Photography',
+  'Decorations',
+  'Attire',
+  'Invitations',
+  'Beauty',
+  'Logistics',
+];
+
+type AddTaskModalState = {
+  open: boolean;
+  title: string;
+  category: string;
+  assignedTo: string;
+  dueDate: string;
+  saving: boolean;
+};
+
+const EMPTY_TASK_MODAL: AddTaskModalState = {
+  open: false,
+  title: '',
+  category: CATEGORIES[0],
+  assignedTo: 'Both',
+  dueDate: '',
+  saving: false,
 };
 
 function buildTimeline(weddingDate: Date) {
@@ -91,7 +119,7 @@ export default function TimelineTab({ weddingDate, checklist = [], onChecklistCh
   const currentIdx = timeline.findIndex(m => m.status === 'in-progress');
   const [expandedId, setExpandedId] = useState<number | null>(timeline[currentIdx >= 0 ? currentIdx : 0]?.id ?? 1);
   const [togglingIdx, setTogglingIdx] = useState<number | null>(null);
-  const [addTaskModal, setAddTaskModal] = useState<{ open: boolean; title: string; saving: boolean }>({ open: false, title: '', saving: false });
+  const [addTaskModal, setAddTaskModal] = useState<AddTaskModalState>(EMPTY_TASK_MODAL);
 
   const totalTasks = localChecklist.length;
   const completedTasks = localChecklist.filter((t: any) => t.completed).length;
@@ -99,6 +127,44 @@ export default function TimelineTab({ weddingDate, checklist = [], onChecklistCh
 
   const findTaskIdx = (title: string) =>
     localChecklist.findIndex((t: any) => t.title?.toLowerCase().trim() === title.toLowerCase().trim());
+
+  const formatDateInput = (value: Date | string | number) => {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toISOString().split('T')[0];
+  };
+
+  const groupedByMilestone = React.useMemo(() => {
+    const groups = new Map<number, Array<{ title: string; idx: number; completed: boolean; dueDate: string; category?: string }>>();
+
+    localChecklist.forEach((task: any, idx: number) => {
+      if (!task?.dueDate) return;
+      const dueTs = new Date(task.dueDate).getTime();
+      if (Number.isNaN(dueTs)) return;
+
+      let nearest = timeline[0];
+      let nearestDelta = Math.abs(dueTs - timeline[0].ts);
+      for (let i = 1; i < timeline.length; i += 1) {
+        const delta = Math.abs(dueTs - timeline[i].ts);
+        if (delta < nearestDelta) {
+          nearest = timeline[i];
+          nearestDelta = delta;
+        }
+      }
+
+      const list = groups.get(nearest.id) || [];
+      list.push({
+        title: task.title,
+        idx,
+        completed: Boolean(task.completed),
+        dueDate: new Date(task.dueDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+        category: task.category,
+      });
+      groups.set(nearest.id, list);
+    });
+
+    return groups;
+  }, [localChecklist, timeline]);
 
   const handleToggleTask = async (taskTitle: string) => {
     const idx = findTaskIdx(taskTitle);
@@ -118,22 +184,22 @@ export default function TimelineTab({ weddingDate, checklist = [], onChecklistCh
   const handleAddToChecklist = async () => {
     if (!addTaskModal.title.trim()) return;
     setAddTaskModal(s => ({ ...s, saving: true }));
-    const newItem = { title: addTaskModal.title.trim(), completed: false };
-    const updated = [...localChecklist, newItem];
-    setLocalChecklist(updated);
     try {
-      await weddingService.addTask({ title: addTaskModal.title.trim() });
+      await weddingService.addTask({
+        title: addTaskModal.title.trim(),
+        category: addTaskModal.category,
+        assignedTo: addTaskModal.assignedTo,
+        dueDate: addTaskModal.dueDate || undefined,
+      });
       const projectRes = await weddingService.getProject();
       const serverChecklist = projectRes?.data?.checklist;
       if (Array.isArray(serverChecklist)) {
         setLocalChecklist(serverChecklist);
         onChecklistChange?.(serverChecklist);
-      } else {
-        onChecklistChange?.(updated);
       }
-      setAddTaskModal({ open: false, title: '', saving: false });
+      setAddTaskModal(EMPTY_TASK_MODAL);
     } catch {
-      setLocalChecklist(prev => prev.filter(t => t !== newItem));
+      // silent
     } finally { setAddTaskModal(s => ({ ...s, saving: false })); }
   };
 
@@ -149,7 +215,7 @@ export default function TimelineTab({ weddingDate, checklist = [], onChecklistCh
           </Typography>
         </Box>
         <Button variant="contained" startIcon={<Plus size={18} />}
-          onClick={() => setAddTaskModal({ open: true, title: '', saving: false })}
+          onClick={() => setAddTaskModal({ ...EMPTY_TASK_MODAL, open: true })}
           sx={{ bgcolor: COLORS.primary, borderRadius: 3, fontWeight: 700, textTransform: 'none', '&:hover': { bgcolor: '#6B1423' } }}>
           Add Task
         </Button>
@@ -185,8 +251,9 @@ export default function TimelineTab({ weddingDate, checklist = [], onChecklistCh
               completed: findTaskIdx(t) >= 0 ? !!localChecklist[findTaskIdx(t)]?.completed : false,
               inChecklist: findTaskIdx(t) >= 0,
             }));
+            const dueTasks = groupedByMilestone.get(milestone.id) || [];
             const doneCount = milestoneItems.filter(t => t.completed).length;
-            const addedCount = milestoneItems.filter(t => t.inChecklist).length;
+            const addedCount = milestoneItems.filter(t => t.inChecklist).length + dueTasks.length;
 
             return (
               <MotionBox key={milestone.id} initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.07, duration: 0.4 }}
@@ -265,7 +332,15 @@ export default function TimelineTab({ weddingDate, checklist = [], onChecklistCh
                               </Typography>
                               {!task.inChecklist && (
                                 <Tooltip title="Add to checklist">
-                                  <IconButton size="small" onClick={(e) => { e.stopPropagation(); setAddTaskModal({ open: true, title: task.title, saving: false }); }}
+                                  <IconButton size="small" onClick={(e) => {
+                                    e.stopPropagation();
+                                    setAddTaskModal({
+                                      ...EMPTY_TASK_MODAL,
+                                      open: true,
+                                      title: task.title,
+                                      dueDate: formatDateInput(milestone.ts),
+                                    });
+                                  }}
                                     sx={{ color: COLORS.primary, p: 0.25 }}>
                                     <Plus size={16} />
                                   </IconButton>
@@ -273,6 +348,65 @@ export default function TimelineTab({ weddingDate, checklist = [], onChecklistCh
                               )}
                             </Stack>
                           ))}
+
+                          {dueTasks.length > 0 && (
+                            <>
+                              <Typography
+                                variant="caption"
+                                sx={{ fontWeight: 700, color: 'text.secondary', mt: 1, mb: 0.5, display: 'block', textTransform: 'uppercase', letterSpacing: 0.5 }}
+                              >
+                                Scheduled Tasks (By Due Date)
+                              </Typography>
+                              {dueTasks.map((task) => (
+                                <Stack
+                                  key={`due-${task.idx}`}
+                                  direction="row"
+                                  spacing={1.5}
+                                  alignItems="center"
+                                  sx={{
+                                    p: 1.5,
+                                    borderRadius: 3,
+                                    border: '1px solid',
+                                    borderColor: task.completed ? `${COLORS.success}20` : 'divider',
+                                    bgcolor: task.completed ? `${COLORS.success}08` : 'transparent',
+                                  }}
+                                >
+                                  <IconButton
+                                    size="small"
+                                    disabled={togglingIdx === task.idx}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleToggleTask(task.title);
+                                    }}
+                                    sx={{ color: task.completed ? COLORS.success : 'text.secondary', p: 0.25 }}
+                                  >
+                                    {togglingIdx === task.idx
+                                      ? <CircularProgress size={16} color="inherit" />
+                                      : task.completed ? <CheckCircle2 size={20} /> : <Circle size={20} />}
+                                  </IconButton>
+                                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                                    <Typography
+                                      variant="body2"
+                                      sx={{
+                                        fontWeight: 500,
+                                        color: task.completed ? 'text.disabled' : 'text.primary',
+                                        textDecoration: task.completed ? 'line-through' : 'none',
+                                      }}
+                                      noWrap
+                                    >
+                                      {task.title}
+                                    </Typography>
+                                    <Stack direction="row" spacing={1} alignItems="center">
+                                      <Typography variant="caption" color="text.secondary">{task.dueDate}</Typography>
+                                      {task.category ? (
+                                        <Chip size="small" label={task.category} sx={{ height: 18, fontSize: '0.62rem' }} />
+                                      ) : null}
+                                    </Stack>
+                                  </Box>
+                                </Stack>
+                              ))}
+                            </>
+                          )}
                         </Stack>
                       </Box>
                     </Collapse>
@@ -294,9 +428,45 @@ export default function TimelineTab({ weddingDate, checklist = [], onChecklistCh
             onChange={(e) => setAddTaskModal(s => ({ ...s, title: e.target.value }))}
             onKeyDown={(e) => e.key === 'Enter' && handleAddToChecklist()}
             sx={{ mt: 1 }} />
+
+          <FormControl fullWidth sx={{ mt: 2 }}>
+            <InputLabel>Category</InputLabel>
+            <Select
+              value={addTaskModal.category}
+              label="Category"
+              onChange={(e) => setAddTaskModal((s) => ({ ...s, category: e.target.value }))}
+            >
+              {CATEGORIES.map((category) => (
+                <MenuItem key={category} value={category}>{category}</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+
+          <FormControl fullWidth sx={{ mt: 2 }}>
+            <InputLabel>Assign To</InputLabel>
+            <Select
+              value={addTaskModal.assignedTo}
+              label="Assign To"
+              onChange={(e) => setAddTaskModal((s) => ({ ...s, assignedTo: e.target.value }))}
+            >
+              <MenuItem value="Both">Both</MenuItem>
+              <MenuItem value="You">You</MenuItem>
+              <MenuItem value="Partner">Partner</MenuItem>
+            </Select>
+          </FormControl>
+
+          <TextField
+            fullWidth
+            type="date"
+            label="Due Date"
+            value={addTaskModal.dueDate}
+            onChange={(e) => setAddTaskModal((s) => ({ ...s, dueDate: e.target.value }))}
+            InputLabelProps={{ shrink: true }}
+            sx={{ mt: 2 }}
+          />
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={() => setAddTaskModal(s => ({ ...s, open: false }))} disabled={addTaskModal.saving}>Cancel</Button>
+          <Button onClick={() => setAddTaskModal(EMPTY_TASK_MODAL)} disabled={addTaskModal.saving}>Cancel</Button>
           <Button variant="contained" disabled={!addTaskModal.title.trim() || addTaskModal.saving}
             onClick={handleAddToChecklist}
             sx={{ bgcolor: COLORS.primary, '&:hover': { bgcolor: '#6B1423' } }}>
