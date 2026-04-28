@@ -38,6 +38,13 @@ interface MutualMatch {
   img: string | null;
 }
 
+interface PendingProposal {
+  userId: string;
+  name: string;
+  initials: string;
+  img: string | null;
+}
+
 export default function MessagesPage() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
@@ -54,6 +61,8 @@ export default function MessagesPage() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   // All mutual matches — full list regardless of whether a conversation exists
   const [allMutualMatches, setAllMutualMatches] = useState<MutualMatch[]>([]);
+  const [pendingProposals, setPendingProposals] = useState<PendingProposal[]>([]);
+  const [loadingPendingProposals, setLoadingPendingProposals] = useState(false);
   // Derived: mutual matches that don't have an active conversation (eligible to start chat)
   const eligibleMatches = allMutualMatches.filter(
     (m) => !conversations.some((c) => c.otherUserId === m.id),
@@ -87,6 +96,62 @@ export default function MessagesPage() {
   // Banner shown when partner sent us an engagement proposal
   const [engagementBannerUserId, setEngagementBannerUserId] = useState<string | null>(null);
   const [acceptingEngagement, setAcceptingEngagement] = useState(false);
+  const [proposalAction, setProposalAction] = useState<{ userId: string; type: 'accept' | 'decline' } | null>(null);
+
+  const mapMutualMatch = useCallback((match: any): MutualMatch => ({
+    id: match.id,
+    name: match.name,
+    initials: match.initials || match.name?.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2) || '??',
+    img: match.img || null,
+  } as MutualMatch), []);
+
+  const refreshMutualMatches = useCallback(async () => {
+    try {
+      const matchesRes: any = await api.get('/matches/mutual');
+      const contacts: MutualMatch[] = (matchesRes.data?.data?.items || []).map(mapMutualMatch);
+      setAllMutualMatches(contacts);
+      return contacts;
+    } catch {
+      return [] as MutualMatch[];
+    }
+  }, [mapMutualMatch]);
+
+  const refreshPendingProposals = useCallback(async (candidates?: MutualMatch[]) => {
+    const source = candidates ?? allMutualMatches;
+    if (!source.length) {
+      setPendingProposals([]);
+      return;
+    }
+
+    setLoadingPendingProposals(true);
+    try {
+      const statuses = await Promise.all(
+        source.map(async (match) => {
+          try {
+            const res: any = await api.get(`/matches/${match.id}/engagement`);
+            const status = res.data?.data?.status || 'none';
+            const proposerId = res.data?.data?.proposerId ? String(res.data.data.proposerId) : null;
+            return { match, status, proposerId };
+          } catch {
+            return { match, status: 'none', proposerId: null };
+          }
+        })
+      );
+
+      const pending = statuses
+        .filter((item) => item.status === 'proposed' && item.proposerId === item.match.id)
+        .map((item) => ({
+          userId: item.match.id,
+          name: item.match.name,
+          initials: item.match.initials,
+          img: item.match.img,
+        }));
+
+      setPendingProposals(pending);
+    } finally {
+      setLoadingPendingProposals(false);
+    }
+  }, [allMutualMatches]);
 
   const refreshConversationsList = useCallback(async () => {
     try {
@@ -153,12 +218,15 @@ export default function MessagesPage() {
     const onAppRefresh = () => {
       refreshJourneyState();
       refreshConversationsList();
+      refreshMutualMatches().then((contacts) => {
+        refreshPendingProposals(contacts);
+      });
     };
     window.addEventListener('app:refresh', onAppRefresh);
     return () => {
       window.removeEventListener('app:refresh', onAppRefresh);
     };
-  }, [refreshJourneyState, refreshConversationsList]);
+  }, [refreshJourneyState, refreshConversationsList, refreshMutualMatches, refreshPendingProposals]);
 
   // Show engagement acceptance banner — set from navigation state (notification click)
   // or from unread notifications when a conversation is selected.
@@ -183,6 +251,13 @@ export default function MessagesPage() {
       setEngagementBannerUserId(invite ? selectedConv.otherUserId : null);
     }).catch(() => setEngagementBannerUserId(null));
   }, [selectedConv, deepLinkEngagementProposerId, engagedWithUserId]);
+
+  useEffect(() => {
+    if (!selectedConv) return;
+    if (engagementProposerId === selectedConv.otherUserId) {
+      setEngagementBannerUserId(selectedConv.otherUserId);
+    }
+  }, [selectedConv, engagementProposerId]);
 
   /** Find an existing conversation by partner userId, or call the server to create one */
   const getOrOpenConversation = useCallback(async (userId: string): Promise<Conversation | null> => {
@@ -218,14 +293,10 @@ export default function MessagesPage() {
 
       // Build mutual matches list — only those without an existing conversation
       const rawMatches: any[] = matchRes.data?.data?.items || [];
-      const contacts: MutualMatch[] = rawMatches.map((m: any) => ({
-        id: m.id,
-        name: m.name,
-        initials: m.initials || m.name?.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2) || '??',
-        img: m.img || null,
-      }));
+      const contacts: MutualMatch[] = rawMatches.map(mapMutualMatch);
       // Store full list — eligibleMatches derived state handles filtering
       setAllMutualMatches(contacts);
+      refreshPendingProposals(contacts);
 
       // ── Auto-select from navigation state ──
       if (deepLinkConvId) {
@@ -256,6 +327,48 @@ export default function MessagesPage() {
     .finally(() => setLoadingConvs(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    refreshPendingProposals();
+  }, [refreshPendingProposals]);
+
+  const handleAcceptProposal = async (proposal: PendingProposal) => {
+    setProposalAction({ userId: proposal.userId, type: 'accept' });
+    try {
+      await api.post(`/matches/${proposal.userId}/engagement/accept`);
+      setPendingProposals((prev) => prev.filter((item) => item.userId !== proposal.userId));
+      setEngagedWithUserId(proposal.userId);
+      setEngagementProposerId(null);
+      setEngagementBannerUserId(null);
+      const conv = await getOrOpenConversation(proposal.userId);
+      if (conv) {
+        setSelectedConv(conv);
+        if (isMobile) setShowList(false);
+      }
+      setInviteSnack({ open: true, msg: `${proposal.name} proposal accepted! 💎`, severity: 'success' });
+    } catch {
+      setInviteSnack({ open: true, msg: 'Failed to accept proposal. Please try again.', severity: 'error' });
+    } finally {
+      setProposalAction(null);
+    }
+  };
+
+  const handleDeclineProposal = async (proposal: PendingProposal) => {
+    setProposalAction({ userId: proposal.userId, type: 'decline' });
+    try {
+      await api.delete(`/matches/${proposal.userId}/engagement`);
+      setPendingProposals((prev) => prev.filter((item) => item.userId !== proposal.userId));
+      if (selectedConv?.otherUserId === proposal.userId) {
+        setEngagementBannerUserId(null);
+        setEngagementProposerId(null);
+      }
+      setInviteSnack({ open: true, msg: `Declined ${proposal.name}'s proposal.`, severity: 'error' });
+    } catch {
+      setInviteSnack({ open: true, msg: 'Failed to decline proposal. Please try again.', severity: 'error' });
+    } finally {
+      setProposalAction(null);
+    }
+  };
 
   // Handle re-navigation to this page while it's already mounted (e.g. clicking a notification
   // when the user is already on /messages). location.key changes on every navigate() call.
@@ -481,6 +594,8 @@ export default function MessagesPage() {
     },
     onMatchRemoved: (data) => {
       if (!data.byUserId) return;
+      setAllMutualMatches((prev) => prev.filter((m) => m.id !== data.byUserId));
+      setPendingProposals((prev) => prev.filter((p) => p.userId !== data.byUserId));
       setConversations((prev) => prev.filter((c) => c.otherUserId !== data.byUserId));
       setSelectedConv((conv) => {
         if (conv && conv.otherUserId === data.byUserId) {
@@ -490,10 +605,14 @@ export default function MessagesPage() {
           setEngagementBannerUserId(null);
           setWeddingStatus('none');
           if (isMobile) setShowList(true);
-          setInviteSnack({ open: true, msg: 'This match was removed. You are back to searching for a partner.', severity: 'error' });
+          const removedBy = data.byUserName || 'Your match';
+          setInviteSnack({ open: true, msg: `${removedBy} removed this match. You are back to searching for a partner.`, severity: 'error' });
           return null;
         }
         return conv;
+      });
+      refreshMutualMatches().then((contacts) => {
+        refreshPendingProposals(contacts);
       });
     },
   });
@@ -599,6 +718,91 @@ export default function MessagesPage() {
               </React.Fragment>
             ))}
           </List>
+
+          {(loadingPendingProposals || pendingProposals.length > 0) && (
+            <Box sx={{ borderTop: '1px solid', borderColor: 'divider' }}>
+              <Box sx={{ px: 2, pt: 1.5, pb: 0.5, display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary', letterSpacing: '0.06em' }}>
+                  PENDING PROPOSALS
+                </Typography>
+                <Chip
+                  label={loadingPendingProposals ? '…' : pendingProposals.length}
+                  size="small"
+                  color="warning"
+                  sx={{ height: 16, fontSize: '0.65rem' }}
+                />
+              </Box>
+              {loadingPendingProposals ? (
+                <Box sx={{ px: 2, py: 1.5, display: 'flex', justifyContent: 'center' }}>
+                  <CircularProgress size={16} />
+                </Box>
+              ) : (
+                <List disablePadding>
+                  {pendingProposals.map((proposal) => {
+                    const isAccepting = proposalAction?.userId === proposal.userId && proposalAction.type === 'accept';
+                    const isDeclining = proposalAction?.userId === proposal.userId && proposalAction.type === 'decline';
+                    return (
+                      <ListItem
+                        key={proposal.userId}
+                        disablePadding
+                        sx={{ px: 2, py: 1, gap: 1, alignItems: 'center' }}
+                      >
+                        <ListItemAvatar sx={{ minWidth: 42 }}>
+                          <Avatar
+                            src={proposal.img || undefined}
+                            sx={{ bgcolor: '#C9A84C', width: 34, height: 34, fontSize: '0.72rem' }}
+                          >
+                            {proposal.initials}
+                          </Avatar>
+                        </ListItemAvatar>
+
+                        <Box
+                          sx={{ flex: 1, minWidth: 0, cursor: 'pointer' }}
+                          onClick={async () => {
+                            const conv = await getOrOpenConversation(proposal.userId);
+                            if (!conv) return;
+                            setSelectedConv(conv);
+                            if (isMobile) setShowList(false);
+                          }}
+                        >
+                          <Typography variant="subtitle2" sx={{ fontWeight: 600 }} noWrap>
+                            {proposal.name}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary" noWrap>
+                            Proposed engagement 💎
+                          </Typography>
+                        </Box>
+
+                        <Stack spacing={0.5} sx={{ width: 86, flexShrink: 0 }}>
+                          <Button
+                            size="small"
+                            variant="contained"
+                            fullWidth
+                            disabled={Boolean(proposalAction)}
+                            onClick={() => handleAcceptProposal(proposal)}
+                            sx={{ py: 0.4, fontSize: '0.68rem' }}
+                          >
+                            {isAccepting ? <CircularProgress size={12} color="inherit" /> : 'Accept'}
+                          </Button>
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            color="error"
+                            fullWidth
+                            disabled={Boolean(proposalAction)}
+                            onClick={() => handleDeclineProposal(proposal)}
+                            sx={{ py: 0.35, fontSize: '0.68rem' }}
+                          >
+                            {isDeclining ? <CircularProgress size={12} color="inherit" /> : 'Decline'}
+                          </Button>
+                        </Stack>
+                      </ListItem>
+                    );
+                  })}
+                </List>
+              )}
+            </Box>
+          )}
 
               {eligibleMatches.length > 0 && (
             <Box sx={{ mt: 'auto', borderTop: '1px solid', borderColor: 'divider' }}>
