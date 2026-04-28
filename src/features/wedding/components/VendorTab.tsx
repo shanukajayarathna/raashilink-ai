@@ -52,7 +52,7 @@ const STATUS_COLORS: Record<string, string> = {
 interface VendorTabProps {
   vendors?: any[];          // full vendor list from API (Vendor model)
   bookedVendorIds?: any[];  // project.vendors entries with status
-  onStatusChange?: () => void;
+  onStatusChange?: () => void | Promise<void>;
 }
 
 export default function VendorTab({ vendors = [], bookedVendorIds = [], onStatusChange }: VendorTabProps) {
@@ -63,11 +63,16 @@ export default function VendorTab({ vendors = [], bookedVendorIds = [], onStatus
   const [isQuoteModalOpen, setIsQuoteModalOpen] = useState(false);
   const [selectedVendor, setSelectedVendor] = useState<any>(null);
   const [updatingStatus, setUpdatingStatus] = useState<string | null>(null);
+  const [localBookedVendorIds, setLocalBookedVendorIds] = useState<any[]>(bookedVendorIds);
   const { user } = useSelector((state: RootState) => state.auth);
+
+  useEffect(() => {
+    setLocalBookedVendorIds(bookedVendorIds);
+  }, [bookedVendorIds]);
 
   // Build status map from project.vendors
   const statusMap: Record<string, { status: string; quotedAmount: number }> = {};
-  bookedVendorIds.forEach((bv: any) => {
+  localBookedVendorIds.forEach((bv: any) => {
     const vendorId = typeof bv.vendorId === 'object' ? String(bv.vendorId?._id || bv.vendorId?.id || '') : String(bv.vendorId);
     if (vendorId) {
       statusMap[vendorId] = { status: bv.status, quotedAmount: bv.quotedAmount };
@@ -102,10 +107,21 @@ export default function VendorTab({ vendors = [], bookedVendorIds = [], onStatus
 
   const handleStatusChange = async (vendorId: string, newStatus: string) => {
     setUpdatingStatus(vendorId);
+    const previous = localBookedVendorIds;
+    setLocalBookedVendorIds((curr) => curr.map((entry: any) => {
+      const entryVendorId = typeof entry?.vendorId === 'object'
+        ? String(entry.vendorId?._id || entry.vendorId?.id || '')
+        : String(entry?.vendorId || '');
+      if (entryVendorId !== vendorId) return entry;
+      return { ...entry, status: newStatus };
+    }));
+
     try {
       await weddingService.updateVendorStatus(vendorId, newStatus);
-      onStatusChange?.();
-    } catch { /* silent */ }
+      await onStatusChange?.();
+    } catch {
+      setLocalBookedVendorIds(previous);
+    }
     finally { setUpdatingStatus(null); }
   };
 
@@ -318,6 +334,7 @@ export default function VendorTab({ vendors = [], bookedVendorIds = [], onStatus
       )}
       <QuoteRequestModal
         open={isQuoteModalOpen}
+        mode="wedding"
         onClose={() => {
           setIsQuoteModalOpen(false);
         }}
