@@ -183,10 +183,40 @@ export const getChatHistory = asyncHandler(async (req, res) => {
 });
 
 export const getConversations = asyncHandler(async (req, res) => {
-  const conversations = await Conversation.find({ participants: req.user._id })
+  const allConversations = await Conversation.find({ participants: req.user._id })
     .sort({ lastMessageAt: -1 })
     .limit(20)
     .lean();
+
+  const pairs = allConversations
+    .map((conversation) => {
+      const otherUserId = (conversation.participants || [])
+        .find((participantId) => String(participantId) !== String(req.user._id));
+      return otherUserId ? { conversation, otherUserId: String(otherUserId) } : null;
+    })
+    .filter(Boolean);
+
+  const mutualStatuses = pairs.length > 0
+    ? await MatchInterest.find({
+        status: 'mutual',
+        $or: pairs.flatMap((pair) => ([
+          { fromUser: req.user._id, toUser: pair.otherUserId },
+          { fromUser: pair.otherUserId, toUser: req.user._id },
+        ])),
+      })
+        .select('fromUser toUser')
+        .lean()
+    : [];
+
+  const mutualUserIds = new Set(
+    mutualStatuses.map((entry) =>
+      String(entry.fromUser) === String(req.user._id) ? String(entry.toUser) : String(entry.fromUser)
+    )
+  );
+
+  const conversations = pairs
+    .filter((pair) => mutualUserIds.has(pair.otherUserId))
+    .map((pair) => pair.conversation);
 
   const otherUserIds = [...new Set(
     conversations.flatMap((conversation) =>
