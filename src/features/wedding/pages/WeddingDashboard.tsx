@@ -82,8 +82,8 @@ function buildWeddingDashboardData(project: any, budgetSummary: any, vendorsPayl
       isCoupled: isCoupledProject,
       date: new Date(weddingDateValue).toISOString().split('T')[0],
       venue: venueName || (project?.venueId ? 'Venue selected' : 'Venue planning in progress'),
-      // When coupled use partner's pic as hero bg if no dedicated cover photo
-      heroImage: user?.coverPhoto || (isCoupledProject ? partner2Pic : null) || user?.profilePic || DEFAULT_WEDDING_HERO_IMAGE,
+      // Always use the same default cover image for consistent UX/privacy.
+      heroImage: DEFAULT_WEDDING_HERO_IMAGE,
     },
     stats: {
       totalBudget: Number(budgetSummary?.data?.totalBudget || project?.totalBudget || 0),
@@ -198,14 +198,46 @@ export default function WeddingDashboard() {
       const projectResponse = await weddingService.getProject();
       const checklist = projectResponse?.data?.checklist || [];
       setRawProject((p: any) => ({ ...p, checklist }));
+      setWeddingData((prev: any) => {
+        if (!prev) return prev;
+        const completedTasks = checklist.filter((item: any) => item?.completed).length;
+        return {
+          ...prev,
+          stats: {
+            ...prev.stats,
+            checklistProgress: checklist.length > 0 ? Math.round((completedTasks / checklist.length) * 100) : 0,
+            totalTasks: checklist.length,
+          },
+        };
+      });
     } catch { /* silent */ }
   }, []);
 
   const refreshVendors = useCallback(async () => {
     try {
       const projectResponse = await weddingService.getProject();
+      const project = projectResponse?.data || {};
       const vendors = projectResponse?.data?.vendors || [];
-      setRawProject((p: any) => ({ ...p, vendors }));
+      const bookedVendors = Array.isArray(vendors)
+        ? vendors.filter((entry: any) => ['requested', 'booked'].includes(entry?.status)).length
+        : 0;
+      const venueName =
+        typeof project?.venueId === 'object'
+          ? project?.venueId?.businessName || project?.venueId?.name || null
+          : null;
+
+      setRawProject((p: any) => ({ ...p, vendors, venueId: project?.venueId }));
+      setWeddingData((prev: any) => prev ? {
+        ...prev,
+        couple: {
+          ...prev.couple,
+          venue: venueName || (project?.venueId ? 'Venue selected' : 'Venue planning in progress'),
+        },
+        stats: {
+          ...prev.stats,
+          vendorsBooked: bookedVendors,
+        },
+      } : prev);
     } catch { /* silent */ }
   }, []);
 
@@ -282,6 +314,7 @@ export default function WeddingDashboard() {
   const fetchDataFromPartner = useCallback((payload?: any) => {
     // Granular update: only refresh the slice that changed
     const type = payload?.type as string | undefined;
+    if (type === 'project') { fetchData(); return; }
     if (type === 'checklist') { refreshChecklist(); return; }
     if (type === 'budget') { refreshBudget(); return; }
     if (type === 'vendor') { refreshVendors(); return; }
@@ -554,7 +587,14 @@ export default function WeddingDashboard() {
                 await weddingService.updateProject({ weddingDate: setupDate });
                 setSetupDateOpen(false);
                 setSetupDate('');
-                await fetchData();
+                setRawProject((prev: any) => prev ? ({ ...prev, weddingDate: setupDate }) : prev);
+                setWeddingData((prev: any) => prev ? ({
+                  ...prev,
+                  couple: {
+                    ...prev.couple,
+                    date: setupDate,
+                  },
+                }) : prev);
               } catch { /* ignore */ } finally { setSavingSetup(false); }
             }}
             sx={{ bgcolor: '#C9A84C', '&:hover': { bgcolor: '#A8883E' } }}
@@ -589,7 +629,14 @@ export default function WeddingDashboard() {
                 await weddingService.updateProject({ totalBudget: Number(setupBudget) });
                 setSetupBudgetOpen(false);
                 setSetupBudget('');
-                await fetchData();
+                setRawProject((prev: any) => prev ? ({ ...prev, totalBudget: Number(setupBudget) }) : prev);
+                setWeddingData((prev: any) => prev ? ({
+                  ...prev,
+                  stats: {
+                    ...prev.stats,
+                    totalBudget: Number(setupBudget),
+                  },
+                }) : prev);
               } catch { /* ignore */ } finally { setSavingSetup(false); }
             }}
             sx={{ bgcolor: '#C9A84C', '&:hover': { bgcolor: '#A8883E' } }}
@@ -613,30 +660,13 @@ export default function WeddingDashboard() {
           boxShadow: '0 20px 40px rgba(0,0,0,0.1)'
         }}
       >
-        {/* Hero background — split when coupled, single photo otherwise */}
-        {couple.isCoupled && couple.partner2Pic ? (
-          <Box sx={{ width: '100%', height: '100%', display: 'flex' }}>
-            <Box
-              component="img"
-              src={couple.partner1Pic || DEFAULT_WEDDING_HERO_IMAGE}
-              sx={{ width: '50%', height: '100%', objectFit: 'cover', objectPosition: 'center top' }}
-              referrerPolicy="no-referrer"
-            />
-            <Box
-              component="img"
-              src={couple.partner2Pic}
-              sx={{ width: '50%', height: '100%', objectFit: 'cover', objectPosition: 'center top' }}
-              referrerPolicy="no-referrer"
-            />
-          </Box>
-        ) : (
-          <Box
-            component="img"
-            src={couple.heroImage}
-            sx={{ width: '100%', height: '100%', objectFit: 'cover' }}
-            referrerPolicy="no-referrer"
-          />
-        )}
+        {/* Hero background is always a default wedding cover image. */}
+        <Box
+          component="img"
+          src={couple.heroImage}
+          sx={{ width: '100%', height: '100%', objectFit: 'cover' }}
+          referrerPolicy="no-referrer"
+        />
         <Box sx={{ 
           position: 'absolute', 
           inset: 0, 
@@ -941,7 +971,14 @@ export default function WeddingDashboard() {
               try {
                 await weddingService.updateProject({ totalBudget: Number(editBudgetValue) });
                 setEditBudgetOpen(false);
-                await fetchData();
+                setRawProject((prev: any) => prev ? ({ ...prev, totalBudget: Number(editBudgetValue) }) : prev);
+                setWeddingData((prev: any) => prev ? ({
+                  ...prev,
+                  stats: {
+                    ...prev.stats,
+                    totalBudget: Number(editBudgetValue),
+                  },
+                }) : prev);
               } catch { /* ignore */ } finally { setSavingBudget(false); }
             }}
             sx={{ bgcolor: '#C9A84C', '&:hover': { bgcolor: '#A8883E' } }}
