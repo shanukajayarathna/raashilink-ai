@@ -110,7 +110,7 @@ export const updateProject = asyncHandler(async (req, res) => {
   }
 
   await project.save();
-  notifyPartner(project, req.user._id);
+  notifyPartner(project, req.user._id, 'project');
 
   res.status(200).json({
     success: true,
@@ -133,7 +133,7 @@ export const addTask = asyncHandler(async (req, res) => {
     completed: false,
   });
   await project.save();
-  notifyPartner(project, req.user._id);
+  notifyPartner(project, req.user._id, 'checklist');
 
   res.status(201).json({
     success: true,
@@ -162,7 +162,7 @@ export const updateTask = asyncHandler(async (req, res) => {
   if (completed !== undefined) task.completed = Boolean(completed);
 
   await project.save();
-  notifyPartner(project, req.user._id);
+  notifyPartner(project, req.user._id, 'checklist');
 
   res.status(200).json({
     success: true,
@@ -184,7 +184,7 @@ export const deleteTask = asyncHandler(async (req, res) => {
 
   project.checklist.splice(idx, 1);
   await project.save();
-  notifyPartner(project, req.user._id);
+  notifyPartner(project, req.user._id, 'checklist');
 
   res.status(200).json({
     success: true,
@@ -210,7 +210,7 @@ export const addExpense = asyncHandler(async (req, res) => {
     paid: Boolean(paid),
   });
   await project.save();
-  notifyPartner(project, req.user._id);
+  notifyPartner(project, req.user._id, 'budget');
 
   res.status(201).json({
     success: true,
@@ -234,7 +234,7 @@ export const updateExpense = asyncHandler(async (req, res) => {
   if (paid !== undefined) expense.paid = Boolean(paid);
 
   await project.save();
-  notifyPartner(project, req.user._id);
+  notifyPartner(project, req.user._id, 'budget');
   res.status(200).json({ success: true, data: calculateBudget(project) });
 });
 
@@ -247,7 +247,7 @@ export const deleteExpense = asyncHandler(async (req, res) => {
 
   project.expenses.splice(idx, 1);
   await project.save();
-  notifyPartner(project, req.user._id);
+  notifyPartner(project, req.user._id, 'budget');
   res.status(200).json({ success: true, data: calculateBudget(project) });
 });
 
@@ -357,7 +357,7 @@ export const requestQuote = asyncHandler(async (req, res) => {
   }
 
   await project.save();
-  notifyPartner(project, req.user._id);
+  notifyPartner(project, req.user._id, 'vendor');
 
   res.status(201).json({
     success: true,
@@ -392,7 +392,7 @@ export const updateVendorStatus = asyncHandler(async (req, res) => {
     project.venueId = undefined;
   }
   await project.save();
-  notifyPartner(project, req.user._id);
+  notifyPartner(project, req.user._id, 'vendor');
 
   res.status(200).json({ success: true, data: { vendorId, status } });
 });
@@ -408,7 +408,7 @@ export const toggleTask = asyncHandler(async (req, res) => {
 
   project.checklist[idx].completed = !project.checklist[idx].completed;
   await project.save();
-  notifyPartner(project, req.user._id);
+  notifyPartner(project, req.user._id, 'checklist');
 
   res.status(200).json({ success: true, data: project.checklist[idx] });
 });
@@ -433,14 +433,19 @@ export const invitePartner = asyncHandler(async (req, res) => {
   await project.save();
 
   // Send notification to partner
-  const inviter = await User.findById(req.user._id).select('firstName lastName name profilePic').lean();
-  const inviterName = inviter?.firstName || inviter?.name || 'Someone';
+  const inviter = await User.findById(req.user._id)
+    .select('personalInfo.firstName personalInfo.lastName personalInfo.profilePic name profilePic')
+    .lean();
+  const inviterName =
+    [inviter?.personalInfo?.firstName, inviter?.personalInfo?.lastName].filter(Boolean).join(' ') ||
+    inviter?.name ||
+    'Someone';
   const notif = await Notification.create({
     userId: partnerId,
     type: 'wedding_invite',
     fromUserId: req.user._id,
     fromUserName: inviterName,
-    fromUserProfilePic: inviter?.profilePic || null,
+    fromUserProfilePic: inviter?.personalInfo?.profilePic || inviter?.profilePic || null,
     metadata: { inviterId: String(req.user._id) },
   });
   emitToUser(partnerId, 'notification', {
@@ -448,7 +453,7 @@ export const invitePartner = asyncHandler(async (req, res) => {
     type: 'wedding_invite',
     fromUserId: String(req.user._id),
     fromUserName: inviterName,
-    fromUserProfilePic: inviter?.profilePic || null,
+    fromUserProfilePic: inviter?.personalInfo?.profilePic || inviter?.profilePic || null,
     metadata: { inviterId: String(req.user._id) },
     read: false,
     createdAt: notif.createdAt,
@@ -493,15 +498,20 @@ export const acceptInvite = asyncHandler(async (req, res) => {
   });
 
   // Notify the inviter that their invite was accepted
-  const acceptor = await User.findById(req.user._id).select('firstName lastName name profilePic').lean();
-  const acceptorName = acceptor?.firstName || acceptor?.name || 'Your match';
+  const acceptor = await User.findById(req.user._id)
+    .select('personalInfo.firstName personalInfo.lastName personalInfo.profilePic name profilePic')
+    .lean();
+  const acceptorName =
+    [acceptor?.personalInfo?.firstName, acceptor?.personalInfo?.lastName].filter(Boolean).join(' ') ||
+    acceptor?.name ||
+    'Your match';
 
   const notif = await Notification.create({
     userId: inviterId,
     type: 'wedding_accepted',
     fromUserId: req.user._id,
     fromUserName: acceptorName,
-    fromUserProfilePic: acceptor?.profilePic || null,
+    fromUserProfilePic: acceptor?.personalInfo?.profilePic || acceptor?.profilePic || null,
     metadata: { acceptorId: String(req.user._id) },
   });
   emitToUser(inviterId, 'notification', {
@@ -509,7 +519,7 @@ export const acceptInvite = asyncHandler(async (req, res) => {
     type: 'wedding_accepted',
     fromUserId: String(req.user._id),
     fromUserName: acceptorName,
-    fromUserProfilePic: acceptor?.profilePic || null,
+    fromUserProfilePic: acceptor?.personalInfo?.profilePic || acceptor?.profilePic || null,
     metadata: { acceptorId: String(req.user._id) },
     read: false,
     createdAt: notif.createdAt,
@@ -531,7 +541,7 @@ export const getPendingInvite = asyncHandler(async (req, res) => {
   const project = await WeddingProject.findOne({
     'pendingInvite.inviteeId': req.user._id,
     'pendingInvite.status': 'pending',
-  }).populate({ path: 'coupleUserIds', select: 'personalInfo' });
+  }).populate({ path: 'coupleUserIds', select: 'personalInfo.firstName personalInfo.lastName personalInfo.profilePic name profilePic' });
 
   if (!project) {
     return res.status(200).json({ success: true, data: null });
@@ -545,8 +555,11 @@ export const getPendingInvite = asyncHandler(async (req, res) => {
     success: true,
     data: {
       inviterId: String(inviter?._id || project.coupleUserIds[0]),
-      inviterName: inviter?.firstName || inviter?.name || 'Your match',
-      inviterProfilePic: inviter?.profilePic || null,
+      inviterName:
+        [inviter?.personalInfo?.firstName, inviter?.personalInfo?.lastName].filter(Boolean).join(' ') ||
+        inviter?.name ||
+        'Your match',
+      inviterProfilePic: inviter?.personalInfo?.profilePic || inviter?.profilePic || null,
       projectId: String(project._id),
     },
   });
