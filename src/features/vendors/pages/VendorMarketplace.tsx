@@ -14,7 +14,7 @@ import {
   CheckCircle2, Store, Camera, Utensils, 
   Flower2, Scissors, Music, Heart, 
   ChevronRight, ArrowRight, LayoutGrid, 
-  ListFilter, Sparkles
+  ListFilter, Sparkles, AlertCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useSelector } from 'react-redux';
@@ -50,7 +50,30 @@ const CATEGORIES = [
 ];
 
 const DISTRICTS = [
-  'Colombo', 'Kandy', 'Galle', 'Matara', 'Jaffna', 'Negombo', 'Kurunegala', 'Ratnapura'
+  'Ampara',
+  'Anuradhapura',
+  'Badulla',
+  'Batticaloa',
+  'Colombo',
+  'Galle',
+  'Gampaha',
+  'Hambantota',
+  'Jaffna',
+  'Kalutara',
+  'Kandy',
+  'Kegalle',
+  'Kurunegala',
+  'Mannar',
+  'Matale',
+  'Matara',
+  'Monaragala',
+  'Mullaitivu',
+  'Nuwara Eliya',
+  'Polonnaruwa',
+  'Puttalam',
+  'Ratnapura',
+  'Trincomalee',
+  'Vavuniya'
 ];
 
 const FALLBACK_VENDOR_IMAGE = 'https://picsum.photos/seed/vendor-marketplace/800/600';
@@ -71,6 +94,14 @@ const CATEGORY_MATCHERS: Record<string, string[]> = {
   entertainment: ['Music', 'Entertainment'],
 };
 
+// Normalize date to YYYY-MM-DD format (handles ISO strings and Date objects)
+const normalizeDate = (dateVal: any): string => {
+  if (!dateVal) return '';
+  const d = new Date(dateVal);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toISOString().split('T')[0];
+};
+
 function mapVendorCard(vendor: any) {
   const portfolio = Array.isArray(vendor?.portfolioImages) && vendor.portfolioImages.length > 0
     ? vendor.portfolioImages
@@ -78,6 +109,18 @@ function mapVendorCard(vendor: any) {
   const minPrice = Number(vendor?.pricingRange?.min || 0);
   const maxPrice = Number(vendor?.pricingRange?.max || 0);
   const category = CATEGORY_LABELS[vendor?.category] || vendor?.category || 'Vendor';
+  const availabilityCalendar = Array.isArray(vendor?.availabilityCalendar)
+    ? vendor.availabilityCalendar
+        .map((entry: any) => {
+          const normalizedDate = normalizeDate(entry?.date);
+          if (!normalizedDate) return null;
+          return {
+            date: normalizedDate,
+            status: entry?.status || 'available',
+          };
+        })
+        .filter(Boolean)
+    : [];
 
   return {
     id: String(vendor?.id || vendor?._id || ''),
@@ -94,6 +137,10 @@ function mapVendorCard(vendor: any) {
     popular: Boolean(vendor?.verified && Number(vendor?.ratings?.count || 0) >= 3),
     isFavorite: false,
     city: vendor?.city || '',
+    serviceArea: Array.isArray(vendor?.serviceArea) ? vendor.serviceArea : [],
+    minPrice,
+    maxPrice,
+    availabilityCalendar,
   };
 }
 
@@ -156,12 +203,43 @@ export default function VendorMarketplace() {
     setAvailableOnly(false);
   };
 
+  const weddingDateKey = normalizeDate(user?.weddingProject?.weddingDate);
+
+  const normalizeDistrict = (value: string) => value.trim().toLowerCase();
+
   const filteredVendors = vendors.filter(v => {
     const allowedCategories = CATEGORY_MATCHERS[activeCategory] || [];
     const matchesCategory = activeCategory === 'all' || allowedCategories.includes(v.category);
     const matchesSearch = v.name.toLowerCase().includes(searchQuery.toLowerCase()) || v.description.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesRating = v.rating >= parseFloat(minRating);
-    return matchesCategory && matchesSearch && matchesRating;
+
+    const selectedMin = Number(priceRange[0] || 0);
+    const selectedMax = Number(priceRange[1] || 0);
+    const vendorMin = Number(v.minPrice || 0);
+    const vendorMax = Number(v.maxPrice || 0);
+    const matchesPrice = vendorMax >= selectedMin && vendorMin <= selectedMax;
+
+    const vendorDistricts = [v.city, ...(Array.isArray(v.serviceArea) ? v.serviceArea : [])]
+      .filter(Boolean)
+      .map((d: string) => normalizeDistrict(d));
+    const matchesDistrict =
+      selectedDistricts.length === 0 ||
+      selectedDistricts.some((district) => vendorDistricts.includes(normalizeDistrict(district)));
+
+    // Availability check: if box unchecked or no wedding date, show all; otherwise check calendar
+    const matchesAvailability = !availableOnly || !weddingDateKey || (() => {
+      const dayEntry = Array.isArray(v.availabilityCalendar)
+        ? v.availabilityCalendar.find((entry: any) => {
+            const entryDate = normalizeDate(entry?.date);
+            return entryDate === weddingDateKey;
+          })
+        : null;
+      // If no explicit entry, assume available; if entry exists, check status
+      if (!dayEntry) return true;
+      return dayEntry.status === 'available';
+    })();
+
+    return matchesCategory && matchesSearch && matchesRating && matchesPrice && matchesDistrict && matchesAvailability;
   });
 
   return (
@@ -421,9 +499,3 @@ function FilterSidebar({
     </Stack>
   );
 }
-
-const AlertCircle = ({ size, color, style }: any) => (
-  <Box sx={{ display: 'flex', justifyContent: 'center', ...style }}>
-    <CheckCircle2 size={size} color={color} />
-  </Box>
-);
