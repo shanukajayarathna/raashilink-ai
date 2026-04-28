@@ -652,12 +652,6 @@ export const getMatchDetail = asyncHandler(async (req, res) => {
   // Use the same fast JS path as the recommendations list so the score is always consistent
   const compatibility = calculateCompatibilityFromData(currentUser, user);
 
-  // Cache this score so future recommendations list loads overlay the same value
-  const cacheKey = buildCacheKey(String(req.user._id), String(user._id));
-  try {
-    await redisClient.set(cacheKey, JSON.stringify(compatibility), { EX: 60 * 60 * 24 });
-  } catch { /* non-critical */ }
-
   const mutualInterest = await MatchInterest.findOne({
     $or: [
       { fromUser: req.user._id, toUser: user._id, status: 'mutual' },
@@ -877,13 +871,14 @@ export const undoInterest = asyncHandler(async (req, res) => {
     ],
   });
 
-  // Also wipe the conversation and all messages between them
-  const conversation = await Conversation.findOne({
+  // Also wipe all conversations and messages between them (defensive: handles legacy/stale duplicates)
+  const conversations = await Conversation.find({
     participants: { $all: [req.user._id, otherId] },
-  });
-  if (conversation) {
-    await Message.deleteMany({ conversationId: conversation._id });
-    await conversation.deleteOne();
+  }).select('_id').lean();
+  const conversationIds = conversations.map((c) => c._id);
+  if (conversationIds.length > 0) {
+    await Message.deleteMany({ conversationId: { $in: conversationIds } });
+    await Conversation.deleteMany({ _id: { $in: conversationIds } });
   }
 
   // Delete relationship-flow notifications between both users
@@ -956,17 +951,25 @@ export const undoInterest = asyncHandler(async (req, res) => {
   }
 
   // Notify the other user that the match was removed
-  const remover = await User.findById(req.user._id).select('firstName lastName name profilePic').lean();
-  const removerName = remover?.firstName || remover?.name || 'Someone';
+  const remover = await User.findById(req.user._id)
+    .select('personalInfo.firstName personalInfo.lastName personalInfo.profilePic name profilePic')
+    .lean();
+  const removerName =
+    [remover?.personalInfo?.firstName, remover?.personalInfo?.lastName].filter(Boolean).join(' ') ||
+    remover?.name ||
+    'Someone';
   await Notification.create({
     userId: otherId,
     type: 'match_removed',
     fromUserId: req.user._id,
     fromUserName: removerName,
-    fromUserProfilePic: remover?.profilePic || null,
+    fromUserProfilePic: remover?.personalInfo?.profilePic || remover?.profilePic || null,
   });
 
-  emitToUser(otherId, 'match_removed', { byUserId: String(req.user._id) });
+  emitToUser(otherId, 'match_removed', {
+    byUserId: String(req.user._id),
+    byUserName: removerName,
+  });
 
   res.status(200).json({
     success: true,
