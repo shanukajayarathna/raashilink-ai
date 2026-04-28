@@ -17,6 +17,7 @@ import {
 import { CheckCircle2, Info, Phone, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import vendorService from '../services/vendorService';
+import weddingService from '@/features/wedding/services/weddingService';
 
 const COLORS = {
   primary: '#8B1A2E',
@@ -35,6 +36,7 @@ interface QuoteRequestModalProps {
   userEmail?: string;
   userName?: string;
   onSubmitSuccess?: () => void;
+  mode?: 'marketplace' | 'wedding';
 }
 
 const buildInitialState = (weddingDate?: string, userPhone?: string, userEmail?: string, userName?: string) => ({
@@ -63,6 +65,7 @@ export default function QuoteRequestModal({
   userEmail,
   userName,
   onSubmitSuccess,
+  mode = 'marketplace',
 }: QuoteRequestModalProps) {
   const [formData, setFormData] = useState(buildInitialState(weddingDate, userPhone, userEmail, userName));
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -92,7 +95,7 @@ export default function QuoteRequestModal({
     setSubmitError('');
 
     try {
-      await vendorService.submitQuote({
+      const payload = {
         vendorId: vendor.id,
         category: vendor.category,
         eventType: formData.eventType,
@@ -108,8 +111,17 @@ export default function QuoteRequestModal({
         contactEmail: formData.email,
         contactPhone: formData.phone,
         preferredContactMethod: formData.preferredContactMethod,
-        message: formData.requirements,
-      });
+        requirements: formData.requirements,
+      };
+
+      if (mode === 'wedding') {
+        await weddingService.requestQuote(payload);
+      } else {
+        await vendorService.submitQuote({
+          ...payload,
+          message: formData.requirements,
+        });
+      }
       setIsSuccess(true);
       onSubmitSuccess?.();
     } catch (err) {
