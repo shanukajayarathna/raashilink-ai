@@ -1,7 +1,9 @@
 import http from 'node:http';
+import path from 'node:path';
 import express from 'express';
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
+import { fileURLToPath } from 'node:url';
 import { initSocket } from './lib/socket.js';
 import authRoutes from './routes/v1/auth.routes.js';
 import usersRoutes from './routes/v1/users.routes.js';
@@ -20,6 +22,10 @@ import { seedDemoUsers } from './services/demoData.service.js';
 import './jobs/dailyMatches.job.js';
 
 dotenv.config();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const uploadsRootDir = path.resolve(__dirname, 'uploads');
 
 const app = express();
 app.locals.isReady = false;
@@ -53,6 +59,7 @@ app.use((req, res, next) => {
 });
 
 app.use(express.json({ limit: '10mb' }));
+app.use('/uploads', express.static(uploadsRootDir));
 
 app.get(['/health', '/api/v1/health'], (req, res) => {
   res.json({
