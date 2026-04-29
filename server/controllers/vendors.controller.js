@@ -348,6 +348,97 @@ export const getVendorReviews = asyncHandler(async (req, res) => {
   });
 });
 
+export const getVendorProfile = asyncHandler(async (req, res) => {
+  const vendor = await Vendor.findOne({ userId: req.user._id }).lean();
+  if (!vendor) {
+    throw new ApiError(404, 'Vendor profile not found');
+  }
+
+  if (vendor.approvalStatus === 'pending') {
+    throw new ApiError(403, 'Your vendor profile is pending admin approval. Dashboard access is restricted until approval.');
+  }
+
+  if (vendor.approvalStatus === 'rejected') {
+    throw new ApiError(403, 'Your vendor profile has been rejected. Please contact support.');
+  }
+
+  res.status(200).json({
+    success: true,
+    data: {
+      id: String(vendor._id),
+      businessName: vendor.businessName,
+      category: vendor.category,
+      description: vendor.description,
+      city: vendor.city,
+      address: vendor.address,
+      contactPhone: vendor.contactPhone,
+      contactEmail: vendor.contactEmail,
+      website: vendor.website,
+      serviceArea: vendor.serviceArea,
+      pricingRange: vendor.pricingRange,
+      businessRegistrationNumber: vendor.businessRegistrationNumber,
+      socialLinks: vendor.socialLinks,
+      documents: vendor.documents,
+      approvalStatus: vendor.approvalStatus,
+      verified: vendor.verified,
+    },
+  });
+});
+
+export const updateVendorProfile = asyncHandler(async (req, res) => {
+  const {
+    businessName,
+    category,
+    description,
+    city,
+    address,
+    contactPhone,
+    contactEmail,
+    website,
+    serviceArea,
+    pricingRange,
+    socialLinks,
+  } = req.body ?? {};
+
+  const vendor = await Vendor.findOne({ userId: req.user._id });
+  if (!vendor) {
+    throw new ApiError(404, 'Vendor profile not found');
+  }
+
+  if (vendor.approvalStatus === 'pending') {
+    throw new ApiError(403, 'Cannot update profile while pending admin approval');
+  }
+
+  if (businessName) vendor.businessName = businessName.trim();
+  if (category) vendor.category = category.trim();
+  if (description) vendor.description = description.trim();
+  if (city) vendor.city = city.trim();
+  if (address) vendor.address = address.trim();
+  if (contactPhone) vendor.contactPhone = contactPhone.trim();
+  if (contactEmail) vendor.contactEmail = contactEmail.trim();
+  if (website) vendor.website = website.trim();
+  if (Array.isArray(serviceArea) && serviceArea.length > 0) {
+    vendor.serviceArea = serviceArea;
+  }
+  if (pricingRange && pricingRange.min >= 0 && pricingRange.max >= pricingRange.min) {
+    vendor.pricingRange = pricingRange;
+  }
+  if (socialLinks) {
+    vendor.socialLinks = { ...vendor.socialLinks, ...socialLinks };
+  }
+
+  await vendor.save();
+
+  res.status(200).json({
+    success: true,
+    message: 'Vendor profile updated successfully',
+    data: {
+      id: String(vendor._id),
+      approvalStatus: vendor.approvalStatus,
+    },
+  });
+});
+
 export default {
   searchVendors,
   getVendorDetail,
@@ -355,4 +446,6 @@ export default {
   getVendorQuoteInbox,
   updateQuoteRequest,
   getVendorReviews,
+  getVendorProfile,
+  updateVendorProfile,
 };
