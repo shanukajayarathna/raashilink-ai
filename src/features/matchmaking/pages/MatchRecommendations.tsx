@@ -461,7 +461,7 @@ export default function MatchRecommendations() {
           {!mutualLoading && mutualMatches.length > 0 && (
             <Alert severity="info" sx={{ mb: 2.5, borderRadius: 3 }}>
               <Typography variant="caption" sx={{ fontWeight: 700 }}>
-                Next step guide: Message first, then propose engagement in chat. Once accepted, send your wedding planning invite.
+                Next step guide: Start chatting, then send your wedding planning invite when you are ready.
               </Typography>
             </Alert>
           )}
@@ -504,8 +504,8 @@ export default function MatchRecommendations() {
                           border: '1.5px solid',
                           borderColor: 'rgba(201,168,76,0.4)',
                           boxShadow: '0 4px 24px rgba(139,26,46,0.07)',
-                          transition: 'box-shadow 0.2s, transform 0.2s',
-                          '&:hover': { boxShadow: '0 8px 32px rgba(139,26,46,0.14)', transform: 'translateY(-3px)' },
+                          transition: 'box-shadow 0.2s',
+                          '&:hover': { boxShadow: '0 8px 32px rgba(139,26,46,0.14)' },
                         }}
                       >
                         {/* Card Header */}
@@ -586,14 +586,6 @@ export default function MatchRecommendations() {
                             </Typography>
                           )}
 
-                          {match.engagementStatus === 'accepted' && (
-                            <Chip
-                              size="small"
-                              label="Engaged 💎"
-                              sx={{ mb: 0.5, bgcolor: 'rgba(201,168,76,0.2)', color: '#7A6020', fontWeight: 800, fontSize: '0.68rem' }}
-                            />
-                          )}
-
                           <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
                             <Button
                               variant="contained"
@@ -605,6 +597,7 @@ export default function MatchRecommendations() {
                                 bgcolor: 'primary.main', color: '#fff',
                                 '&:hover': { bgcolor: '#6e1526' },
                                 textTransform: 'none',
+                                minHeight: 32,
                               }}
                             >
                               Message
@@ -619,7 +612,7 @@ export default function MatchRecommendations() {
                                 flex: 1, borderRadius: 3, fontWeight: 700, fontSize: '0.78rem',
                                 borderColor: 'error.main', color: 'error.main',
                                 '&:hover': { bgcolor: 'error.50', borderColor: 'error.dark' },
-                                textTransform: 'none',
+                                textTransform: 'none', minHeight: 32,
                               }}
                             >
                               Remove
@@ -707,8 +700,8 @@ export default function MatchRecommendations() {
                                 bgcolor: 'white', borderRadius: 5, overflow: 'hidden',
                                 border: '1.5px solid rgba(139,26,46,0.25)',
                                 boxShadow: '0 2px 16px rgba(139,26,46,0.06)',
-                                transition: 'box-shadow 0.2s, transform 0.2s',
-                                '&:hover': { boxShadow: '0 6px 24px rgba(139,26,46,0.12)', transform: 'translateY(-2px)' },
+                                transition: 'box-shadow 0.2s',
+                                '&:hover': { boxShadow: '0 6px 24px rgba(139,26,46,0.12)' },
                               }}
                             >
                               {/* Hero profile photo */}
@@ -775,7 +768,7 @@ export default function MatchRecommendations() {
                                     startIcon={isAccepting ? <CircularProgress size={12} color="inherit" /> : <UserCheck size={14} />}
                                     disabled={isAccepting || isDeclining}
                                     onClick={() => handleAcceptInterest(match.id)}
-                                    sx={{ borderRadius: 3, fontWeight: 700, fontSize: '0.78rem', bgcolor: 'primary.main', '&:hover': { bgcolor: '#6e1526' }, textTransform: 'none' }}
+                                    sx={{ borderRadius: 3, fontWeight: 700, fontSize: '0.78rem', bgcolor: 'primary.main', '&:hover': { bgcolor: '#6e1526' }, textTransform: 'none', minHeight: 32 }}
                                   >
                                     Accept
                                   </Button>
@@ -784,7 +777,7 @@ export default function MatchRecommendations() {
                                     startIcon={isDeclining ? <CircularProgress size={12} color="inherit" /> : <UserX size={14} />}
                                     disabled={isAccepting || isDeclining}
                                     onClick={() => handleDeclineInterest(match.id)}
-                                    sx={{ borderRadius: 3, fontWeight: 700, fontSize: '0.78rem', borderColor: 'error.main', color: 'error.main', '&:hover': { bgcolor: 'error.50' }, textTransform: 'none' }}
+                                    sx={{ borderRadius: 3, fontWeight: 700, fontSize: '0.78rem', borderColor: 'error.main', color: 'error.main', '&:hover': { bgcolor: 'error.50' }, textTransform: 'none', minHeight: 32 }}
                                   >
                                     Decline
                                   </Button>
@@ -792,7 +785,7 @@ export default function MatchRecommendations() {
                                 <Button
                                   variant="text" size="small" fullWidth
                                   onClick={() => handleViewProfile(match.id, match.img, match.score ?? null, match.band ?? null)}
-                                  sx={{ borderRadius: 3, fontWeight: 700, fontSize: '0.75rem', color: 'text.secondary', textTransform: 'none', mt: 0.5 }}
+                                  sx={{ borderRadius: 3, fontWeight: 700, fontSize: '0.75rem', color: 'text.secondary', textTransform: 'none', mt: 0.5, minHeight: 30 }}
                                 >
                                   View Profile
                                 </Button>
@@ -833,8 +826,8 @@ export default function MatchRecommendations() {
                                 bgcolor: 'white', borderRadius: 5, overflow: 'hidden',
                                 border: '1.5px solid rgba(26,107,114,0.25)',
                                 boxShadow: '0 2px 16px rgba(26,107,114,0.06)',
-                                transition: 'box-shadow 0.2s, transform 0.2s',
-                                '&:hover': { boxShadow: '0 6px 24px rgba(26,107,114,0.12)', transform: 'translateY(-2px)' },
+                                transition: 'box-shadow 0.2s',
+                                '&:hover': { boxShadow: '0 6px 24px rgba(26,107,114,0.12)' },
                               }}
                             >
                               {/* Hero profile photo */}
@@ -896,7 +889,7 @@ export default function MatchRecommendations() {
                                   startIcon={isWithdrawing ? <CircularProgress size={12} color="inherit" /> : <UserMinus size={14} />}
                                   disabled={isWithdrawing}
                                   onClick={() => handleWithdrawInterest(match.id)}
-                                  sx={{ borderRadius: 3, fontWeight: 700, fontSize: '0.78rem', borderColor: 'error.main', color: 'error.main', '&:hover': { bgcolor: 'error.50' }, textTransform: 'none' }}
+                                  sx={{ borderRadius: 3, fontWeight: 700, fontSize: '0.78rem', borderColor: 'error.main', color: 'error.main', '&:hover': { bgcolor: 'error.50' }, textTransform: 'none', minHeight: 32 }}
                                 >
                                   Withdraw Interest
                                 </Button>
@@ -997,6 +990,8 @@ export default function MatchRecommendations() {
                   borderRadius: 8,
                   px: 6,
                   py: 1.5,
+                  minWidth: 220,
+                  minHeight: 48,
                   fontWeight: 'bold',
                   '&:hover': { borderColor: 'primary.main', bgcolor: 'primary.50' },
                 }}
@@ -1063,7 +1058,7 @@ export default function MatchRecommendations() {
             variant="contained"
             color="error"
             onClick={confirmRemoveInterest}
-            sx={{ fontWeight: 700, textTransform: 'none' }}
+            sx={{ fontWeight: 700, textTransform: 'none', minWidth: 128, minHeight: 36 }}
           >
             Yes, Remove
           </Button>
