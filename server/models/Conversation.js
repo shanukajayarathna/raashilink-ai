@@ -20,6 +20,15 @@ const conversationSchema = new mongoose.Schema(
     },
     participantKey: { type: String, required: true, unique: true },
     lastMessageAt: { type: Date, default: Date.now },
+    hiddenFor: {
+      type: [
+        {
+          userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+          clearedAt: { type: Date, required: true },
+        },
+      ],
+      default: [],
+    },
   },
   {
     timestamps: true,
