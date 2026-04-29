@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   Box, Container, Typography, Grid, Card, CardContent, 
   Tabs, Tab, Button, Stack, Avatar, IconButton, 
@@ -44,6 +44,25 @@ const COLORS = {
 };
 
 const DEFAULT_WEDDING_HERO_IMAGE = 'https://images.unsplash.com/photo-1519225421980-715cb0215aed?w=1400&q=85&fit=crop';
+
+const ONBOARDING_STEPS_KEY = 'wedding_onboarding_steps';
+const ONBOARDING_DISMISSED_KEY = 'wedding_onboarding_dismissed';
+const emptyOnboardingSteps = {
+  date: false,
+  budget: false,
+  checklist: false,
+  vendors: false,
+};
+
+function buildCoupleOnboardingKey(project: any) {
+  const ids = Array.isArray(project?.coupleUserIds)
+    ? project.coupleUserIds
+        .map((u: any) => String(typeof u === 'object' ? (u?._id || u?.id || '') : u || ''))
+        .filter(Boolean)
+        .sort()
+    : [];
+  return ids.length >= 2 ? ids.join(':') : null;
+}
 
 function buildWeddingDashboardData(project: any, budgetSummary: any, vendorsPayload: any, user: any) {
   const checklist = Array.isArray(project?.checklist) ? project.checklist : [];
@@ -121,9 +140,10 @@ export default function WeddingDashboard() {
   const [setupDate, setSetupDate] = useState('');
   const [setupBudget, setSetupBudget] = useState('');
   const [savingSetup, setSavingSetup] = useState(false);
-  const [onboardingDismissed, setOnboardingDismissed] = useState(() => {
-    try { return localStorage.getItem('wedding_onboarding_dismissed') === '1'; } catch { return false; }
-  });
+  const [onboardingDismissed, setOnboardingDismissed] = useState(false);
+  const [onboardingSteps, setOnboardingSteps] = useState(emptyOnboardingSteps);
+  const [onboardingCoupleKey, setOnboardingCoupleKey] = useState<string | null>(null);
+  const tabsAnchorRef = useRef<HTMLDivElement | null>(null);
 
   const [editBudgetOpen, setEditBudgetOpen] = useState(false);
   const [editBudgetValue, setEditBudgetValue] = useState('');
@@ -248,8 +268,15 @@ export default function WeddingDashboard() {
       setStopConfirm(false);
       setPendingInvite(null);
       // Reset onboarding so the next partner pairing starts fresh
-      try { localStorage.removeItem('wedding_onboarding_dismissed'); } catch { /* ignore */ }
+      try {
+        if (onboardingCoupleKey) {
+          localStorage.removeItem(`${ONBOARDING_DISMISSED_KEY}:${onboardingCoupleKey}`);
+          localStorage.removeItem(`${ONBOARDING_STEPS_KEY}:${onboardingCoupleKey}`);
+        }
+      } catch { /* ignore */ }
       setOnboardingDismissed(false);
+      setOnboardingSteps(emptyOnboardingSteps);
+      setOnboardingCoupleKey(null);
       await fetchData();
       window.dispatchEvent(new CustomEvent('wedding:reset'));
     } catch (err) {
@@ -291,6 +318,37 @@ export default function WeddingDashboard() {
     setLoading(false);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, user, fetchEngagementSummary]);
+
+  useEffect(() => {
+    const isCoupledProject = Array.isArray(rawProject?.coupleUserIds) && rawProject.coupleUserIds.length >= 2;
+    if (!isCoupledProject) {
+      setOnboardingCoupleKey(null);
+      setOnboardingDismissed(false);
+      setOnboardingSteps(emptyOnboardingSteps);
+      return;
+    }
+
+    const key = buildCoupleOnboardingKey(rawProject);
+    if (!key) return;
+    setOnboardingCoupleKey(key);
+
+    try {
+      const dismissedRaw = localStorage.getItem(`${ONBOARDING_DISMISSED_KEY}:${key}`);
+      const stepsRaw = localStorage.getItem(`${ONBOARDING_STEPS_KEY}:${key}`);
+      const parsed = stepsRaw ? JSON.parse(stepsRaw) : null;
+
+      setOnboardingDismissed(dismissedRaw === '1');
+      setOnboardingSteps({
+        date: Boolean(parsed?.date),
+        budget: Boolean(parsed?.budget),
+        checklist: Boolean(parsed?.checklist),
+        vendors: Boolean(parsed?.vendors),
+      });
+    } catch {
+      setOnboardingDismissed(false);
+      setOnboardingSteps(emptyOnboardingSteps);
+    }
+  }, [rawProject]);
 
   // Refresh when the inviter's partner accepts (socket event dispatched from MainLayout)
   useEffect(() => {
@@ -344,6 +402,36 @@ export default function WeddingDashboard() {
     setActiveTab(newValue);
   };
 
+  const markOnboardingStep = useCallback((step: keyof typeof emptyOnboardingSteps) => {
+    setOnboardingSteps((prev) => {
+      if (prev[step]) return prev;
+      const next = { ...prev, [step]: true };
+      try {
+        if (onboardingCoupleKey) {
+          localStorage.setItem(`${ONBOARDING_STEPS_KEY}:${onboardingCoupleKey}`, JSON.stringify(next));
+        }
+      } catch { /* ignore */ }
+      const allClicked = Object.values(next).every(Boolean);
+      if (allClicked) {
+        try {
+          if (onboardingCoupleKey) {
+            localStorage.setItem(`${ONBOARDING_DISMISSED_KEY}:${onboardingCoupleKey}`, '1');
+          }
+        } catch { /* ignore */ }
+        setOnboardingDismissed(true);
+      }
+      return next;
+    });
+  }, [onboardingCoupleKey]);
+
+  const goToTabFromOnboarding = useCallback((tabIndex: number, step: keyof typeof emptyOnboardingSteps) => {
+    markOnboardingStep(step);
+    setActiveTab(tabIndex);
+    requestAnimationFrame(() => {
+      tabsAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }, [markOnboardingStep]);
+
   if (loading) return <WeddingSkeleton />;
   if (error) return <WeddingError error={error} onRetry={() => window.location.reload()} />;
 
@@ -351,6 +439,9 @@ export default function WeddingDashboard() {
   const daysToGo = Math.ceil((new Date(couple.date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
   const isOverBudget = stats.spentSoFar > stats.totalBudget;
   const isCoupled = Array.isArray(rawProject?.coupleUserIds) && rawProject.coupleUserIds.length >= 2;
+  const hasPartner1HeroPic = Boolean(couple.partner1Pic);
+  const hasPartner2HeroPic = Boolean(couple.partner2Pic);
+  const useSplitHeroCover = Boolean(isCoupled && (hasPartner1HeroPic || hasPartner2HeroPic));
   // True only for the person who SENT the invite — not for the one receiving it
   const currentUserId = String(user?.id || user?._id || '');
   const hasSentInvite =
@@ -417,7 +508,7 @@ export default function WeddingDashboard() {
                 variant="contained"
                 disabled={acceptingInvite}
                 onClick={handleAcceptInvite}
-                sx={{ bgcolor: COLORS.primary, borderRadius: 3, fontWeight: 700, textTransform: 'none', px: 2 }}
+                sx={{ bgcolor: COLORS.primary, borderRadius: 3, fontWeight: 700, textTransform: 'none', px: 2, minWidth: 92, minHeight: 32 }}
               >
                 {acceptingInvite ? <CircularProgress size={16} color="inherit" /> : 'Accept'}
               </Button>
@@ -469,7 +560,9 @@ export default function WeddingDashboard() {
               </Stack>
               <Tooltip title="Dismiss">
                 <IconButton size="small" onClick={() => {
-                  localStorage.setItem('wedding_onboarding_dismissed', '1');
+                    if (onboardingCoupleKey) {
+                      localStorage.setItem(`${ONBOARDING_DISMISSED_KEY}:${onboardingCoupleKey}`, '1');
+                    }
                   setOnboardingDismissed(true);
                 }}>
                   <XCircle size={18} color="#aaa" />
@@ -481,7 +574,10 @@ export default function WeddingDashboard() {
               {/* Step 1: Set wedding date */}
               <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                 <Card
-                  onClick={() => setSetupDateOpen(true)}
+                  onClick={() => {
+                    markOnboardingStep('date');
+                    setSetupDateOpen(true);
+                  }}
                   sx={{ borderRadius: 3, border: '1px solid #E8D9A0', cursor: 'pointer', transition: 'all 0.2s',
                     '&:hover': { borderColor: '#C9A84C', boxShadow: '0 4px 16px rgba(201,168,76,0.2)', transform: 'translateY(-2px)' } }}
                 >
@@ -501,7 +597,10 @@ export default function WeddingDashboard() {
               {/* Step 2: Set budget */}
               <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                 <Card
-                  onClick={() => setSetupBudgetOpen(true)}
+                  onClick={() => {
+                    markOnboardingStep('budget');
+                    setSetupBudgetOpen(true);
+                  }}
                   sx={{ borderRadius: 3, border: '1px solid #E8D9A0', cursor: 'pointer', transition: 'all 0.2s',
                     '&:hover': { borderColor: '#C9A84C', boxShadow: '0 4px 16px rgba(201,168,76,0.2)', transform: 'translateY(-2px)' } }}
                 >
@@ -521,7 +620,7 @@ export default function WeddingDashboard() {
               {/* Step 3: Add checklist tasks */}
               <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                 <Card
-                  onClick={() => setActiveTab(1)}
+                  onClick={() => goToTabFromOnboarding(1, 'checklist')}
                   sx={{ borderRadius: 3, border: '1px solid #E8D9A0', cursor: 'pointer', transition: 'all 0.2s',
                     '&:hover': { borderColor: '#C9A84C', boxShadow: '0 4px 16px rgba(201,168,76,0.2)', transform: 'translateY(-2px)' } }}
                 >
@@ -541,7 +640,7 @@ export default function WeddingDashboard() {
               {/* Step 4: Browse vendors */}
               <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                 <Card
-                  onClick={() => setActiveTab(2)}
+                  onClick={() => goToTabFromOnboarding(2, 'vendors')}
                   sx={{ borderRadius: 3, border: '1px solid #E8D9A0', cursor: 'pointer', transition: 'all 0.2s',
                     '&:hover': { borderColor: '#C9A84C', boxShadow: '0 4px 16px rgba(201,168,76,0.2)', transform: 'translateY(-2px)' } }}
                 >
@@ -597,7 +696,7 @@ export default function WeddingDashboard() {
                 }) : prev);
               } catch { /* ignore */ } finally { setSavingSetup(false); }
             }}
-            sx={{ bgcolor: '#C9A84C', '&:hover': { bgcolor: '#A8883E' } }}
+            sx={{ bgcolor: '#C9A84C', '&:hover': { bgcolor: '#A8883E' }, minWidth: 120, minHeight: 36 }}
           >
             {savingSetup ? <CircularProgress size={16} color="inherit" /> : 'Save Date'}
           </Button>
@@ -639,7 +738,7 @@ export default function WeddingDashboard() {
                 }) : prev);
               } catch { /* ignore */ } finally { setSavingSetup(false); }
             }}
-            sx={{ bgcolor: '#C9A84C', '&:hover': { bgcolor: '#A8883E' } }}
+            sx={{ bgcolor: '#C9A84C', '&:hover': { bgcolor: '#A8883E' }, minWidth: 136, minHeight: 36 }}
           >
             {savingSetup ? <CircularProgress size={16} color="inherit" /> : 'Save Budget'}
           </Button>
@@ -660,13 +759,50 @@ export default function WeddingDashboard() {
           boxShadow: '0 20px 40px rgba(0,0,0,0.1)'
         }}
       >
-        {/* Hero background is always a default wedding cover image. */}
-        <Box
-          component="img"
-          src={couple.heroImage}
-          sx={{ width: '100%', height: '100%', objectFit: 'cover' }}
-          referrerPolicy="no-referrer"
-        />
+        {/* When both partners have photos, show a split cover; otherwise use the default image. */}
+        {useSplitHeroCover ? (
+          <Box
+            sx={{
+              width: '100%',
+              height: '100%',
+              position: 'relative',
+            }}
+          >
+            <Box
+              sx={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '50%',
+                height: '100%',
+                backgroundImage: `url(${hasPartner1HeroPic ? couple.partner1Pic : couple.heroImage})`,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+                backgroundRepeat: 'no-repeat',
+              }}
+            />
+            <Box
+              sx={{
+                position: 'absolute',
+                top: 0,
+                right: 0,
+                width: '50%',
+                height: '100%',
+                backgroundImage: `url(${hasPartner2HeroPic ? couple.partner2Pic : couple.heroImage})`,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+                backgroundRepeat: 'no-repeat',
+              }}
+            />
+          </Box>
+        ) : (
+          <Box
+            component="img"
+            src={couple.heroImage}
+            sx={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            referrerPolicy="no-referrer"
+          />
+        )}
         <Box sx={{ 
           position: 'absolute', 
           inset: 0, 
@@ -804,7 +940,13 @@ export default function WeddingDashboard() {
                     variant="outlined"
                     startIcon={<Sparkles size={14} />}
                     onClick={() => {
-                      try { localStorage.removeItem('wedding_onboarding_dismissed'); } catch { /* ignore */ }
+                      try {
+                        if (onboardingCoupleKey) {
+                          localStorage.removeItem(`${ONBOARDING_DISMISSED_KEY}:${onboardingCoupleKey}`);
+                          localStorage.removeItem(`${ONBOARDING_STEPS_KEY}:${onboardingCoupleKey}`);
+                        }
+                      } catch { /* ignore */ }
+                      setOnboardingSteps(emptyOnboardingSteps);
                       setOnboardingDismissed(false);
                     }}
                     sx={{
@@ -840,7 +982,7 @@ export default function WeddingDashboard() {
                       color="error"
                       disabled={resetting}
                       onClick={handleResetWedding}
-                      sx={{ borderRadius: 3, textTransform: 'none', fontWeight: 700, minWidth: 80 }}
+                      sx={{ borderRadius: 3, textTransform: 'none', fontWeight: 700, minWidth: 92, minHeight: 32 }}
                     >
                       {resetting ? <CircularProgress size={14} color="inherit" /> : 'Yes, stop'}
                     </Button>
@@ -904,7 +1046,7 @@ export default function WeddingDashboard() {
       </Grid>
 
       {/* Navigation Tabs */}
-      <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 4 }}>
+      <Box ref={tabsAnchorRef} sx={{ borderBottom: 1, borderColor: 'divider', mb: 4 }}>
         <Tabs 
           value={activeTab} 
           onChange={handleTabChange} 
