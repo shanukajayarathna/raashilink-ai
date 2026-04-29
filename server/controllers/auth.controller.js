@@ -1,18 +1,21 @@
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
+import Vendor from '../models/Vendor.js';
 import AuthOtp from '../models/AuthOtp.js';
 import ApiError from '../utils/ApiError.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import authenticate from '../middleware/auth.js';
 import logger from '../utils/logger.js';
 import { COMMON_SRI_LANKAN_LOCATIONS, resolveBirthPlace, suggestBirthPlaces } from '../utils/birthLocation.js';
+import { storeVendorDocuments } from '../services/vendorDocumentStorage.service.js';
 
 const REGISTRATION_ROLES = ['partner', 'couple', 'vendor'];
 const OTP_EXPIRY_MINUTES = 10;
 const SRI_LANKA_MOBILE_REGEX = /^7\d{8}$/;
 const GENDER_OPTIONS = ['male', 'female', 'non-binary', 'prefer_not_to_say'];
 const SEEKING_GENDER_OPTIONS = ['male', 'female', 'non-binary', 'any'];
+const VENDOR_DOCUMENT_TYPES = new Set(['business_registration', 'tax_certificate', 'insurance', 'license', 'other']);
 
 function buildToken(user) {
   return jwt.sign(
@@ -83,6 +86,72 @@ function normalizePersonalityAnswers(answers = []) {
     if (!Number.isFinite(parsed)) return 3;
     return Math.max(1, Math.min(5, Math.round(parsed)));
   });
+}
+
+function parseBoolean(value) {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    return normalized === 'true' || normalized === '1' || normalized === 'yes' || normalized === 'on';
+  }
+  return Boolean(value);
+}
+
+function parseJsonObject(value, fallback = {}) {
+  if (!value) return fallback;
+  if (typeof value === 'object' && !Array.isArray(value)) return value;
+  if (typeof value !== 'string') return fallback;
+
+  try {
+    const parsed = JSON.parse(value);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed;
+    }
+  } catch {
+    return fallback;
+  }
+
+  return fallback;
+}
+
+function parseJsonArray(value, fallback = []) {
+  if (Array.isArray(value)) return value;
+  if (!value) return fallback;
+  if (typeof value !== 'string') return fallback;
+
+  try {
+    const parsed = JSON.parse(value);
+    if (Array.isArray(parsed)) {
+      return parsed;
+    }
+  } catch {
+    return fallback;
+  }
+
+  return fallback;
+}
+
+function normalizeRegistrationPayload(raw = {}) {
+  const payload = {
+    ...raw,
+    terms: parseBoolean(raw.terms),
+    unknownTime: parseBoolean(raw.unknownTime),
+    locationRadius: Number(raw.locationRadius || 50),
+    socialLinks: parseJsonObject(raw.socialLinks, raw.socialLinks || {}),
+    documentsMeta: parseJsonArray(raw.documentsMeta, []),
+  };
+
+  if (typeof raw.personality === 'string') {
+    payload.personality = parseJsonArray(raw.personality, []);
+  }
+
+  if (Array.isArray(raw.otp)) {
+    payload.otp = raw.otp;
+  } else if (typeof raw.otp === 'string') {
+    payload.otp = raw.otp;
+  }
+
+  return payload;
 }
 
 function sanitizeImageReference(value, { allowDataUri = false } = {}) {
@@ -278,6 +347,13 @@ function validateRegistrationInput(input) {
     if (!input.businessName || !input.businessCategory) {
       if (!input.businessName?.trim()) vendorMissing.push('Enter your business name');
       if (!input.businessCategory?.trim()) vendorMissing.push('Select your business category');
+    }
+    if (!input.businessRegistrationNumber?.trim()) {
+      vendorMissing.push('Enter your business registration number');
+    }
+    const uploadedDocCount = Number(input.documentsCount || 0);
+    if (uploadedDocCount < 1) {
+      vendorMissing.push('Upload at least one business document');
     }
     if (vendorMissing.length > 0) {
       throw new ApiError(400, 'Business details are required for vendor registration', vendorMissing);
@@ -490,7 +566,11 @@ export const verifyOTP = asyncHandler(async (req, res) => {
 });
 
 export const register = asyncHandler(async (req, res) => {
-  validateRegistrationInput(req.body ?? {});
+  const payload = normalizeRegistrationPayload(req.body ?? {});
+  const uploadedFiles = Array.isArray(req.files) ? req.files : [];
+  payload.documentsCount = uploadedFiles.length;
+
+  validateRegistrationInput(payload);
 
   const {
     role,
@@ -510,9 +590,11 @@ export const register = asyncHandler(async (req, res) => {
     businessName,
     businessCategory,
     portfolioUrl,
+    businessRegistrationNumber,
+    socialLinks,
     personality,
     otp,
-  } = req.body ?? {};
+  } = payload;
 
   const existingEmail = await User.findOne({ email: email.toLowerCase() });
   if (existingEmail) {
@@ -529,7 +611,7 @@ export const register = asyncHandler(async (req, res) => {
 
   const passwordHash = await bcrypt.hash(password, 10);
   const normalizedRole = role === 'vendor' ? 'vendor' : 'user';
-  const horoscope = await buildHoroscope(req.body);
+  const horoscope = await buildHoroscope(payload);
   const { birthData, horoscopeData } = splitHoroscopeData(horoscope);
   const verification = {
     emailVerified: false,
@@ -572,7 +654,7 @@ export const register = asyncHandler(async (req, res) => {
     email: email.toLowerCase(),
     passwordHash,
     role: normalizedRole,
-    personalInfo: buildPersonalInfo(req.body),
+    personalInfo: buildPersonalInfo(payload),
     birthData,
     horoscopeData,
     personalityAnswers: normalizedPersonalityAnswers,
@@ -581,14 +663,14 @@ export const register = asyncHandler(async (req, res) => {
       religion,
       preferredLocation: pob || 'Sri Lanka',
       familyValues: 0.75,
-      educationLevel: req.body.education || '',
-      professionType: req.body.profession || '',
+      educationLevel: payload.education || '',
+      professionType: payload.profession || '',
       smoking: 'Never',
       drinking: 'Never',
       diet: 'Not specified',
     },
     preferences: {
-      maxDistanceKm: Number(req.body.locationRadius || 50),
+      maxDistanceKm: Number(payload.locationRadius || 50),
     },
     privacySettings: {
       visibility: visibility || 'Everyone',
@@ -613,6 +695,46 @@ export const register = asyncHandler(async (req, res) => {
           }
         : undefined,
   });
+
+  // Create Vendor document if role is vendor
+  if (role === 'vendor') {
+    const baseApiUrl = `${req.protocol}://${req.get('host')}`;
+    const socialLinksObj = {};
+    if (socialLinks) {
+      if (socialLinks.facebook) socialLinksObj.facebook = socialLinks.facebook;
+      if (socialLinks.instagram) socialLinksObj.instagram = socialLinks.instagram;
+      if (socialLinks.linkedin) socialLinksObj.linkedin = socialLinks.linkedin;
+      if (socialLinks.twitter) socialLinksObj.twitter = socialLinks.twitter;
+      if (socialLinks.website) socialLinksObj.website = socialLinks.website;
+    }
+
+    const documentsMeta = Array.isArray(payload.documentsMeta) ? payload.documentsMeta : [];
+    const storedDocuments = await storeVendorDocuments({ files: uploadedFiles, baseApiUrl });
+    const documentsArray = storedDocuments.map((storedFile, index) => {
+      const meta = documentsMeta[index] || {};
+      const requestedType = typeof meta.type === 'string' ? meta.type : 'other';
+      const type = VENDOR_DOCUMENT_TYPES.has(requestedType) ? requestedType : 'other';
+
+      return {
+        type,
+        url: storedFile.url,
+        fileName: meta.fileName || storedFile.fileName,
+      };
+    });
+
+    await Vendor.create({
+      userId: user._id,
+      businessName: businessName?.trim() || '',
+      category: businessCategory?.trim() || '',
+      description: `${businessName} - Professional vendor profile on RaashiLink.AI`,
+      businessRegistrationNumber: businessRegistrationNumber?.trim() || '',
+      socialLinks: socialLinksObj,
+      documents: documentsArray,
+      approvalStatus: 'pending',
+      serviceArea: ['Sri Lanka'],
+      pricingRange: { min: 0, max: 0 },
+    });
+  }
 
   const token = buildToken(user);
 
