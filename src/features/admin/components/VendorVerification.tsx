@@ -23,6 +23,11 @@ import {
   Alert,
   Tabs,
   Tab,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
 } from '@mui/material';
 import {
   CheckCircle2,
@@ -39,6 +44,7 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import adminService from '../services/adminService';
 
 // Design System Constants
 const COLORS = {
@@ -54,169 +60,258 @@ const COLORS = {
   warning: '#ED6C02',
 };
 
-// Mock Data for Pending Vendors
-const PENDING_VENDORS = [
-  {
-    id: 1,
-    businessName: 'Golden Weddings Sri Lanka',
-    category: 'Wedding Planner',
-    submittedDate: '2023-10-20',
-    avatar: 'https://i.pravatar.cc/150?u=v1',
-    documents: ['Business Registration', 'ID Proof', 'Portfolio'],
-    criteria: [
-      { label: 'Business registration uploaded', status: 'success' },
-      { label: 'Identity verified', status: 'success' },
-      { label: 'Portfolio reviewed', status: 'success' },
-      { label: 'Price list submitted', status: 'pending' },
-    ],
-  },
-  {
-    id: 2,
-    businessName: 'Royal Catering Services',
-    category: 'Catering',
-    submittedDate: '2023-10-22',
-    avatar: 'https://i.pravatar.cc/150?u=v2',
-    documents: ['Food Safety License', 'Business Registration'],
-    criteria: [
-      { label: 'Business registration uploaded', status: 'success' },
-      { label: 'Identity verified', status: 'pending' },
-      { label: 'Portfolio reviewed', status: 'pending' },
-      { label: 'Price list submitted', status: 'success' },
-    ],
-  },
-];
-
 const VendorVerification: React.FC = () => {
   const [activeTab, setActiveTab] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [vendors, setVendors] = useState(PENDING_VENDORS);
+  const [vendors, setVendors] = useState<any[]>([]);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogType, setDialogType] = useState<'approve' | 'reject'>('approve');
+  const [selectedVendor, setSelectedVendor] = useState<any>(null);
+  const [dialogInput, setDialogInput] = useState('');
+  const [processing, setProcessing] = useState(false);
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    const timer = setTimeout(() => setLoading(false), 800);
-    return () => clearTimeout(timer);
-  }, []);
+    loadVendors();
+  }, [page]);
 
-  const handleApprove = (id: number) => {
-    setVendors(vendors.filter((v) => v.id !== id));
-    // In real app, call API: PUT /api/v1/admin/vendors/:id/verify
+  const loadVendors = async () => {
+    try {
+      setLoading(true);
+      setError('');
+      const response = await adminService.getPendingVendors(page, 10);
+      setVendors(response.data.items);
+      setTotalPages(response.data.pages);
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Failed to load vendors');
+      setVendors([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleReject = (id: number) => {
-    setVendors(vendors.filter((v) => v.id !== id));
+  const openApproveDialog = (vendor: any) => {
+    setSelectedVendor(vendor);
+    setDialogType('approve');
+    setDialogInput('');
+    setDialogOpen(true);
+  };
+
+  const openRejectDialog = (vendor: any) => {
+    setSelectedVendor(vendor);
+    setDialogType('reject');
+    setDialogInput('');
+    setDialogOpen(true);
+  };
+
+  const handleApprove = async () => {
+    if (!selectedVendor) return;
+    try {
+      setProcessing(true);
+      await adminService.approveVendor(selectedVendor.id, dialogInput);
+      setDialogOpen(false);
+      await loadVendors();
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Failed to approve vendor');
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const handleReject = async () => {
+    if (!selectedVendor || !dialogInput.trim()) {
+      setError('Please provide a rejection reason');
+      return;
+    }
+    try {
+      setProcessing(true);
+      await adminService.rejectVendor(selectedVendor.id, dialogInput);
+      setDialogOpen(false);
+      await loadVendors();
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Failed to reject vendor');
+    } finally {
+      setProcessing(false);
+    }
   };
 
   const renderPendingQueue = () => (
-    <Grid container spacing={3}>
-      {vendors.length === 0 ? (
-        <Grid size={{ xs: 12 }}>
-          <Box sx={{ textAlign: 'center', py: 8 }}>
-            <CheckCircle2 size={64} color={COLORS.success} style={{ opacity: 0.5, marginBottom: 16 }} />
-            <Typography variant="h6" color="textSecondary">No pending verification requests</Typography>
-          </Box>
-        </Grid>
-      ) : (
-        vendors.map((vendor) => (
-          <Grid size={{ xs: 12, lg: 6 }} key={vendor.id}>
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.3 }}>
-              <Card sx={{ borderRadius: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.05)', overflow: 'visible', position: 'relative' }}>
-                <CardContent sx={{ p: 3 }}>
-                  <Box sx={{ display: 'flex', gap: 3, mb: 3 }}>
-                    <Avatar src={vendor.avatar} sx={{ width: 80, height: 80, border: `4px solid ${COLORS.background}` }} />
-                    <Box sx={{ flexGrow: 1 }}>
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                        <Box>
-                          <Typography variant="h6" sx={{ fontWeight: 800, color: COLORS.primary }}>{vendor.businessName}</Typography>
-                          <Chip label={vendor.category} size="small" sx={{ bgcolor: `${COLORS.accent}15`, color: COLORS.accent, fontWeight: 700, mt: 0.5 }} />
-                        </Box>
-                        <Box sx={{ textAlign: 'right' }}>
-                          <Typography variant="caption" sx={{ color: COLORS.textSecondary, display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                            <Clock size={12} /> Submitted {vendor.submittedDate}
-                          </Typography>
+    <>
+      {error && (
+        <Alert severity="error" sx={{ mb: 3 }}>
+          {error}
+        </Alert>
+      )}
+      <Grid container spacing={3}>
+        {vendors.length === 0 ? (
+          <Grid size={{ xs: 12 }}>
+            <Box sx={{ textAlign: 'center', py: 8 }}>
+              <CheckCircle2 size={64} color={COLORS.success} style={{ opacity: 0.5, marginBottom: 16 }} />
+              <Typography variant="h6" color="textSecondary">No pending verification requests</Typography>
+            </Box>
+          </Grid>
+        ) : (
+          vendors.map((vendor) => (
+            <Grid size={{ xs: 12, lg: 6 }} key={vendor.id}>
+              <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.3 }}>
+                <Card sx={{ borderRadius: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.05)', overflow: 'visible', position: 'relative' }}>
+                  <CardContent sx={{ p: 3 }}>
+                    <Box sx={{ display: 'flex', gap: 3, mb: 3 }}>
+                      <Avatar sx={{ width: 80, height: 80, border: `4px solid ${COLORS.background}`, bgcolor: COLORS.primary }}>
+                        {vendor.ownerName?.charAt(0) || 'V'}
+                      </Avatar>
+                      <Box sx={{ flexGrow: 1 }}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                          <Box>
+                            <Typography variant="h6" sx={{ fontWeight: 800, color: COLORS.primary }}>{vendor.businessName}</Typography>
+                            <Chip label={vendor.category} size="small" sx={{ bgcolor: `${COLORS.accent}15`, color: COLORS.accent, fontWeight: 700, mt: 0.5 }} />
+                            <Typography variant="caption" sx={{ color: COLORS.textSecondary, display: 'block', mt: 1 }}>
+                              Owner: {vendor.ownerName}
+                            </Typography>
+                          </Box>
+                          <Box sx={{ textAlign: 'right' }}>
+                            <Typography variant="caption" sx={{ color: COLORS.textSecondary, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                              <Clock size={12} /> {new Date(vendor.createdAt).toLocaleDateString()}
+                            </Typography>
+                          </Box>
                         </Box>
                       </Box>
                     </Box>
-                  </Box>
 
-                  <Divider sx={{ mb: 3 }} />
+                    <Divider sx={{ mb: 3 }} />
 
-                  <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 2, color: COLORS.textPrimary }}>Verification Checklist</Typography>
-                  <Grid container spacing={2}>
-                    {vendor.criteria.map((item, idx) => (
-                      <Grid size={{ xs: 12, sm: 6 }} key={idx}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                          {item.status === 'success' ? (
-                            <CheckCircle2 size={18} color={COLORS.success} />
-                          ) : item.status === 'pending' ? (
-                            <AlertCircle size={18} color={COLORS.warning} />
-                          ) : (
-                            <XCircle size={18} color={COLORS.error} />
-                          )}
-                          <Typography variant="body2" sx={{ color: item.status === 'pending' ? COLORS.textSecondary : COLORS.textPrimary }}>
-                            {item.label}
-                          </Typography>
-                        </Box>
-                      </Grid>
-                    ))}
-                  </Grid>
-
-                  <Box sx={{ mt: 3, p: 2, bgcolor: COLORS.background, borderRadius: '12px' }}>
-                    <Typography variant="caption" sx={{ fontWeight: 700, color: COLORS.textSecondary, textTransform: 'uppercase', display: 'block', mb: 1 }}>
-                      Uploaded Documents
-                    </Typography>
-                    <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                      {vendor.documents.map((doc, idx) => (
-                        <Chip
-                          key={idx}
-                          icon={<FileText size={14} />}
-                          label={doc}
-                          size="small"
-                          onClick={() => {}}
-                          sx={{ bgcolor: 'white', border: '1px solid #e0e0e0', '&:hover': { bgcolor: '#f5f5f5' } }}
-                        />
-                      ))}
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 2, color: COLORS.textPrimary }}>Business Details</Typography>
+                    <Stack spacing={1} sx={{ mb: 3 }}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <Typography variant="caption" sx={{ color: COLORS.textSecondary }}>Registration #</Typography>
+                        <Typography variant="caption" sx={{ fontWeight: 600 }}>{vendor.businessRegistrationNumber || 'N/A'}</Typography>
+                      </Box>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <Typography variant="caption" sx={{ color: COLORS.textSecondary }}>Email</Typography>
+                        <Typography variant="caption" sx={{ fontWeight: 600 }}>{vendor.ownerEmail}</Typography>
+                      </Box>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <Typography variant="caption" sx={{ color: COLORS.textSecondary }}>Phone</Typography>
+                        <Typography variant="caption" sx={{ fontWeight: 600 }}>{vendor.ownerPhone}</Typography>
+                      </Box>
                     </Stack>
-                  </Box>
-                </CardContent>
-                <CardActions sx={{ p: 3, pt: 0, justifyContent: 'space-between' }}>
-                  <Button startIcon={<MessageSquare size={18} />} sx={{ color: COLORS.textSecondary }}>Request Info</Button>
-                  <Stack direction="row" spacing={2}>
-                    <Button
-                      variant="outlined"
-                      color="error"
-                      onClick={() => handleReject(vendor.id)}
-                      sx={{ borderRadius: '8px' }}
-                    >
-                      Reject
-                    </Button>
-                    <Button
-                      variant="contained"
-                      onClick={() => handleApprove(vendor.id)}
-                      sx={{ bgcolor: COLORS.success, '&:hover': { bgcolor: '#1B5E20' }, borderRadius: '8px' }}
-                    >
-                      Approve Vendor
-                    </Button>
-                  </Stack>
-                </CardActions>
-              </Card>
-            </motion.div>
-          </Grid>
-        ))
+
+                    {vendor.socialLinks && Object.keys(vendor.socialLinks).length > 0 && (
+                      <>
+                        <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 2, color: COLORS.textPrimary }}>Social Links</Typography>
+                        <Stack direction="row" spacing={1} sx={{ mb: 3 }}>
+                          {Object.entries(vendor.socialLinks).map(([platform, url]: [string, any]) => (
+                            url && (
+                              <Tooltip key={platform} title={platform}>
+                                <IconButton
+                                  size="small"
+                                  onClick={() => window.open(url, '_blank')}
+                                  sx={{ color: COLORS.accent }}
+                                >
+                                  <ExternalLink size={16} />
+                                </IconButton>
+                              </Tooltip>
+                            )
+                          ))}
+                        </Stack>
+                      </>
+                    )}
+
+                    {vendor.documents && vendor.documents.length > 0 && (
+                      <>
+                        <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 2, color: COLORS.textPrimary }}>Submitted Documents</Typography>
+                        <Stack spacing={1} sx={{ mb: 3 }}>
+                          {vendor.documents.map((doc: any, idx: number) => (
+                            <Box
+                              key={idx}
+                              sx={{
+                                p: 1.5,
+                                bgcolor: COLORS.background,
+                                borderRadius: '8px',
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                              }}
+                            >
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                <FileText size={16} color={COLORS.accent} />
+                                <Box>
+                                  <Typography variant="caption" sx={{ fontWeight: 600, display: 'block' }}>
+                                    {doc.type?.replace(/_/g, ' ').toUpperCase()}
+                                  </Typography>
+                                  <Typography variant="caption" sx={{ color: COLORS.textSecondary }}>
+                                    {doc.fileName || 'Document'}
+                                  </Typography>
+                                </Box>
+                              </Box>
+                              <IconButton
+                                size="small"
+                                onClick={() => window.open(doc.url, '_blank')}
+                                sx={{ color: COLORS.accent }}
+                              >
+                                <ExternalLink size={16} />
+                              </IconButton>
+                            </Box>
+                          ))}
+                        </Stack>
+                      </>
+                    )}
+                  </CardContent>
+                  <CardActions sx={{ p: 3, pt: 0, justifyContent: 'space-between' }}>
+                    <Button startIcon={<MessageSquare size={18} />} sx={{ color: COLORS.textSecondary }}>Add Note</Button>
+                    <Stack direction="row" spacing={2}>
+                      <Button
+                        variant="outlined"
+                        color="error"
+                        onClick={() => openRejectDialog(vendor)}
+                        sx={{ borderRadius: '8px' }}
+                      >
+                        Reject
+                      </Button>
+                      <Button
+                        variant="contained"
+                        onClick={() => openApproveDialog(vendor)}
+                        sx={{ bgcolor: COLORS.success, '&:hover': { bgcolor: '#1B5E20' }, borderRadius: '8px' }}
+                      >
+                        Approve
+                      </Button>
+                    </Stack>
+                  </CardActions>
+                </Card>
+              </motion.div>
+            </Grid>
+          ))
+        )}
+      </Grid>
+      {totalPages > 1 && (
+        <Box sx={{ mt: 4, display: 'flex', justifyContent: 'center', gap: 2 }}>
+          <Button
+            disabled={page === 1}
+            onClick={() => setPage(page - 1)}
+          >
+            Previous
+          </Button>
+          <Typography sx={{ alignSelf: 'center' }}>
+            Page {page} of {totalPages}
+          </Typography>
+          <Button
+            disabled={page === totalPages}
+            onClick={() => setPage(page + 1)}
+          >
+            Next
+          </Button>
+        </Box>
       )}
-    </Grid>
+    </>
   );
 
   return (
     <Box>
-      <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Box>
-          <Typography variant="h6" sx={{ fontWeight: 700, fontFamily: 'Playfair Display' }}>Vendor Verification</Typography>
-          <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>Manage and approve platform vendors</Typography>
-        </Box>
-        <Tabs value={activeTab} onChange={(_, val) => setActiveTab(val)} sx={{ '& .MuiTabs-indicator': { bgcolor: COLORS.primary } }}>
-          <Tab label={<Badge badgeContent={vendors.length} color="error" sx={{ '& .MuiBadge-badge': { right: -10, top: 0 } }}>Pending Queue</Badge>} />
-          <Tab label="Verified Vendors" />
-          <Tab label="Rejected / Suspended" />
-        </Tabs>
+      <Box sx={{ mb: 4 }}>
+        <Typography variant="h6" sx={{ fontWeight: 700, fontFamily: 'Playfair Display', mb: 1 }}>Vendor Verification</Typography>
+        <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>Manage and approve platform vendors</Typography>
       </Box>
 
       <AnimatePresence mode="wait">
@@ -229,19 +324,62 @@ const VendorVerification: React.FC = () => {
             ))}
           </Grid>
         ) : (
-          <Box key={activeTab}>
-            {activeTab === 0 ? renderPendingQueue() : (
-              <Paper sx={{ p: 8, textAlign: 'center', borderRadius: '16px' }}>
-                <ShieldCheck size={64} color={COLORS.accent} style={{ opacity: 0.3, marginBottom: 16 }} />
-                <Typography variant="h6" color="textSecondary">Detailed vendor list is coming soon</Typography>
-              </Paper>
-            )}
-          </Box>
+          renderPendingQueue()
         )}
       </AnimatePresence>
+
+      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)}>
+        <DialogTitle>
+          {dialogType === 'approve' ? 'Approve Vendor' : 'Reject Vendor'}
+        </DialogTitle>
+        <DialogContent>
+          {dialogType === 'approve' ? (
+            <>
+              <Typography variant="body2" sx={{ mb: 2 }}>
+                Are you sure you want to approve <strong>{selectedVendor?.businessName}</strong>?
+              </Typography>
+              <TextField
+                fullWidth
+                label="Notes (optional)"
+                multiline
+                rows={3}
+                value={dialogInput}
+                onChange={(e) => setDialogInput(e.target.value)}
+                placeholder="Add any notes about the approval..."
+              />
+            </>
+          ) : (
+            <>
+              <Typography variant="body2" sx={{ mb: 2 }}>
+                Please provide a reason for rejecting <strong>{selectedVendor?.businessName}</strong>.
+              </Typography>
+              <TextField
+                fullWidth
+                label="Rejection reason"
+                multiline
+                rows={3}
+                value={dialogInput}
+                onChange={(e) => setDialogInput(e.target.value)}
+                placeholder="Explain why this vendor is being rejected..."
+                error={!dialogInput.trim() && dialogInput !== ''}
+              />
+            </>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDialogOpen(false)}>Cancel</Button>
+          <Button
+            onClick={dialogType === 'approve' ? handleApprove : handleReject}
+            disabled={processing || (dialogType === 'reject' && !dialogInput.trim())}
+            variant="contained"
+            sx={{ bgcolor: dialogType === 'approve' ? COLORS.success : COLORS.error }}
+          >
+            {processing ? 'Processing...' : (dialogType === 'approve' ? 'Approve' : 'Reject')}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };
 
 export default VendorVerification;
-
