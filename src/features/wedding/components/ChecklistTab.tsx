@@ -603,8 +603,8 @@ export default function ChecklistTab({ checklist: initialChecklist, onChecklistC
           <Button onClick={() => setDeleteConfirm(null)} disabled={deletingIdx !== null}>Cancel</Button>
           <Button variant="contained" color="error" onClick={confirmDelete} disabled={deletingIdx !== null}
             startIcon={deletingIdx !== null ? <CircularProgress size={14} color="inherit" /> : undefined}
-            sx={{ borderRadius: 3, fontWeight: 700 }}>
-            {deletingIdx !== null ? 'Deleting…' : 'Delete'}
+            sx={{ borderRadius: 3, fontWeight: 700, minWidth: 108, minHeight: 36 }}>
+            Delete
           </Button>
         </DialogActions>
       </Dialog>
