@@ -2,7 +2,9 @@ import mongoose from 'mongoose';
 import Conversation from '../models/Conversation.js';
 import MatchInterest from '../models/MatchInterest.js';
 import Message from '../models/Message.js';
+import Notification from '../models/Notification.js';
 import User from '../models/User.js';
+import { emitToUser } from '../lib/socket.js';
 import assistantService from '../services/assistant.service.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import ApiError from '../utils/ApiError.js';
@@ -66,12 +68,70 @@ export const sendMessage = asyncHandler(async (req, res) => {
   conversation.lastMessageAt = new Date();
   await conversation.save();
 
+  const sender = await User.findById(req.user._id)
+    .select('personalInfo.firstName personalInfo.lastName personalInfo.profilePic name profilePic')
+    .lean();
+  const senderName =
+    [sender?.personalInfo?.firstName, sender?.personalInfo?.lastName].filter(Boolean).join(' ') ||
+    sender?.name ||
+    'Someone';
+  const senderProfilePic = sender?.personalInfo?.profilePic || sender?.profilePic || null;
+
+  // Emit real-time message event to both parties for live chat updates
+  const messagePayload = {
+    id: String(message._id),
+    conversationId: String(conversation._id),
+    senderId: String(req.user._id),
+    receiverId: String(recipientId),
+    content: message.content,
+    createdAt: message.createdAt.toISOString(),
+  };
+
+  // Emit to recipient so they see the message appear in real-time
+  emitToUser(recipientId, 'message_sent', messagePayload);
+  
+  // Emit to sender so they can confirm message delivery (replace optimistic message)
+  emitToUser(req.user._id, 'message_sent', messagePayload);
+
+  // Create notification (separate from real-time message event)
+  try {
+    const notification = await Notification.create({
+      userId: recipientId,
+      type: 'message_received',
+      fromUserId: req.user._id,
+      fromUserName: senderName,
+      fromUserProfilePic: senderProfilePic,
+      conversationId: conversation._id,
+      metadata: {
+        preview: message.content,
+        messageId: String(message._id),
+      },
+    });
+
+    emitToUser(recipientId, 'notification', {
+      id: String(notification._id),
+      type: notification.type,
+      fromUserId: String(req.user._id),
+      fromUserName: senderName,
+      fromUserProfilePic: senderProfilePic,
+      conversationId: String(conversation._id),
+      metadata: notification.metadata || null,
+      read: false,
+      createdAt: notification.createdAt,
+      preview: message.content,
+    });
+  } catch {
+    // Notification failure should never block chat message delivery.
+  }
+
   res.status(201).json({
     success: true,
     data: {
       conversationId: String(conversation._id),
       message: {
         id: String(message._id),
+        senderId: String(message.senderId),
+        receiverId: String(message.receiverId),
         content: message.content,
         createdAt: message.createdAt,
       },
@@ -163,7 +223,16 @@ export const getChatHistory = asyncHandler(async (req, res) => {
     throw new ApiError(403, 'You cannot access this conversation');
   }
 
-  const messages = await Message.find({ conversationId: req.params.chatId })
+  const hiddenEntry = (conversation.hiddenFor || []).find(
+    (entry) => String(entry.userId) === String(req.user._id)
+  );
+
+  const messagesQuery = { conversationId: req.params.chatId };
+  if (hiddenEntry?.clearedAt) {
+    messagesQuery.createdAt = { $gt: new Date(hiddenEntry.clearedAt) };
+  }
+
+  const messages = await Message.find(messagesQuery)
     .sort({ createdAt: 1 })
     .lean();
 
@@ -248,11 +317,18 @@ export const getConversations = asyncHandler(async (req, res) => {
     })
   );
 
-  const items = await Promise.all(
+  const rawItems = await Promise.all(
     conversations.map(async (conversation) => {
       const lastMessage = await Message.findOne({ conversationId: conversation._id })
         .sort({ createdAt: -1 })
         .lean();
+
+      const hiddenEntry = (conversation.hiddenFor || []).find(
+        (entry) => String(entry.userId) === String(req.user._id)
+      );
+      if (hiddenEntry?.clearedAt && (!lastMessage || new Date(lastMessage.createdAt) <= new Date(hiddenEntry.clearedAt))) {
+        return null;
+      }
 
       const title = (conversation.participants || [])
         .filter((participantId) => String(participantId) !== String(req.user._id))
@@ -276,6 +352,8 @@ export const getConversations = asyncHandler(async (req, res) => {
     })
   );
 
+  const items = rawItems.filter(Boolean);
+
   res.status(200).json({
     success: true,
     data: {
@@ -298,6 +376,10 @@ export const openConversation = asyncHandler(async (req, res) => {
 
   const conversation = await findMutualConversation(req.user._id, userId);
 
+  const hiddenEntry = (conversation.hiddenFor || []).find(
+    (entry) => String(entry.userId) === String(req.user._id)
+  );
+
   const partner = await User.findById(userId)
     .select('personalInfo.firstName personalInfo.lastName personalInfo.profilePic personalInfo.photos')
     .lean();
@@ -313,6 +395,10 @@ export const openConversation = asyncHandler(async (req, res) => {
     .sort({ createdAt: -1 })
     .lean();
 
+  const visibleLastMessage = hiddenEntry?.clearedAt && lastMessage && new Date(lastMessage.createdAt) <= new Date(hiddenEntry.clearedAt)
+    ? null
+    : lastMessage;
+
   res.status(200).json({
     success: true,
     data: {
@@ -326,8 +412,8 @@ export const openConversation = asyncHandler(async (req, res) => {
               new Date(conversation.lastMessageAt)
             )
           : 'Now',
-        preview: lastMessage?.content || 'Start the conversation!',
-        lastSenderId: lastMessage ? String(lastMessage.senderId) : null,
+        preview: visibleLastMessage?.content || 'Start the conversation!',
+        lastSenderId: visibleLastMessage ? String(visibleLastMessage.senderId) : null,
       },
     },
   });
@@ -347,8 +433,19 @@ export const deleteConversation = asyncHandler(async (req, res) => {
     throw new ApiError(404, 'Conversation not found');
   }
 
-  await Message.deleteMany({ conversationId: conversation._id });
-  await conversation.deleteOne();
+  // User-specific clear: hide existing messages only for this user.
+  const now = new Date();
+  const existing = (conversation.hiddenFor || []).find(
+    (entry) => String(entry.userId) === String(req.user._id)
+  );
+
+  if (existing) {
+    existing.clearedAt = now;
+  } else {
+    conversation.hiddenFor.push({ userId: req.user._id, clearedAt: now });
+  }
+
+  await conversation.save();
 
   res.status(200).json({ success: true });
 });
