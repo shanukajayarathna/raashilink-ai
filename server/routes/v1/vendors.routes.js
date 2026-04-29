@@ -7,11 +7,15 @@ import {
   getVendorQuoteInbox,
   updateQuoteRequest,
   getVendorReviews,
+  getVendorProfile,
+  updateVendorProfile,
 } from '../../controllers/vendors.controller.js';
 
 const router = Router();
 
 router.use(authenticate);
+router.get('/profile', getVendorProfile);
+router.patch('/profile', updateVendorProfile);
 router.get('/quotes/inbox', getVendorQuoteInbox);
 router.patch('/quotes/:id', updateQuoteRequest);
 router.get('/search', searchVendors);
