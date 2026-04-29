@@ -76,7 +76,7 @@ const MOCK_USERS = Array.from({ length: 50 }, (_, i) => ({
 }));
 
 const UsersTable: React.FC = () => {
-  const [users, setUsers] = useState(MOCK_USERS);
+  const [users, setUsers] = useState<any[]>(MOCK_USERS);
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [searchQuery, setSearchQuery] = useState('');
@@ -89,10 +89,11 @@ const UsersTable: React.FC = () => {
   const [detailModalOpen, setDetailModalOpen] = useState(false);
 
   useEffect(() => {
-    // Simulate API call
+    // For now, simulating with mock data
+    // In production, replace with: adminService.getUsers(page + 1, rowsPerPage, roleFilter, searchQuery)
     const timer = setTimeout(() => setLoading(false), 800);
     return () => clearTimeout(timer);
-  }, []);
+  }, [page, roleFilter, searchQuery]);
 
   const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setSearchQuery(event.target.value);
