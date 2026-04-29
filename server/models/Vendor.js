@@ -49,6 +49,37 @@ const capacitySchema = new Schema(
   { _id: false }
 );
 
+const socialLinksSchema = new Schema(
+  {
+    facebook: { type: String, trim: true, validate: httpUrlValidator },
+    instagram: { type: String, trim: true, validate: httpUrlValidator },
+    linkedin: { type: String, trim: true, validate: httpUrlValidator },
+    twitter: { type: String, trim: true, validate: httpUrlValidator },
+    website: { type: String, trim: true, validate: httpUrlValidator },
+  },
+  { _id: false }
+);
+
+const documentSchema = new Schema(
+  {
+    type: { type: String, required: true, enum: ['business_registration', 'tax_certificate', 'insurance', 'license', 'other'], trim: true },
+    url: { type: String, required: true, trim: true },
+    fileName: { type: String, trim: true },
+    uploadedAt: { type: Date, default: Date.now },
+  },
+  { _id: true }
+);
+
+const approvalHistorySchema = new Schema(
+  {
+    status: { type: String, required: true, enum: ['pending', 'approved', 'rejected'] },
+    changedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+    changedAt: { type: Date, default: Date.now },
+    reason: { type: String, trim: true, maxlength: 1000 },
+  },
+  { _id: true }
+);
+
 const vendorSchema = new Schema(
   {
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, unique: true, index: true },
@@ -92,6 +123,18 @@ const vendorSchema = new Schema(
     reviews: { type: [reviewSchema], default: [] },
     verified: { type: Boolean, default: false, index: true },
     availabilityCalendar: { type: [availabilityEntrySchema], default: [] },
+    businessRegistrationNumber: { type: String, trim: true, maxlength: 100 },
+    socialLinks: { type: socialLinksSchema, default: () => ({}) },
+    documents: { type: [documentSchema], default: [] },
+    approvalStatus: {
+      type: String,
+      enum: ['pending', 'approved', 'rejected'],
+      default: 'pending',
+      index: true,
+    },
+    approvalHistory: { type: [approvalHistorySchema], default: [] },
+    adminNotes: { type: String, trim: true, maxlength: 2000 },
+    verificationDate: { type: Date },
   },
   {
     timestamps: true,
@@ -108,6 +151,7 @@ vendorSchema.pre('validate', function validatePricing(next) {
 
 vendorSchema.index({ category: 1, verified: 1 });
 vendorSchema.index({ serviceArea: 1, verified: 1, 'ratings.average': -1 });
+vendorSchema.index({ approvalStatus: 1, createdAt: -1 });
 
 const Vendor = mongoose.models.Vendor || mongoose.model('Vendor', vendorSchema);
 
