@@ -82,7 +82,9 @@ const authService = {
    * @returns {Promise<object>} - Registered user data.
    */
   register: async (userData: any) => {
-    const response = await axiosInstance.post('/auth/register', userData);
+    const response = await axiosInstance.post('/auth/register', userData, userData instanceof FormData
+      ? { headers: { 'Content-Type': 'multipart/form-data' } }
+      : undefined);
     return response.data;
   },
 
