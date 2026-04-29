@@ -265,8 +265,8 @@ export default function BudgetTab({ totalBudget = 0, totalSpent = 0, expenses = 
           <Button variant="contained" color="error" disabled={deleting !== null}
             onClick={() => deleteConfirm !== null && handleDelete(deleteConfirm, true)}
             startIcon={deleting !== null ? <CircularProgress size={14} color="inherit" /> : undefined}
-            sx={{ borderRadius: 3, fontWeight: 700 }}>
-            {deleting !== null ? 'Deleting…' : 'Delete'}
+            sx={{ borderRadius: 3, fontWeight: 700, minWidth: 108, minHeight: 36 }}>
+            Delete
           </Button>
         </DialogActions>
       </Dialog>
