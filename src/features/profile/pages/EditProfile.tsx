@@ -83,6 +83,7 @@ export default function EditProfile() {
   const dispatch = useDispatch();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [savingPrivacyField, setSavingPrivacyField] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
@@ -194,12 +195,34 @@ export default function EditProfile() {
     setHasUnsavedChanges(true);
   };
 
-  const handlePrivacyChange = (field: string, value: any) => {
-    setFormData(prev => ({
+  const handlePrivacyChange = async (field: string, value: any) => {
+    const previousValue = formData.privacy[field as keyof typeof formData.privacy];
+
+    // Optimistic UI update for real-time toggle/select behavior.
+    setFormData((prev) => ({
       ...prev,
-      privacy: { ...prev.privacy, [field]: value }
+      privacy: { ...prev.privacy, [field]: value },
     }));
-    setHasUnsavedChanges(true);
+    setSavingPrivacyField(field);
+
+    try {
+      const response = await userService.updateProfile({
+        privacy: { [field]: value },
+      });
+      dispatch(updateUser(response));
+      setSuccessMessage('Privacy setting updated.');
+      setSuccess(true);
+    } catch (err) {
+      console.error('Failed to update privacy setting:', err);
+      // Revert on failure to keep UI consistent with backend state.
+      setFormData((prev) => ({
+        ...prev,
+        privacy: { ...prev.privacy, [field]: previousValue },
+      }));
+      setError('Failed to update privacy setting. Please try again.');
+    } finally {
+      setSavingPrivacyField(null);
+    }
   };
 
   const handleUpdateEmail = async () => {
@@ -693,15 +716,36 @@ export default function EditProfile() {
               </Typography>
               <Stack spacing={2}>
                 <FormControlLabel
-                  control={<Switch checked={formData.privacy.showLastSeen} onChange={(e) => handlePrivacyChange('showLastSeen', e.target.checked)} color="primary" />}
+                  control={
+                    <Switch
+                      checked={formData.privacy.showLastSeen}
+                      onChange={(e) => { void handlePrivacyChange('showLastSeen', e.target.checked); }}
+                      color="primary"
+                      disabled={saving || savingPrivacyField === 'showLastSeen'}
+                    />
+                  }
                   label={<Typography variant="body2">Show my last seen</Typography>}
                 />
                 <FormControlLabel
-                  control={<Switch checked={formData.privacy.showHoroscope} onChange={(e) => handlePrivacyChange('showHoroscope', e.target.checked)} color="primary" />}
+                  control={
+                    <Switch
+                      checked={formData.privacy.showHoroscope}
+                      onChange={(e) => { void handlePrivacyChange('showHoroscope', e.target.checked); }}
+                      color="primary"
+                      disabled={saving || savingPrivacyField === 'showHoroscope'}
+                    />
+                  }
                   label={<Typography variant="body2">Show my horoscope to matches</Typography>}
                 />
                 <FormControlLabel
-                  control={<Switch checked={formData.privacy.showPhone} onChange={(e) => handlePrivacyChange('showPhone', e.target.checked)} color="primary" />}
+                  control={
+                    <Switch
+                      checked={formData.privacy.showPhone}
+                      onChange={(e) => { void handlePrivacyChange('showPhone', e.target.checked); }}
+                      color="primary"
+                      disabled={saving || savingPrivacyField === 'showPhone'}
+                    />
+                  }
                   label={<Typography variant="body2">Show my phone number to matches</Typography>}
                 />
                 
@@ -713,7 +757,8 @@ export default function EditProfile() {
                   size="small"
                   label="Who can message me"
                   value={formData.privacy.whoCanMessage}
-                  onChange={(e) => handlePrivacyChange('whoCanMessage', e.target.value)}
+                  onChange={(e) => { void handlePrivacyChange('whoCanMessage', e.target.value); }}
+                  disabled={saving || savingPrivacyField === 'whoCanMessage'}
                 >
                   <MenuItem value="Everyone">Everyone</MenuItem>
                   <MenuItem value="Matches Only">Matches Only</MenuItem>
@@ -726,7 +771,8 @@ export default function EditProfile() {
                   size="small"
                   label="Who can see my photos"
                   value={formData.privacy.whoCanSeePhotos}
-                  onChange={(e) => handlePrivacyChange('whoCanSeePhotos', e.target.value)}
+                  onChange={(e) => { void handlePrivacyChange('whoCanSeePhotos', e.target.value); }}
+                  disabled={saving || savingPrivacyField === 'whoCanSeePhotos'}
                 >
                   <MenuItem value="Everyone">Everyone</MenuItem>
                   <MenuItem value="Matches Only">Matches Only</MenuItem>
@@ -780,12 +826,14 @@ export default function EditProfile() {
                   bgcolor: COLORS.primary, 
                   borderRadius: '16px', 
                   py: 2, 
+                  minHeight: 64,
+                  minWidth: 220,
                   fontWeight: 800,
                   boxShadow: '0 8px 24px rgba(139,26,46,0.2)',
                   '&:hover': { bgcolor: '#6B1424' }
                 }}
               >
-                {saving ? 'Saving Changes...' : 'Save All Changes'}
+                Save All Changes
               </Button>
             </Box>
           </Stack>
@@ -822,7 +870,7 @@ export default function EditProfile() {
         </DialogContent>
         <DialogActions sx={{ p: 3, pt: 1 }}>
           <Button onClick={() => setShowEmailDialog(false)} sx={{ color: COLORS.textSecondary }}>Cancel</Button>
-          <Button variant="contained" onClick={handleUpdateEmail} disabled={emailDialogSaving} sx={{ bgcolor: COLORS.primary, '&:hover': { bgcolor: '#6B1424' } }}>
+          <Button variant="contained" onClick={handleUpdateEmail} disabled={emailDialogSaving} sx={{ bgcolor: COLORS.primary, '&:hover': { bgcolor: '#6B1424' }, minWidth: 152, minHeight: 36 }}>
             {emailDialogSaving ? <CircularProgress size={20} color="inherit" /> : 'Update Email'}
           </Button>
         </DialogActions>
@@ -850,7 +898,7 @@ export default function EditProfile() {
         </DialogContent>
         <DialogActions sx={{ p: 3, pt: 1 }}>
           <Button onClick={() => setShowPhoneDialog(false)} sx={{ color: COLORS.textSecondary }}>Cancel</Button>
-          <Button variant="contained" onClick={handleUpdatePhone} disabled={phoneDialogSaving} sx={{ bgcolor: COLORS.primary, '&:hover': { bgcolor: '#6B1424' } }}>
+          <Button variant="contained" onClick={handleUpdatePhone} disabled={phoneDialogSaving} sx={{ bgcolor: COLORS.primary, '&:hover': { bgcolor: '#6B1424' }, minWidth: 152, minHeight: 36 }}>
             {phoneDialogSaving ? <CircularProgress size={20} color="inherit" /> : 'Update Phone'}
           </Button>
         </DialogActions>
@@ -921,7 +969,7 @@ export default function EditProfile() {
         </DialogContent>
         <DialogActions sx={{ p: 3, pt: 1 }}>
           <Button onClick={() => setShowPasswordDialog(false)} sx={{ color: COLORS.textSecondary }}>Cancel</Button>
-          <Button variant="contained" onClick={handleChangePassword} disabled={passwordDialogSaving} sx={{ bgcolor: COLORS.primary, '&:hover': { bgcolor: '#6B1424' } }}>
+          <Button variant="contained" onClick={handleChangePassword} disabled={passwordDialogSaving} sx={{ bgcolor: COLORS.primary, '&:hover': { bgcolor: '#6B1424' }, minWidth: 168, minHeight: 36 }}>
             {passwordDialogSaving ? <CircularProgress size={20} color="inherit" /> : 'Change Password'}
           </Button>
         </DialogActions>
