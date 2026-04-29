@@ -22,6 +22,7 @@ interface Conversation {
   img?: string | null;
   preview: string;
   date: string;
+  lastSenderId?: string | null;
 }
 
 interface Message {
@@ -72,6 +73,7 @@ export default function MessagesPage() {
   const [newMessage, setNewMessage] = useState('');
   const [loadingConvs, setLoadingConvs] = useState(true);
   const [loadingMsgs, setLoadingMsgs] = useState(false);
+  const [unreadByConv, setUnreadByConv] = useState<Record<string, number>>({});
   const [openingConvFor, setOpeningConvFor] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [showList, setShowList] = useState(true);
@@ -174,6 +176,50 @@ export default function MessagesPage() {
       // silent
     }
   }, [isMobile]);
+
+  const clearUnreadForConversation = useCallback((conversationId?: string | null) => {
+    if (!conversationId) return;
+    setUnreadByConv((prev) => {
+      if (!prev[conversationId]) return prev;
+      const next = { ...prev };
+      delete next[conversationId];
+      return next;
+    });
+  }, []);
+
+  const syncUnreadFromServer = useCallback(async () => {
+    try {
+      const res: any = await api.get('/notifications');
+      const items: any[] = res.data?.data?.notifications || [];
+      const grouped = items.reduce((acc: Record<string, number>, n: any) => {
+        if (n?.type !== 'message_received' || !n?.conversationId) return acc;
+        acc[n.conversationId] = (acc[n.conversationId] || 0) + 1;
+        return acc;
+      }, {});
+      setUnreadByConv(grouped);
+    } catch {
+      // silent
+    }
+  }, []);
+
+  const markConversationAsRead = useCallback(async (conversationId?: string | null) => {
+    if (!conversationId) return;
+    clearUnreadForConversation(conversationId);
+    try {
+      const res: any = await api.get('/notifications');
+      const items: any[] = res.data?.data?.notifications || [];
+      const ids = items
+        .filter((n) => n?.type === 'message_received' && n?.conversationId === conversationId)
+        .map((n) => n.id)
+        .filter(Boolean);
+      if (ids.length > 0) {
+        await Promise.all(ids.map((id) => api.patch(`/notifications/${id}/read`).catch(() => {})));
+      }
+      window.dispatchEvent(new CustomEvent('app:refresh'));
+    } catch {
+      // silent
+    }
+  }, [clearUnreadForConversation]);
 
   const refreshJourneyState = useCallback(async () => {
     if (!selectedConv) {
@@ -332,6 +378,10 @@ export default function MessagesPage() {
     refreshPendingProposals();
   }, [refreshPendingProposals]);
 
+  useEffect(() => {
+    syncUnreadFromServer();
+  }, [syncUnreadFromServer]);
+
   const handleAcceptProposal = async (proposal: PendingProposal) => {
     setProposalAction({ userId: proposal.userId, type: 'accept' });
     try {
@@ -434,6 +484,17 @@ export default function MessagesPage() {
       .finally(() => setLoadingMsgs(false));
   }, [selectedConv]);
 
+  useEffect(() => {
+    const conversationId = selectedConv?.id || null;
+    window.dispatchEvent(new CustomEvent('chat:activeConversation', { detail: { conversationId } }));
+    if (conversationId) {
+      markConversationAsRead(conversationId);
+    }
+    return () => {
+      window.dispatchEvent(new CustomEvent('chat:activeConversation', { detail: { conversationId: null } }));
+    };
+  }, [selectedConv?.id, markConversationAsRead]);
+
   // Poll active conversation every 5s to keep messages fresh
   useEffect(() => {
     if (!selectedConv) return;
@@ -459,6 +520,7 @@ export default function MessagesPage() {
 
   const handleSelectConv = (conv: Conversation) => {
     setSelectedConv(conv);
+    clearUnreadForConversation(conv.id);
     if (isMobile) setShowList(false);
   };
 
@@ -507,7 +569,14 @@ export default function MessagesPage() {
       const real = resp.data?.data?.message;
       if (real) {
         setMessages((prev) =>
-          prev.map((m) => (m.id === optimistic.id ? { ...m, id: real.id } : m))
+          prev.map((m) => (m.id === optimistic.id
+            ? {
+                ...m,
+                id: real.id,
+                senderId: String(real.senderId || currentUserId || optimistic.senderId),
+                createdAt: real.createdAt || optimistic.createdAt,
+              }
+            : m))
         );
       }
       // Refresh conversation preview
@@ -637,6 +706,57 @@ export default function MessagesPage() {
     };
   }, []);
 
+  // chat socket: live message updates for both ends without refresh
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token || !currentUserId) return;
+    const socket = connectSocket(token);
+
+    const onMessageSent = (payload: any) => {
+      const conversationId = String(payload?.conversationId || '');
+      if (!conversationId) return;
+      const senderId = String(payload?.senderId || '');
+      const content = String(payload?.content || '');
+      const createdAt = payload?.createdAt || new Date().toISOString();
+
+      setConversations((prev) => {
+        const idx = prev.findIndex((c) => c.id === conversationId);
+        if (idx === -1) return prev;
+        const current = prev[idx];
+        const updated: Conversation = {
+          ...current,
+          preview: content,
+          date: new Date(createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+          lastSenderId: senderId,
+        };
+        return [updated, ...prev.filter((c) => c.id !== conversationId)];
+      });
+
+      const isMine = senderId === String(currentUserId);
+      const isActiveConversation = selectedConv?.id === conversationId;
+
+      if (!isMine && isActiveConversation) {
+        setMessages((prev) => {
+          const messageId = String(payload?.id || '');
+          if (messageId && prev.some((m) => m.id === messageId)) return prev;
+          return [...prev, { id: messageId || `live-${Date.now()}`, senderId, content, createdAt }];
+        });
+        clearUnreadForConversation(conversationId);
+        markConversationAsRead(conversationId);
+        return;
+      }
+
+      if (!isMine && !isActiveConversation) {
+        setUnreadByConv((prev) => ({ ...prev, [conversationId]: (prev[conversationId] || 0) + 1 }));
+      }
+    };
+
+    socket.on('message_sent', onMessageSent);
+    return () => {
+      socket.off('message_sent', onMessageSent);
+    };
+  }, [currentUserId, selectedConv?.id, clearUnreadForConversation, markConversationAsRead]);
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -644,8 +764,11 @@ export default function MessagesPage() {
     }
   };
 
-  const initials = (name: string) =>
-    name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2);
+  const initials = (name?: string | null) => {
+    const safe = String(name || '').trim();
+    if (!safe) return '??';
+    return safe.split(/\s+/).map((n) => n[0] || '').join('').toUpperCase().slice(0, 2);
+  };
 
   const formatTime = (iso: string) => {
     const d = new Date(iso);
@@ -676,7 +799,7 @@ export default function MessagesPage() {
       ) : (
         <Box sx={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
           <List disablePadding>
-            {conversations.map((conv) => (
+            {conversations.filter(Boolean).map((conv) => (
               <React.Fragment key={conv.id}>
                 <ListItem
                   disablePadding
@@ -712,6 +835,14 @@ export default function MessagesPage() {
                     <Typography variant="caption" color="text.secondary" sx={{ ml: 1, flexShrink: 0 }}>
                       {conv.date}
                     </Typography>
+                    {(unreadByConv[conv.id] || 0) > 0 && (
+                      <Chip
+                        label={unreadByConv[conv.id] > 99 ? '99+' : unreadByConv[conv.id]}
+                        size="small"
+                        color="primary"
+                        sx={{ ml: 1, height: 18, fontSize: '0.65rem', fontWeight: 700 }}
+                      />
+                    )}
                   </ListItemButton>
                 </ListItem>
                 <Divider component="li" />
