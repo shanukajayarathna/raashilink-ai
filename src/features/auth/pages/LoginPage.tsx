@@ -55,15 +55,7 @@ const LoginPage = () => {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [shake, setShake] = useState(false);
-  const DEMO_CREDENTIALS = [
-    { role: 'admin', email: 'admin@raashilink.ai', password: 'password123', label: 'Admin Demo' },
-    { role: 'vendor', email: 'vendor@raashilink.ai', password: 'password123', label: 'Vendor Demo' },
-    { role: 'user', email: 'user@raashilink.ai', password: 'password123', label: 'User Demo' },
-  ];
-
-  const handleDemoLogin = (demo: typeof DEMO_CREDENTIALS[0]) => {
-    setFormData({ email: demo.email, password: demo.password });
-  };
+  const [isVendorUser, setIsVendorUser] = useState(false);
 
   // Validation
   const [errors, setErrors] = useState({ email: '', password: '' });
@@ -106,10 +98,17 @@ const LoginPage = () => {
     dispatch(setLoading(true));
     try {
       const response = await authService.login(formData);
+      const role = response.role || response.user?.role || (isVendorUser ? 'vendor' : 'user');
+
+      if (role === 'vendor' && !isVendorUser) {
+        const message = 'Enable Vendor account type to log in to a vendor account.';
+        setError(message);
+        dispatch(showToast({ type: 'error', message }));
+        return;
+      }
+
       dispatch(setCredentials(response));
-      
       setSuccess(true);
-      const role = response.role || response.user?.role || 'user';
       let targetPath = '/dashboard';
       if (role === 'admin') targetPath = '/admin';
       else if (role === 'vendor') targetPath = '/vendor';
@@ -171,12 +170,33 @@ const LoginPage = () => {
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8 }}
-            sx={{ zIndex: 1, textAlign: 'center' }}
+            sx={{ zIndex: 1, textAlign: 'center', mt: -12 }}
           >
+            <Box
+              sx={{ 
+                display: 'flex', 
+                flexDirection: 'column', 
+                alignItems: 'center',
+                mt: -10,
+                mb: -12
+              }}
+            >
+              <Box
+                component="img"
+                src="/RaashiLink_Logo.png"
+                alt="RaashiLink Logo"
+                sx={{ 
+                  width: 400, 
+                  height: 400, 
+                  objectFit: 'contain',
+                  filter: 'brightness(0) invert(1) drop-shadow(0 12px 24px rgba(0,0,0,0.3))'
+                }}
+              />
+            </Box>
             <Typography variant="h2" sx={{ 
               fontFamily: 'Playfair Display', 
               fontWeight: 700, 
-              mb: 4,
+              mb: 0,
               color: COLORS.secondary
             }}>
               RaashiLink.AI
@@ -347,28 +367,32 @@ const LoginPage = () => {
                     </Button>
 
                     <Box sx={{ textAlign: 'center', mt: 2 }}>
-                      <Typography variant="body2" sx={{ color: COLORS.textSecondary, mb: 2 }}>
-                        Quick Demo Access:
+                      <Typography variant="body2" sx={{ color: COLORS.textSecondary, mb: 1, fontWeight: 600 }}>
+                        Account type (optional)
                       </Typography>
-                      <Stack direction="row" spacing={1} justifyContent="center">
-                        {DEMO_CREDENTIALS.map((demo) => (
-                          <Button
-                            key={demo.role}
-                            size="small"
-                            variant="outlined"
-                            onClick={() => handleDemoLogin(demo)}
-                            sx={{ 
-                              fontSize: '0.7rem', 
-                              borderRadius: '20px',
-                              borderColor: COLORS.secondary,
-                              color: COLORS.primary,
-                              '&:hover': { bgcolor: COLORS.secondary, color: 'white', borderColor: COLORS.secondary }
-                            }}
-                          >
-                            {demo.label}
-                          </Button>
-                        ))}
-                      </Stack>
+                      <Button
+                        size="small"
+                        variant={isVendorUser ? 'contained' : 'outlined'}
+                        onClick={() => setIsVendorUser((prev) => !prev)}
+                        sx={{
+                          borderRadius: '20px',
+                          textTransform: 'none',
+                          px: 2.5,
+                          ...(isVendorUser
+                            ? {
+                                bgcolor: COLORS.primary,
+                                color: 'white',
+                                '&:hover': { bgcolor: '#6B1424' },
+                              }
+                            : {
+                                borderColor: COLORS.primary,
+                                color: COLORS.primary,
+                                '&:hover': { borderColor: COLORS.primary, bgcolor: 'rgba(139,26,46,0.04)' },
+                              }),
+                        }}
+                      >
+                        Vendor
+                      </Button>
                     </Box>
 
                     <Box sx={{ textAlign: 'center', mt: 2 }}>
@@ -376,7 +400,8 @@ const LoginPage = () => {
                         Don't have an account?{' '}
                         <Typography 
                           component={Link} 
-                          to="/register" 
+                          to="/register"
+                          state={{ from: 'login' }}
                           sx={{ 
                             color: COLORS.primary, 
                             fontWeight: 700, 
@@ -404,7 +429,7 @@ const LoginPage = () => {
                           '&:hover': { bgcolor: 'rgba(139,26,46,0.04)', borderColor: COLORS.primary }
                         }}
                       >
-                        Back to Landing
+                        Back to Home
                       </Button>
                     </Box>
                   </Stack>
