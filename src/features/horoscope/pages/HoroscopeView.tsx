@@ -674,7 +674,7 @@ const HoroscopeView = () => {
             >
               <BirthChartWheel planets={chartPlanets} ascendant={chartSummary?.ascendant || texts.pending} language={language} />
 
-              <Grid container spacing={2} sx={{ mt: 4 }}>
+              <Grid container spacing={2} sx={{ mt: 2 }}>
                 {[
                   { label: texts.moonSign, value: translateHoroscopeValue(chartSummary?.moonSign || texts.pending, language), highlight: false },
                   { label: texts.nakshatra, value: translateHoroscopeValue(chartSummary?.nakshatra || texts.pending, language), highlight: false },
