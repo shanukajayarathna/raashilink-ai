@@ -258,7 +258,7 @@ export default function ChatSidebar({
       </Box>
 
       {/* Footer Actions */}
-      <Box sx={{ p: 2, borderTop: '1px solid', borderColor: 'divider' }}>
+      <Box sx={{ p: 1.5, borderTop: '1px solid', borderColor: 'divider' }}>
         <Button
           fullWidth
           variant="text"
