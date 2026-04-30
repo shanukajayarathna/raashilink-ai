@@ -54,7 +54,7 @@ import {
   CloudUpload
 } from '@mui/icons-material';
 import { motion, AnimatePresence } from 'motion/react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import { setLoading, showToast } from '@/app/store/uiSlice';
 import authService from '@/features/auth/services/authService';
@@ -120,9 +120,13 @@ const MotionCard = motion(Card);
 
 const RegisterPage = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const dispatch = useDispatch();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const cameFromLogin = location.state?.from === 'login';
+  const backTarget = cameFromLogin ? '/login' : '/';
+  const backLabel = cameFromLogin ? 'Back to Login' : 'Back to Home';
   
   const [activeStep, setActiveStep] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
@@ -154,6 +158,15 @@ const RegisterPage = () => {
       businessName: '',
       businessCategory: '',
       portfolioUrl: '',
+      businessRegistrationNumber: '',
+      socialLinks: {
+        facebook: '',
+        instagram: '',
+        linkedin: '',
+        twitter: '',
+        website: '',
+      },
+      documents: [] as Array<{ type: string; url: string; fileName: string }>,
       // Step 3 (Partner only)
       dob: '',
       tob: '',
@@ -172,6 +185,7 @@ const RegisterPage = () => {
 
   const [showPassword, setShowPassword] = useState(false);
   const [selectedProfileImageFile, setSelectedProfileImageFile] = useState<File | null>(null);
+  const [vendorDocumentFiles, setVendorDocumentFiles] = useState<File[]>([]);
   const [profileImageCropOpen, setProfileImageCropOpen] = useState(false);
   const [chartMessageIndex, setChartMessageIndex] = useState(0);
   const [passwordStrength, setPasswordStrength] = useState(0);
@@ -430,6 +444,13 @@ const RegisterPage = () => {
         newFieldErrors.businessCategory = 'Required';
         return 'Business category is required.';
       }
+      if (!formData.businessRegistrationNumber?.trim()) {
+        newFieldErrors.businessRegistrationNumber = 'Required';
+        return 'Business registration number is required.';
+      }
+      if (vendorDocumentFiles.length === 0) {
+        return 'Please upload at least one business document.';
+      }
     }
 
     if (currentStepLabel === 'Finalize') {
@@ -524,9 +545,37 @@ const RegisterPage = () => {
         cleanedData.businessName = formData.businessName.trim();
         cleanedData.businessCategory = formData.businessCategory;
         cleanedData.portfolioUrl = formData.portfolioUrl.trim();
+        cleanedData.businessRegistrationNumber = formData.businessRegistrationNumber.trim();
+        cleanedData.socialLinks = formData.socialLinks;
       }
 
-      await authService.register(cleanedData);
+      const registerPayload = (() => {
+        if (formData.role !== 'vendor') {
+          return cleanedData;
+        }
+
+        const multipartData = new FormData();
+        Object.entries(cleanedData).forEach(([key, value]) => {
+          if (value === undefined || value === null) return;
+
+          if (Array.isArray(value) || typeof value === 'object') {
+            multipartData.append(key, JSON.stringify(value));
+            return;
+          }
+
+          multipartData.append(key, String(value));
+        });
+
+        multipartData.append(
+          'documentsMeta',
+          JSON.stringify(formData.documents.map((doc) => ({ type: doc.type, fileName: doc.fileName })))
+        );
+        vendorDocumentFiles.forEach((file) => multipartData.append('vendorDocuments', file));
+
+        return multipartData;
+      })();
+
+      await authService.register(registerPayload);
       setSuccess(true);
       dispatch(showToast({ type: 'success', message: 'Registration completed. Please log in with your credentials.' }));
       setTimeout(() => navigate('/login'), 1000);
@@ -1004,11 +1053,20 @@ const RegisterPage = () => {
       transition={{ duration: 0.5 }}
     >
       <Typography variant="h5" sx={{ fontFamily: 'Playfair Display', fontWeight: 700, mb: 4, textAlign: 'center' }}>
-        Business Details
+        Business Details & Verification
       </Typography>
       <Grid container spacing={3}>
+        {/* Basic Business Info */}
         <Grid size={{ xs: 12 }}>
-          <TextField fullWidth label="Business Name" value={formData.businessName} onChange={(e) => setFormData({ ...formData, businessName: e.target.value })} sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} error={!!fieldErrors.businessName} helperText={fieldErrors.businessName} />
+          <TextField 
+            fullWidth 
+            label="Business Name" 
+            value={formData.businessName} 
+            onChange={(e) => setFormData({ ...formData, businessName: e.target.value })} 
+            sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} 
+            error={!!fieldErrors.businessName} 
+            helperText={fieldErrors.businessName} 
+          />
         </Grid>
         <Grid size={{ xs: 12, sm: 6 }}>
           <FormControl fullWidth sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} error={!!fieldErrors.businessCategory}>
@@ -1020,13 +1078,174 @@ const RegisterPage = () => {
               <MenuItem value="Attire">Attire & Jewelry</MenuItem>
               <MenuItem value="Music">Music & Entertainment</MenuItem>
               <MenuItem value="Decor">Decor & Flowers</MenuItem>
+              <MenuItem value="Planner">Wedding Planner</MenuItem>
+              <MenuItem value="Travel">Travel & Honeymoon</MenuItem>
+              <MenuItem value="Makeup">Makeup & Beauty</MenuItem>
             </Select>
             {fieldErrors.businessCategory && <Typography variant="caption" sx={{ color: 'error.main', ml: 2 }}>{fieldErrors.businessCategory}</Typography>}
           </FormControl>
         </Grid>
         <Grid size={{ xs: 12, sm: 6 }}>
-          <TextField fullWidth label="Portfolio / Website URL" value={formData.portfolioUrl} onChange={(e) => setFormData({ ...formData, portfolioUrl: e.target.value })} InputProps={{ startAdornment: <InputAdornment position="start"><CloudUpload /></InputAdornment> }} sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} />
+          <TextField 
+            fullWidth 
+            label="Business Registration Number" 
+            placeholder="e.g., REG-2024-001" 
+            value={formData.businessRegistrationNumber} 
+            onChange={(e) => setFormData({ ...formData, businessRegistrationNumber: e.target.value })} 
+            sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} 
+            error={!!fieldErrors.businessRegistrationNumber} 
+            helperText={fieldErrors.businessRegistrationNumber || 'Required for verification'} 
+          />
         </Grid>
+        <Grid size={{ xs: 12 }}>
+          <TextField 
+            fullWidth 
+            label="Portfolio / Website URL" 
+            value={formData.portfolioUrl} 
+            onChange={(e) => setFormData({ ...formData, portfolioUrl: e.target.value })} 
+            InputProps={{ startAdornment: <InputAdornment position="start"><CloudUpload /></InputAdornment> }} 
+            sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} 
+          />
+        </Grid>
+
+        {/* Social Links */}
+        <Grid size={{ xs: 12 }}>
+          <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 2 }}>Social Media Links (Optional)</Typography>
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6 }}>
+          <TextField 
+            fullWidth 
+            label="Facebook" 
+            placeholder="https://facebook.com/yourpage" 
+            value={formData.socialLinks.facebook} 
+            onChange={(e) => setFormData({ ...formData, socialLinks: { ...formData.socialLinks, facebook: e.target.value } })} 
+            sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} 
+          />
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6 }}>
+          <TextField 
+            fullWidth 
+            label="Instagram" 
+            placeholder="https://instagram.com/yourprofile" 
+            value={formData.socialLinks.instagram} 
+            onChange={(e) => setFormData({ ...formData, socialLinks: { ...formData.socialLinks, instagram: e.target.value } })} 
+            sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} 
+          />
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6 }}>
+          <TextField 
+            fullWidth 
+            label="LinkedIn" 
+            placeholder="https://linkedin.com/company/yourcompany" 
+            value={formData.socialLinks.linkedin} 
+            onChange={(e) => setFormData({ ...formData, socialLinks: { ...formData.socialLinks, linkedin: e.target.value } })} 
+            sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} 
+          />
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6 }}>
+          <TextField 
+            fullWidth 
+            label="Twitter" 
+            placeholder="https://twitter.com/yourhandle" 
+            value={formData.socialLinks.twitter} 
+            onChange={(e) => setFormData({ ...formData, socialLinks: { ...formData.socialLinks, twitter: e.target.value } })} 
+            sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} 
+          />
+        </Grid>
+        <Grid size={{ xs: 12 }}>
+          <TextField 
+            fullWidth 
+            label="Business Website" 
+            placeholder="https://yourbusiness.com" 
+            value={formData.socialLinks.website} 
+            onChange={(e) => setFormData({ ...formData, socialLinks: { ...formData.socialLinks, website: e.target.value } })} 
+            sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} 
+          />
+        </Grid>
+
+        {/* Document Upload */}
+        <Grid size={{ xs: 12 }}>
+          <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 2 }}>Upload Business Documents *</Typography>
+          <Paper sx={{ p: 3, borderRadius: '12px', border: `2px dashed ${COLORS.accent}`, cursor: 'pointer', textAlign: 'center', bgcolor: `${COLORS.accent}05` }}>
+            <CloudUpload sx={{ fontSize: 40, color: COLORS.accent, mb: 1 }} />
+            <Typography variant="body2" sx={{ fontWeight: 600, mb: 1 }}>
+              Upload Documents
+            </Typography>
+            <Typography variant="caption" sx={{ color: COLORS.textSecondary }}>
+              Business Registration, Tax Certificate, License, Insurance, etc.
+            </Typography>
+            <input 
+              type="file" 
+              multiple 
+              accept="application/pdf,image/*,.doc,.docx"
+              onChange={(e) => {
+                const files = Array.from(e.target.files || []);
+                const newDocs = files.map((file) => ({
+                  type: 'business_registration',
+                  url: URL.createObjectURL(file),
+                  fileName: file.name,
+                }));
+                setVendorDocumentFiles((prev) => [...prev, ...files]);
+                setFormData({ ...formData, documents: [...formData.documents, ...newDocs] });
+                e.currentTarget.value = '';
+              }}
+              style={{ display: 'none', cursor: 'pointer' }}
+              id="doc-upload"
+            />
+            <Box component="label" htmlFor="doc-upload" sx={{ cursor: 'pointer', display: 'block' }}>
+              <Button 
+                variant="contained" 
+                sx={{ mt: 2, bgcolor: COLORS.accent, borderRadius: '8px' }}
+                component="span"
+              >
+                Choose Files
+              </Button>
+            </Box>
+          </Paper>
+        </Grid>
+
+        {/* Uploaded Documents List */}
+        {formData.documents.length > 0 && (
+          <Grid size={{ xs: 12 }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 2 }}>Uploaded Documents ({formData.documents.length})</Typography>
+            <Stack spacing={1}>
+              {formData.documents.map((doc, idx) => (
+                <Box 
+                  key={idx} 
+                  sx={{ 
+                    p: 2, 
+                    bgcolor: COLORS.cream, 
+                    borderRadius: '8px', 
+                    display: 'flex', 
+                    justifyContent: 'space-between', 
+                    alignItems: 'center' 
+                  }}
+                >
+                  <Box>
+                    <Typography variant="body2" sx={{ fontWeight: 600 }}>{doc.fileName}</Typography>
+                    <Typography variant="caption" sx={{ color: COLORS.textSecondary }}>Document uploaded</Typography>
+                  </Box>
+                  <Button 
+                    size="small" 
+                    color="error"
+                    onClick={() => {
+                      const nextDocs = formData.documents.filter((_, i) => i !== idx);
+                      const nextFiles = vendorDocumentFiles.filter((_, i) => i !== idx);
+                      const removedDoc = formData.documents[idx];
+                      if (removedDoc?.url) {
+                        URL.revokeObjectURL(removedDoc.url);
+                      }
+                      setVendorDocumentFiles(nextFiles);
+                      setFormData({ ...formData, documents: nextDocs });
+                    }}
+                  >
+                    Remove
+                  </Button>
+                </Box>
+              ))}
+            </Stack>
+          </Grid>
+        )}
       </Grid>
     </MotionBox>
   );
@@ -1140,24 +1359,37 @@ const RegisterPage = () => {
   };
 
   return (
-    <Box sx={{ minHeight: '100vh', bgcolor: COLORS.cream, py: 6, position: 'relative', overflow: 'hidden' }}>
+    <Box sx={{ minHeight: '100vh', bgcolor: COLORS.cream, pt: 2, pb: 6, position: 'relative', overflow: 'hidden' }}>
       <MandalaBackground size={420} sx={{ top: -100, right: -120 }} />
       <MandalaBackground size={320} opacity={0.035} sx={{ bottom: -80, left: -80 }} />
       <Container maxWidth="lg">
         <MotionBox
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          sx={{ mb: 6, textAlign: 'center' }}
+          sx={{ mb: -1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0 }}
         >
-          <Typography variant="h3" sx={{ fontFamily: 'Playfair Display', fontWeight: 700, color: COLORS.primary, mb: 1 }}>
-            Join RaashiLink.AI
-          </Typography>
-          <Typography variant="body1" sx={{ color: COLORS.textSecondary }}>
-            Start your journey towards a cosmic connection.
-          </Typography>
+          <Box
+            component="img"
+            src="/RaashiLink_Logo.png"
+            alt="RaashiLink Logo"
+            sx={{ 
+              width: 220, 
+              height: 220, 
+              mr: -6,
+              objectFit: 'contain'
+            }}
+          />
+          <Box sx={{ textAlign: 'left' }}>
+            <Typography variant="h3" sx={{ fontFamily: 'Playfair Display', fontWeight: 700, color: COLORS.primary, mb: 0 }}>
+              Join RaashiLink.AI
+            </Typography>
+            <Typography variant="body1" sx={{ color: COLORS.textSecondary }}>
+              Start your journey towards a cosmic connection.
+            </Typography>
+          </Box>
         </MotionBox>
 
-        <Paper elevation={0} sx={{ p: { xs: 3, md: 6 }, borderRadius: '32px', boxShadow: '0 20px 60px rgba(139,26,46,0.05)', position: 'relative', overflow: 'hidden' }}>
+        <Paper elevation={0} sx={{ p: { xs: 3, md: 6 }, borderRadius: '32px', boxShadow: '0 20px 60px rgba(139,26,46,0.05)', position: 'relative', overflow: 'hidden', minHeight: 680 }}>
           {/* Progress Indicator */}
           <Box sx={{ mb: 6 }}>
             <Stepper activeStep={activeStep} alternativeLabel={!isMobile}>
@@ -1183,7 +1415,7 @@ const RegisterPage = () => {
                 <Typography variant="body1" sx={{ color: COLORS.textSecondary }}>Welcome to the family. Redirecting you now...</Typography>
               </MotionBox>
             ) : (
-              <Box key={activeStep}>
+              <Box key={activeStep} sx={{ minHeight: 450 }}>
                 {renderStepContent(activeStep)}
                 
                 {error && (
@@ -1203,15 +1435,22 @@ const RegisterPage = () => {
                   </Alert>
                 )}
 
-                <Stack direction="row" spacing={2} justifyContent="space-between" sx={{ mt: 8 }}>
-                  <Button
-                    disabled={activeStep === 0 || isLoading}
-                    onClick={handleBack}
-                    startIcon={<ArrowBack />}
-                    sx={{ color: COLORS.textSecondary, fontWeight: 700 }}
-                  >
-                    Back
-                  </Button>
+                <Stack 
+                  direction="row" 
+                  spacing={2} 
+                  justifyContent={activeStep === 0 ? "flex-end" : "space-between"} 
+                  sx={{ mt: 8 }}
+                >
+                  {activeStep > 0 && (
+                    <Button
+                      disabled={isLoading}
+                      onClick={handleBack}
+                      startIcon={<ArrowBack />}
+                      sx={{ color: COLORS.textSecondary, fontWeight: 700 }}
+                    >
+                      Back
+                    </Button>
+                  )}
                   <Button
                     variant="contained"
                     onClick={handleNext}
@@ -1239,7 +1478,7 @@ const RegisterPage = () => {
           <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="center" alignItems="center" spacing={2}>
             <Button
               component={Link}
-              to="/"
+              to={backTarget}
               startIcon={<ArrowBack />}
               sx={{
                 color: COLORS.textPrimary,
@@ -1252,7 +1491,7 @@ const RegisterPage = () => {
               }}
               variant="outlined"
             >
-              Back to Landing
+              {backLabel}
             </Button>
 
             <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
