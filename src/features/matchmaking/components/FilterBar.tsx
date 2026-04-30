@@ -271,7 +271,7 @@ export default function FilterBar({ onFilterChange, onReset }: FilterBarProps) {
               sx: { borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '80vh' }
             }}
           >
-            <Box sx={{ p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Box sx={{ p: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <Typography variant="h6" sx={{ fontFamily: 'FONTS.heading', fontWeight: 'bold' }}>Filters</Typography>
               <IconButton onClick={() => setIsOpen(false)}><X size={20} /></IconButton>
             </Box>
@@ -281,7 +281,7 @@ export default function FilterBar({ onFilterChange, onReset }: FilterBarProps) {
         </Box>
       ) : (
         <>
-          <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1.5 }}>
+          <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
             <Box>
               <Typography variant="subtitle1" sx={{ fontWeight: 800, color: 'primary.main', lineHeight: 1.1 }}>
                 Search & Filters
