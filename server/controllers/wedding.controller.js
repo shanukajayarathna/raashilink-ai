@@ -529,6 +529,61 @@ export const acceptInvite = asyncHandler(async (req, res) => {
   // Also notify the acceptor so their MessagesPage updates to 'coupled' in real-time
   emitToUser(String(req.user._id), 'wedding_accepted', { acceptorId: String(req.user._id), acceptorName });
 
+  // Fetch inviter info to use as "fromUser" in the acceptor's unlock notification
+  const inviter = await User.findById(inviterId)
+    .select('personalInfo.firstName personalInfo.lastName personalInfo.profilePic name profilePic')
+    .lean();
+  const inviterName =
+    [inviter?.personalInfo?.firstName, inviter?.personalInfo?.lastName].filter(Boolean).join(' ') ||
+    inviter?.name ||
+    'Your partner';
+
+  // Send "planning unlocked" notification to BOTH users
+  const [unlockNotifForInviter, unlockNotifForAcceptor] = await Promise.all([
+    Notification.create({
+      userId: inviterId,
+      type: 'wedding_planning_unlocked',
+      fromUserId: req.user._id,
+      fromUserName: acceptorName,
+      fromUserProfilePic: acceptor?.personalInfo?.profilePic || acceptor?.profilePic || null,
+      metadata: { partnerId: String(req.user._id) },
+    }),
+    Notification.create({
+      userId: req.user._id,
+      type: 'wedding_planning_unlocked',
+      fromUserId: inviterId,
+      fromUserName: inviterName,
+      fromUserProfilePic: inviter?.personalInfo?.profilePic || inviter?.profilePic || null,
+      metadata: { partnerId: String(inviterId) },
+    }),
+  ]);
+
+  const unlockPayloadBase = { read: false };
+  emitToUser(inviterId, 'notification', {
+    id: String(unlockNotifForInviter._id),
+    type: 'wedding_planning_unlocked',
+    fromUserId: String(req.user._id),
+    fromUserName: acceptorName,
+    fromUserProfilePic: acceptor?.personalInfo?.profilePic || acceptor?.profilePic || null,
+    metadata: { partnerId: String(req.user._id) },
+    ...unlockPayloadBase,
+    createdAt: unlockNotifForInviter.createdAt,
+  });
+  emitToUser(String(req.user._id), 'notification', {
+    id: String(unlockNotifForAcceptor._id),
+    type: 'wedding_planning_unlocked',
+    fromUserId: String(inviterId),
+    fromUserName: inviterName,
+    fromUserProfilePic: inviter?.personalInfo?.profilePic || inviter?.profilePic || null,
+    metadata: { partnerId: String(inviterId) },
+    ...unlockPayloadBase,
+    createdAt: unlockNotifForAcceptor.createdAt,
+  });
+
+  // Signal both clients to unlock vendor/honeymoon pages immediately
+  emitToUser(inviterId, 'planning_unlocked', { partnerId: String(req.user._id) });
+  emitToUser(String(req.user._id), 'planning_unlocked', { partnerId: String(inviterId) });
+
   res.status(200).json({
     success: true,
     message: 'Invitation accepted — wedding project shared!',
