@@ -17,6 +17,7 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  Pagination,
 } from '@mui/material';
 import { motion } from 'motion/react';
 import { ChevronRight, RefreshCw, SearchX, Heart, MessageCircle, UserMinus, MapPin, Sparkles, Send, Inbox, UserCheck, UserX, Clock } from 'lucide-react';
@@ -31,6 +32,7 @@ import { useDispatch } from 'react-redux';
 import { showToast } from '@/app/store/uiSlice';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useRealtimeUpdates } from '@/shared/hooks/useRealtimeUpdates';
+import BlockingBackdrop from '@/shared/components/BlockingBackdrop';
 
 export default function MatchRecommendations() {
   const dispatch = useDispatch();
@@ -41,6 +43,7 @@ export default function MatchRecommendations() {
   const [mutualLoading, setMutualLoading] = useState(true);
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [removeConfirm, setRemoveConfirm] = useState<{ matchId: string; matchName: string; hasWedding: boolean } | null>(null);
+  const [totalMatches, setTotalMatches] = useState(0);
   const [pendingSent, setPendingSent] = useState<any[]>([]);
   const [pendingReceived, setPendingReceived] = useState<any[]>([]);
   const [pendingLoading, setPendingLoading] = useState(true);
@@ -61,6 +64,9 @@ export default function MatchRecommendations() {
     name: '',
   });
 
+  const [interestBlocking, setInterestBlocking] = useState(false);
+  const interestBlockingRef = useRef(false);
+
   const [filters, setFilters] = useState({
     ageRange: [18, 90],
     religions: [],
@@ -69,6 +75,8 @@ export default function MatchRecommendations() {
     heightRange: [140, 200],
     sortBy: 'compatibility',
     search: '',
+    page: 1,
+    pageSize: 16,
   });
 
   const bestMatch = matches.length > 0 ? matches[0] : null;
@@ -82,6 +90,7 @@ export default function MatchRecommendations() {
         forceRefresh ? { ...filters, refresh: true } : filters
       );
       setMatches(response.data.items || []);
+      setTotalMatches(response.data.total || 0);
       setDidYouMean(response.data.didYouMean || []);
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to load recommendations. Please try again.');
@@ -159,6 +168,10 @@ export default function MatchRecommendations() {
       // OR in pendingReceived (they sent first and we just accepted) — clear both.
       setPendingSent((prev) => prev.filter((m) => m.id !== data.fromUserId));
       setPendingReceived((prev) => prev.filter((m) => m.id !== data.fromUserId));
+      setMatches((prev) => prev.filter((m) => m.id !== data.fromUserId));
+      if (selectedMatchId === data.fromUserId) {
+        setDetailPanelOpen(false);
+      }
       refreshMutualMatches();
     },
     onMatchRemoved: (data) => {
@@ -227,6 +240,9 @@ export default function MatchRecommendations() {
   };
 
   const handleAcceptInterest = async (id: string) => {
+    if (interestBlockingRef.current) return;
+    interestBlockingRef.current = true;
+    setInterestBlocking(true);
     setAcceptingId(id);
     try {
       const res = await matchService.expressInterest(id);
@@ -242,6 +258,8 @@ export default function MatchRecommendations() {
       dispatch(showToast({ type: 'error', message: err.response?.data?.message || 'Failed to accept interest.' }));
     } finally {
       setAcceptingId(null);
+      interestBlockingRef.current = false;
+      setInterestBlocking(false);
     }
   };
 
@@ -283,6 +301,8 @@ export default function MatchRecommendations() {
       heightRange: [140, 200],
       sortBy: 'compatibility',
       search: '',
+      page: 1,
+      pageSize: 16,
     });
   };
 
@@ -295,6 +315,9 @@ export default function MatchRecommendations() {
   };
 
   const handleExpressInterest = async (id: string) => {
+    if (interestBlockingRef.current) return;
+    interestBlockingRef.current = true;
+    setInterestBlocking(true);
     try {
       const response = await matchService.expressInterest(id);
       const matchData = matches.find((m) => m.id === id);
@@ -336,6 +359,9 @@ export default function MatchRecommendations() {
       }
     } catch (err: any) {
       dispatch(showToast({ type: 'error', message: err.response?.data?.message || 'Failed to express interest.' }));
+    } finally {
+      interestBlockingRef.current = false;
+      setInterestBlocking(false);
     }
   };
 
@@ -360,14 +386,14 @@ export default function MatchRecommendations() {
 
   const renderSkeletons = () => (
     <Grid container spacing={4}>
-      {[...Array(6)].map((_, index) => (
-        <Grid size={{ xs: 12, sm: 6, lg: 4 }} key={index}>
+      {[...Array(16)].map((_, index) => (
+        <Grid size={{ xs: 12, sm: 6, md: 4, lg: 3 }} key={index}>
           <Box sx={{ bgcolor: 'white', borderRadius: 6, overflow: 'hidden', border: '1px solid', borderColor: 'divider' }}>
             <Skeleton variant="rectangular" width="100%" height={300} animation="wave" />
             <Box sx={{ p: 3, display: 'flex', flexDirection: 'column', gap: 2 }}>
               <Skeleton variant="text" width="60%" height={32} />
               <Skeleton variant="text" width="40%" height={20} />
-              <Stack direction="row" spacing={2} sx={{ mt: 2 }}>
+              <Stack direction="row" spacing={2} sx={{ mt: 1 }}>
                 <Skeleton variant="rectangular" width="100%" height={40} sx={{ borderRadius: 3 }} />
                 <Skeleton variant="rectangular" width="100%" height={40} sx={{ borderRadius: 3 }} />
               </Stack>
@@ -417,7 +443,8 @@ export default function MatchRecommendations() {
 
   return (
     <Container maxWidth="xl" sx={{ py: 4 }}>
-      <Box sx={{ mb: 6 }}>
+      <BlockingBackdrop open={interestBlocking} message="Sending interest…" />
+      <Box sx={{ mb: 3 }}>
         <Typography variant="h3" sx={{ fontFamily: 'FONTS.heading', fontWeight: 'bold', color: 'primary.main', mb: 1 }}>
           Match Recommendations
         </Typography>
@@ -468,8 +495,8 @@ export default function MatchRecommendations() {
 
           {mutualLoading ? (
             <Grid container spacing={3}>
-              {[...Array(3)].map((_, i) => (
-                <Grid size={{ xs: 12, sm: 6, md: 4 }} key={i}>
+              {[...Array(4)].map((_, i) => (
+                <Grid size={{ xs: 12, sm: 6, md: 4, lg: 3 }} key={i}>
                   <Box sx={{ bgcolor: 'white', borderRadius: 4, p: 3, border: '1px solid', borderColor: 'divider' }}>
                     <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 2 }}>
                       <Skeleton variant="circular" width={56} height={56} />
@@ -489,7 +516,7 @@ export default function MatchRecommendations() {
                 const initials = match.initials || match.name?.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2) || '??';
                 const isRemoving = removingId === match.id;
                 return (
-                  <Grid size={{ xs: 12, sm: 6, md: 4 }} key={match.id}>
+                  <Grid size={{ xs: 12, sm: 6, md: 4, lg: 3 }} key={match.id}>
                     <motion.div
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
@@ -964,7 +991,7 @@ export default function MatchRecommendations() {
 
             <Grid container spacing={4}>
               {matches.map((match) => (
-                <Grid size={{ xs: 12, sm: 6, lg: 4 }} key={match.id}>
+                <Grid size={{ xs: 12, sm: 6, md: 4, lg: 3 }} key={match.id}>
                   <MatchCard
                     match={match}
                     onViewProfile={handleViewProfile}
@@ -975,10 +1002,24 @@ export default function MatchRecommendations() {
               ))}
             </Grid>
 
-            <Box sx={{ mt: 8, textAlign: 'center' }}>
-              <Typography variant="caption" sx={{ display: 'block', mb: 2, color: 'text.secondary', fontWeight: 'bold' }}>
-                Showing {matches.length} compatible profiles
+            <Box sx={{ mt: 8, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
+              <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary', fontWeight: 'bold' }}>
+                Showing {matches.length} of {totalMatches} compatible profiles
               </Typography>
+              
+              {totalMatches > filters.pageSize && (
+                <Pagination 
+                  count={Math.ceil(totalMatches / filters.pageSize)} 
+                  page={filters.page} 
+                  onChange={(_, value) => {
+                    setFilters(prev => ({ ...prev, page: value }));
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }} 
+                  color="primary" 
+                  size="large"
+                />
+              )}
+
               <Button
                 variant="outlined"
                 onClick={() => fetchMatches(true)}
