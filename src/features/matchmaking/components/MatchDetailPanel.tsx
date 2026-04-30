@@ -150,7 +150,28 @@ export default function MatchDetailPanel({
           </IconButton>
         </Box>
 
-        <Box sx={{ flex: 1, overflowY: 'auto', p: 3, display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+        <Box
+          sx={{
+            flex: 1,
+            overflowY: 'auto',
+            overflowX: 'hidden',
+            bgcolor: 'background.default',
+            // Remove the visible "track strip" on WebKit-based browsers
+            '&::-webkit-scrollbar': {
+              width: 10,
+            },
+            '&::-webkit-scrollbar-track': {
+              background: 'transparent',
+            },
+            '&::-webkit-scrollbar-thumb': {
+              backgroundColor: 'rgba(139,26,46,0.22)',
+              borderRadius: 999,
+              border: '3px solid transparent',
+              backgroundClip: 'content-box',
+            },
+          }}
+        >
+          <Box sx={{ p: 3, display: 'flex', flexDirection: 'column', gap: 2.5 }}>
           {loading && (
             <Box sx={{ py: 12, textAlign: 'center' }}>
               <CircularProgress />
@@ -446,9 +467,10 @@ export default function MatchDetailPanel({
               </Box>
             </>
           )}
+          </Box>
         </Box>
 
-        <Box sx={{ p: 3, bgcolor: 'white', borderTop: '1px solid', borderColor: 'divider' }}>
+        <Box sx={{ p: 2, bgcolor: 'white', borderTop: '1px solid', borderColor: 'divider' }}>
           {showNotMatchedAlert && (
             <Alert
               severity="info"
