@@ -215,7 +215,9 @@ export default function MessagesPage() {
       if (ids.length > 0) {
         await Promise.all(ids.map((id) => api.patch(`/notifications/${id}/read`).catch(() => {})));
       }
-      window.dispatchEvent(new CustomEvent('app:refresh'));
+      // Only refresh notification counters; don't refresh the whole app
+      // (which causes visible reloading of pending proposals).
+      window.dispatchEvent(new CustomEvent('notifications:refresh'));
     } catch {
       // silent
     }
@@ -283,18 +285,18 @@ export default function MessagesPage() {
       setEngagementBannerUserId(selectedConv.otherUserId);
       return;
     }
-    // Fallback: check unread notifications (covers landing directly on messages page)
     // Skip if already engaged — the invite was already handled
     if (engagedWithUserId === selectedConv.otherUserId) {
       setEngagementBannerUserId(null);
       return;
     }
-    api.get('/notifications').then((res: any) => {
-      const items: any[] = res.data?.data?.notifications || [];
-      const invite = items.find(
-        (n) => n.type === 'engagement_invite' && n.fromUserId === selectedConv.otherUserId
-      );
-      setEngagementBannerUserId(invite ? selectedConv.otherUserId : null);
+    // Don't rely on unread notifications here (they can be stale after a cancel).
+    // Only show the banner when DB state says the partner currently has a pending proposal to us.
+    api.get(`/matches/${selectedConv.otherUserId}/engagement`).then((res: any) => {
+      const { status, proposerId } = res.data?.data || {};
+      const proposer = proposerId != null ? String(proposerId) : null;
+      const shouldShow = status === 'proposed' && proposer === String(selectedConv.otherUserId);
+      setEngagementBannerUserId(shouldShow ? selectedConv.otherUserId : null);
     }).catch(() => setEngagementBannerUserId(null));
   }, [selectedConv, deepLinkEngagementProposerId, engagedWithUserId]);
 
@@ -719,9 +721,16 @@ export default function MessagesPage() {
       const content = String(payload?.content || '');
       const createdAt = payload?.createdAt || new Date().toISOString();
 
+      let missingConversation = false;
+      let missingOtherUserId = '';
       setConversations((prev) => {
         const idx = prev.findIndex((c) => c.id === conversationId);
-        if (idx === -1) return prev;
+        if (idx === -1) {
+          missingConversation = true;
+          const isMine = senderId === String(currentUserId);
+          missingOtherUserId = isMine ? String(payload?.receiverId || '') : senderId;
+          return prev;
+        }
         const current = prev[idx];
         const updated: Conversation = {
           ...current,
@@ -734,6 +743,23 @@ export default function MessagesPage() {
 
       const isMine = senderId === String(currentUserId);
       const isActiveConversation = selectedConv?.id === conversationId;
+
+      // If this user had deleted/cleared the conversation, recreate it silently so it appears again.
+      if (missingConversation && missingOtherUserId) {
+        api.post('/chat/conversations/open', { userId: missingOtherUserId })
+          .then((res: any) => {
+            const conv = res.data?.data?.conversation as Conversation | undefined;
+            if (!conv?.id) return;
+            setConversations((list) => [conv, ...list.filter((c) => c.id !== conv.id)]);
+            // Only auto-open if user isn't currently inside another chat
+            setSelectedConv((current) => {
+              if (current) return current;
+              if (isMobile) setShowList(false);
+              return conv;
+            });
+          })
+          .catch(() => {});
+      }
 
       if (!isMine && isActiveConversation) {
         setMessages((prev) => {
@@ -852,7 +878,7 @@ export default function MessagesPage() {
 
           {(loadingPendingProposals || pendingProposals.length > 0) && (
             <Box sx={{ borderTop: '1px solid', borderColor: 'divider' }}>
-              <Box sx={{ px: 2, pt: 1.5, pb: 0.5, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Box sx={{ px: 2, pt: 1, pb: 0.5, display: 'flex', alignItems: 'center', gap: 1 }}>
                 <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary', letterSpacing: '0.06em' }}>
                   PENDING PROPOSALS
                 </Typography>
@@ -937,7 +963,7 @@ export default function MessagesPage() {
 
               {eligibleMatches.length > 0 && (
             <Box sx={{ mt: 'auto', borderTop: '1px solid', borderColor: 'divider' }}>
-              <Box sx={{ px: 2, pt: 1.5, pb: 0.5, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Box sx={{ px: 2, pt: 1, pb: 0.5, display: 'flex', alignItems: 'center', gap: 1 }}>
                 <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary', letterSpacing: '0.06em' }}>
                   ELIGIBLE CHATS
                 </Typography>
@@ -1350,7 +1376,7 @@ export default function MessagesPage() {
       </Box>
 
       {/* Input */}
-      <Box sx={{ p: 2, borderTop: '1px solid', borderColor: 'divider' }}>
+      <Box sx={{ p: 1.5, borderTop: '1px solid', borderColor: 'divider' }}>
         <Stack direction="row" spacing={1} alignItems="flex-end">
           <TextField
             fullWidth
@@ -1383,7 +1409,19 @@ export default function MessagesPage() {
 
   return (
     <>
-      <Box sx={{ height: 'calc(100vh - 80px)', display: 'flex', overflow: 'hidden', bgcolor: 'background.paper', borderRadius: 2, border: '1px solid', borderColor: 'divider' }}>
+      <Box
+        sx={{
+          mt: 5, // 4px top margin to visually balance with 5px header gap
+          height: { xs: 'calc(100vh - 220px)', md: 'calc(100vh - 260px)' },
+          minHeight: 520,
+          display: 'flex',
+          overflow: 'hidden',
+          bgcolor: 'background.paper',
+          borderRadius: 2,
+          border: '1px solid',
+          borderColor: 'divider',
+        }}
+      >
         {isMobile ? (
           <>
             {showList && conversationList}
@@ -1404,7 +1442,7 @@ export default function MessagesPage() {
           Start Planning Your Wedding 🎉
         </DialogTitle>
         <DialogContent>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
             Congratulations on your engagement! 💎
           </Typography>
           <Typography variant="body2" color="text.secondary">
