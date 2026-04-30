@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   Box, 
   Grid, 
@@ -31,7 +31,7 @@ import {
 } from '@mui/material';
 import { 
   Favorite, 
-  Notifications, 
+  Settings, 
   CheckCircle, 
   CalendarToday as CalendarMonth, 
   LocationOn, 
@@ -76,6 +76,7 @@ import CoupleDashboard from '@/features/dashboard/pages/CoupleDashboard';
 import { translateZodiacSign } from '@/features/horoscope/utils/horoscopeLocalization';
 import { computeMissingItems } from '@/features/profile/utils/profileData';
 import { useRealtimeUpdates } from '@/shared/hooks/useRealtimeUpdates';
+import BlockingBackdrop from '@/shared/components/BlockingBackdrop';
 
 // Design System Constants
 const COLORS = {
@@ -366,8 +367,7 @@ const TopMatchCard = ({ match, loading, onViewMatch, onExpressInterest }: { matc
                 style={{ height: '100%', backgroundColor: COLORS.accent }}
               />
             </Box>
-          </Box>
-          
+          </Box>  
           <Grid container spacing={1}>
             {[
               { label: 'Astrological', icon: '♈', score: match.scores.astrological },
@@ -389,7 +389,7 @@ const TopMatchCard = ({ match, loading, onViewMatch, onExpressInterest }: { matc
         </Grid>
       </Grid>
       
-      <Stack direction="row" spacing={2} sx={{ mt: 3 }}>
+      <Stack direction="row" spacing={2} sx={{ mt: 1.5 }}>
         <Button 
           fullWidth 
           variant="contained"
@@ -473,7 +473,7 @@ const MatchStats = ({ stats, loading }: { stats: any; loading?: boolean }) => {
         ))}
       </Grid>
       
-      <Box sx={{ height: 100, mt: 3 }}>
+      <Box sx={{ height: 100, mt: 1.5 }}>
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={stats.weeklyActivity}>
             <Line 
@@ -827,6 +827,9 @@ export default function UserDashboard() {
   if (user?.profileType === 'couple') {
     return <CoupleDashboard />;
   }
+
+  // Remove default top margin/padding from main content container
+  // Find the main wrapping Box/Container/Stack and set pt: 0, mt: 0
   
   const [loading, setLoading] = useState(true);
   const [widgetLoading, setWidgetLoading] = useState(true);
@@ -849,6 +852,20 @@ export default function UserDashboard() {
   const [selectedInterestImg, setSelectedInterestImg] = useState<string | null>(null);
   const [interestDetailOpen, setInterestDetailOpen] = useState(false);
   const [pendingLoading, setPendingLoading] = useState(true);
+  const [interestBlocking, setInterestBlocking] = useState(false);
+  const interestBlockingRef = useRef(false);
+
+  const runInterestAction = useCallback(async function <T>(action: () => Promise<T>): Promise<T | null> {
+    if (interestBlockingRef.current) return null;
+    interestBlockingRef.current = true;
+    setInterestBlocking(true);
+    try {
+      return await action();
+    } finally {
+      interestBlockingRef.current = false;
+      setInterestBlocking(false);
+    }
+  }, []);
   const [data, setData] = useState<any>(() => {
     const userData = user || JSON.parse(localStorage.getItem('user') || 'null') || {};
     return {
@@ -880,12 +897,9 @@ export default function UserDashboard() {
       // Start null – the profile API fetch is the authoritative source.
       // Using userData.verification here would surface a stale cached value.
       verification: null,
-      notifications: [
-        { id: 1, text: 'Dashboard is updating your recommendations…', time: 'now', read: false },
-      ],
+
     };
   });
-  const [drawerOpen, setDrawerOpen] = useState(false);
   const [verifyDialog, setVerifyDialog] = useState<{ open: boolean; channel: 'email' | 'phone' | null }>({
     open: false,
     channel: null,
@@ -1102,9 +1116,7 @@ export default function UserDashboard() {
               weeklyActivity: buildWeeklyActivity(recommendationItems.length),
             },
           },
-          notifications: [
-            { id: 1, text: 'Dashboard synced with your live profile', time: 'now', read: false },
-          ],
+
         }));
       } catch (error) {
         console.error('Error fetching dashboard widgets', error);
@@ -1307,7 +1319,8 @@ export default function UserDashboard() {
   }
 
   return (
-    <Box sx={{ p: { xs: 2, md: 4 }, bgcolor: COLORS.background, minHeight: '100vh', position: 'relative' }}>
+    <Box sx={{ p: { xs: 2, md: 4 }, bgcolor: alpha(COLORS.background, 0.85), minHeight: '100vh', position: 'relative' }}>
+      <BlockingBackdrop open={interestBlocking} message="Sending interest…" />
       {/* Header Section */}
       <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: { xs: 1, md: 3 }, flexWrap: 'wrap' }}>
         <Avatar
@@ -1326,18 +1339,20 @@ export default function UserDashboard() {
           <Typography variant="h4" sx={{ fontFamily: 'Playfair Display', fontWeight: 700, color: COLORS.primary, wordWrap: 'break-word', overflowWrap: 'break-word', whiteSpace: 'normal' }}>
             {getGreeting()}, {data.summary.name} ✨
           </Typography>
-          <Stack direction="row" spacing={1} alignItems="center" sx={{ flexWrap: 'wrap', gap: 1 }}>
-            <Typography variant="body2" sx={{ color: COLORS.textSecondary, fontSize: '0.875rem', whiteSpace: 'nowrap' }}>
+          <Stack direction="row" spacing={1} alignItems="center" sx={{ flexWrap: 'wrap', gap: 1.5 }}>
+            <Typography variant="body1" sx={{ color: COLORS.textSecondary, fontSize: '1.05rem', fontWeight: 500, whiteSpace: 'nowrap' }}>
               {getGregorianDate()} ·{' '}
               <Box component="span" sx={{ fontFamily: 'monospace', fontVariantNumeric: 'tabular-nums', display: 'inline-block', minWidth: '7.5ch' }}>
                 {getLiveTimeString()}
               </Box>{' '}|
             </Typography>
-            <Chip label={`${data.summary.nakshatra} Nakshatra`} size="small" sx={{ bgcolor: COLORS.secondary, color: COLORS.primary, fontWeight: 700, height: 24 }} />
+            <Chip 
+              label={`${data.summary.nakshatra} Nakshatra`} 
+              sx={{ bgcolor: COLORS.secondary, color: COLORS.primary, fontWeight: 700, height: 32, fontSize: '0.95rem' }} 
+            />
             <Chip
               label={`Gana: ${data.summary.gana}`}
-              size="small"
-              sx={{ bgcolor: alpha(COLORS.accent, 0.12), color: COLORS.accent, fontWeight: 800, height: 24 }}
+              sx={{ bgcolor: alpha(COLORS.accent, 0.12), color: COLORS.accent, fontWeight: 800, height: 32, fontSize: '0.95rem' }}
             />
             <Chip
               label={`ලග්නය (Ascendant): ${
@@ -1345,30 +1360,31 @@ export default function UserDashboard() {
                   ? `${translateZodiacSign(data.summary.ascendant, 'si')} (${data.summary.ascendant})`
                   : 'බලාපොරොත්තු වේ (Pending)'
               }`}
-              size="small"
               sx={{
                 bgcolor: alpha(COLORS.primary, 0.08),
                 color: COLORS.primary,
                 fontWeight: 800,
-                height: 26,
+                height: 32,
+                fontSize: '0.95rem',
                 '& .MuiChip-label': {
                   fontFamily: '"Noto Sans Sinhala", "Iskoola Pota", "Segoe UI", sans-serif',
                 },
               }}
             />
+            <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 1, bgcolor: alpha(COLORS.accent, 0.06), px: 2, py: 1, borderRadius: '12px', border: `1px solid ${alpha(COLORS.accent, 0.15)}` }}>
+              <AccessTime sx={{ color: COLORS.accent, fontSize: 18 }} />
+              <Typography variant="body2" sx={{ color: COLORS.accent, fontWeight: 700, fontSize: '0.95rem' }}>
+                Today's Focus: {data.summary.auspiciousTime}
+              </Typography>
+            </Box>
           </Stack>
-          <Typography variant="caption" sx={{ color: COLORS.accent, fontWeight: 700 }}>
-            Your auspicious time today: {data.summary.auspiciousTime}
-          </Typography>
         </MotionBox>
         
         <IconButton 
-          onClick={() => setDrawerOpen(true)}
-          sx={{ bgcolor: COLORS.white, boxShadow: '0 4px 12px rgba(0,0,0,0.05)', flexShrink: 0 }}
+          onClick={() => navigate('/profile?edit=true')}
+          sx={{ bgcolor: COLORS.white, boxShadow: '0 4px 12px rgba(0,0,0,0.05)', flexShrink: 0, '&:hover': { bgcolor: alpha(COLORS.secondary, 0.08) } }}
         >
-          <Badge badgeContent={data.notifications.filter((n: any) => !n.read).length} color="error">
-            <Notifications sx={{ color: COLORS.primary }} />
-          </Badge>
+          <Settings sx={{ color: COLORS.primary }} />
         </IconButton>
       </Box>
 
@@ -1404,7 +1420,8 @@ export default function UserDashboard() {
             onViewMatch={(id) => navigate(`/matches?view=${id}`)}
             onExpressInterest={async (id) => {
               try {
-                await matchService.expressInterest(id);
+                const res = await runInterestAction(() => matchService.expressInterest(id));
+                if (!res) return;
                 dispatch(showToast({ type: 'success', message: 'Interest expressed! 💌' }));
                 void refreshPendingInterests();
               } catch (err: any) {
@@ -1474,9 +1491,9 @@ export default function UserDashboard() {
               </Stack>
 
               {!mutualMatchesLoading && mutualMatches.length > 0 && (
-                <Alert severity="info" sx={{ mb: 2, borderRadius: 3 }}>
-                  <Typography variant="caption" sx={{ fontWeight: 700 }}>
-                    Next step guide: 1) Open Message with your mutual match. 2) Propose engagement in chat. 3) After acceptance, send wedding invite.
+                <Alert severity="info" icon={<CheckCircleOutline sx={{ color: COLORS.accent }} />} sx={{ mb: 3, borderRadius: 3, border: `1px solid ${alpha(COLORS.accent, 0.2)}`, bgcolor: alpha(COLORS.accent, 0.04), color: COLORS.textPrimary }}>
+                  <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                    Success Roadmap: Open chat → Propose engagement → Send wedding invite
                   </Typography>
                 </Alert>
               )}
@@ -1491,7 +1508,13 @@ export default function UserDashboard() {
                 </Stack>
               ) : (
                 <Stack direction="row" spacing={2} sx={{ overflowX: 'auto', pb: 1, scrollbarWidth: 'thin' }}>
-                  {mutualMatches.map((match, idx) => {
+                  {mutualMatches.length === 0 ? (
+                    <Box sx={{ width: '100%', py: 4, display: 'flex', flexDirection: 'column', alignItems: 'center', opacity: 0.7 }}>
+                      <Favorite sx={{ fontSize: 48, color: alpha(COLORS.primary, 0.3), mb: 1 }} />
+                      <Typography variant="body1" sx={{ fontWeight: 700, color: COLORS.textSecondary }}>Finding your soulmate...</Typography>
+                      <Typography variant="body2" sx={{ color: alpha(COLORS.textSecondary, 0.8) }}>Express interest in profiles to unlock mutual matches.</Typography>
+                    </Box>
+                  ) : mutualMatches.map((match, idx) => {
                     const initials = match.initials || match.name?.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2) || '??';
                     const isRemoving = removingMatchId === match.id;
                     return (
@@ -1569,6 +1592,7 @@ export default function UserDashboard() {
                                     conversationId: match.conversationId || undefined,
                                     openUserId: match.id,
                                     openUserName: match.name,
+                                    startConversation: true,
                                   }
                                 })}
                                 sx={{
@@ -1717,7 +1741,8 @@ export default function UserDashboard() {
                                     size="small"
                                     onClick={async () => {
                                       try {
-                                        const res = await matchService.expressInterest(match.id);
+                                        const res = await runInterestAction(() => matchService.expressInterest(match.id));
+                                        if (!res) return;
                                         setPendingReceived((p) => p.filter((m) => m.id !== match.id));
                                         if (res.data?.matched) {
                                           setMutualMatches((p) => [...p, match]);
@@ -1845,66 +1870,18 @@ export default function UserDashboard() {
         )}
       </Grid>
 
-      {/* Notification Drawer */}
-      <Drawer
-        anchor="right"
-        open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
-        PaperProps={{
-          sx: { width: { xs: '100%', sm: 350 }, p: 3, bgcolor: COLORS.background }
-        }}
-      >
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-          <Typography variant="h6" sx={{ fontFamily: 'Playfair Display', fontWeight: 700, color: COLORS.primary }}>
-            Recent Activity
-          </Typography>
-          <IconButton onClick={() => setDrawerOpen(false)}><Close /></IconButton>
-        </Box>
-        
-        <List sx={{ p: 0 }}>
-          {data.notifications.map((notif: any) => (
-            <ListItem 
-              key={notif.id} 
-              sx={{ 
-                mb: 2, 
-                bgcolor: COLORS.white, 
-                borderRadius: '16px', 
-                boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
-                borderLeft: notif.read ? 'none' : `4px solid ${COLORS.primary}`
-              }}
-            >
-              <ListItemIcon sx={{ minWidth: 40 }}>
-                {notif.text.includes('liked') ? <Favorite sx={{ color: COLORS.primary }} /> : 
-                 notif.text.includes('match') ? <TrendingUp sx={{ color: COLORS.accent }} /> : 
-                 <CalendarMonth sx={{ color: COLORS.secondary }} />}
-              </ListItemIcon>
-              <ListItemText 
-                primary={notif.text} 
-                secondary={notif.time}
-                primaryTypographyProps={{ variant: 'body2', fontWeight: notif.read ? 400 : 700 }}
-                secondaryTypographyProps={{ variant: 'caption' }}
-              />
-              {!notif.read && <Circle sx={{ fontSize: 8, color: COLORS.primary }} />}
-            </ListItem>
-          ))}
-        </List>
-        
-        <Button fullWidth sx={{ mt: 2, color: COLORS.primary, fontWeight: 700 }}>
-          Mark all as read
-        </Button>
-      </Drawer>
+
 
       {/* Decorative Background Motif */}
       <Box sx={{ 
         position: 'fixed', 
-        bottom: -50, 
-        right: -50, 
-        width: 300, 
-        height: 300, 
-        opacity: 0.03, 
+        inset: 0,
+        opacity: 0.02, 
         zIndex: -1,
-        backgroundImage: `url("data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M50 0 L60 40 L100 50 L60 60 L50 100 L40 60 L0 50 L40 40 Z' fill='%238B1A2E' /%3E%3C/svg%3E")`,
-        backgroundSize: '100px 100px'
+        pointerEvents: 'none',
+        backgroundImage: `url("data:image/svg+xml,%3Csvg width='120' height='120' viewBox='0 0 120 120' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M60 0 C65 25 85 45 120 60 C85 75 65 95 60 120 C55 95 35 75 0 60 C35 45 55 25 60 0 Z' fill='%238B1A2E' /%3E%3Cpath d='M60 20 C62 35 75 48 90 50 C75 52 62 65 60 80 C58 65 45 52 30 50 C45 48 58 35 60 20 Z' fill='%23C9A84C' /%3E%3C/svg%3E")`,
+        backgroundSize: '180px 180px',
+        backgroundPosition: 'center center'
       }} />
 
       <Dialog open={verifyDialog.open} onClose={() => setVerifyDialog({ open: false, channel: null })} fullWidth maxWidth="xs">
@@ -1912,7 +1889,7 @@ export default function UserDashboard() {
           Verify {verifyDialog.channel === 'email' ? 'Email' : 'Phone'}
         </DialogTitle>
         <DialogContent>
-          <Stack spacing={2} sx={{ pt: 1 }}>
+          <Stack spacing={2} sx={{ pt: 0.5 }}>
             <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
               Enter the 6-digit OTP sent to your {verifyDialog.channel}.
             </Typography>
@@ -1940,7 +1917,8 @@ export default function UserDashboard() {
         onSendMessage={(id) => { setInterestDetailOpen(false); navigate('/messages', { state: { openUserId: id } }); }}
         onExpressInterest={async (id) => {
           try {
-            const res = await matchService.expressInterest(id);
+            const res = await runInterestAction(() => matchService.expressInterest(id));
+            if (!res) return;
             setPendingReceived((p) => p.filter((m) => m.id !== id));
             if (res.data?.matched) {
               dispatch(showToast({ type: 'success', message: 'Mutual match unlocked!' }));
