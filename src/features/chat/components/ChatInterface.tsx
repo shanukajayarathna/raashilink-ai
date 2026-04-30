@@ -197,7 +197,7 @@ export default function ChatInterface({ isCompact, onClose, initialMessages = []
       </Box>
 
       {/* Input Area */}
-      <Box sx={{ p: isCompact ? 1.5 : 2, bgcolor: 'white', borderTop: '1px solid', borderColor: 'divider' }}>
+      <Box sx={{ p: isCompact ? 1 : 1.5, bgcolor: 'white', borderTop: '1px solid', borderColor: 'divider' }}>
         <Container maxWidth={isCompact ? false : "md"} disableGutters={isCompact}>
           <Stack direction="row" spacing={1} alignItems="flex-end">
             {!isCompact && (
