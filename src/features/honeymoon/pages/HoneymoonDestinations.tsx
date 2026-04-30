@@ -7,15 +7,14 @@ import {
   Grid,
   Paper,
   Button,
-  IconButton,
   Chip,
   alpha,
   useTheme,
   useMediaQuery,
-  Skeleton,
+  Card,
+  CardContent,
   ToggleButtonGroup,
   ToggleButton,
-  Fade,
 } from '@mui/material';
 import {
   Sparkles,
@@ -33,9 +32,14 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { useNavigate } from 'react-router-dom';
 import honeymoonService from '../services/honeymoonService';
 import DestinationCard from '../components/DestinationCard';
 import WorldMapView from '../components/WorldMapView';
+import { useSelector } from 'react-redux';
+import { RootState } from '@/app/store/store';
+import weddingService from '@/features/wedding/services/weddingService';
+import { connectSocket } from '@/shared/hooks/useRealtimeUpdates';
 
 const COLORS = {
   primary: '#8B1A2E',
@@ -107,6 +111,7 @@ function mapDestinationCard(destination: any, index: number) {
 }
 
 export default function HoneymoonDestinations() {
+  const navigate = useNavigate();
   const [showQuiz, setShowQuiz] = useState(true);
   const [viewMode, setViewMode] = useState<'grid' | 'map'>('grid');
   const [loading, setLoading] = useState(false);
@@ -116,8 +121,65 @@ export default function HoneymoonDestinations() {
     budget: '',
     duration: '',
   });
+  const [planningAccessGranted, setPlanningAccessGranted] = useState(false);
+  const [planningCheckLoading, setPlanningCheckLoading] = useState(true);
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  const { token } = useSelector((state: RootState) => state.auth);
+
+  useEffect(() => {
+    const fetchPlanningAccess = async () => {
+      if (!token) {
+        setPlanningAccessGranted(false);
+        setPlanningCheckLoading(false);
+        return;
+      }
+      try {
+        const projectResponse = await weddingService.getProject();
+        const project = projectResponse?.data;
+        const isCoupled = Array.isArray(project?.coupleUserIds) && project.coupleUserIds.length >= 2;
+        setPlanningAccessGranted(isCoupled);
+      } catch {
+        setPlanningAccessGranted(false);
+      } finally {
+        setPlanningCheckLoading(false);
+      }
+    };
+
+    fetchPlanningAccess();
+  }, [token]);
+
+  useEffect(() => {
+    if (planningCheckLoading || planningAccessGranted) return;
+    const previousOverflow = document.body.style.overflow;
+    const previousHtmlOverflow = document.documentElement.style.overflow;
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.documentElement.style.overflow = previousHtmlOverflow;
+    };
+  }, [planningCheckLoading, planningAccessGranted]);
+
+  // Unlock immediately when partner accepts the wedding invite
+  useEffect(() => {
+    if (!token) return;
+    const checkAccess = async () => {
+      try {
+        const projectResponse = await weddingService.getProject();
+        const project = projectResponse?.data;
+        const isCoupled = Array.isArray(project?.coupleUserIds) && project.coupleUserIds.length >= 2;
+        if (isCoupled) setPlanningAccessGranted(true);
+      } catch { /* silent */ }
+    };
+    const socket = connectSocket(token);
+    socket.on('planning_unlocked', checkAccess);
+    window.addEventListener('planning:unlocked', checkAccess);
+    return () => {
+      socket.off('planning_unlocked', checkAccess);
+      window.removeEventListener('planning:unlocked', checkAccess);
+    };
+  }, [token]);
 
   const handleGetRecommendations = async () => {
     if (!preferences.vibe || !preferences.budget || !preferences.duration) return;
@@ -143,7 +205,8 @@ export default function HoneymoonDestinations() {
   };
 
   return (
-    <Box sx={{ bgcolor: COLORS.cream, minHeight: '100vh', pt: 12, pb: 8 }}>
+    <Box sx={{ bgcolor: COLORS.cream, minHeight: '100vh', pt: 6, pb: 8, position: 'relative' }}>
+      <Box>
       <Container maxWidth="lg">
         <AnimatePresence mode="wait">
           {showQuiz ? (
@@ -363,6 +426,46 @@ export default function HoneymoonDestinations() {
           )}
         </AnimatePresence>
       </Container>
+
+      </Box>
+
+      {!planningCheckLoading && !planningAccessGranted && (
+        <Box
+          sx={{
+            position: 'fixed',
+            top: '64px',
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 1099,
+            backdropFilter: 'blur(14px)',
+            WebkitBackdropFilter: 'blur(14px)',
+            bgcolor: 'rgba(18, 12, 6, 0.25)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            p: 3,
+          }}
+        >
+          <Card sx={{ maxWidth: 560, borderRadius: 5, border: '1px solid #E6C87E', boxShadow: '0 16px 40px rgba(0,0,0,0.18)' }}>
+            <CardContent sx={{ p: 4, textAlign: 'center' }}>
+              <Typography variant="h5" sx={{ fontWeight: 900, color: COLORS.primary, mb: 1 }}>
+                Honeymoon planning is locked
+              </Typography>
+              <Typography variant="body1" sx={{ color: COLORS.textSecondary }}>
+                This section unlocks after both partners accept wedding planning together.
+              </Typography>
+              <Button
+                variant="contained"
+                onClick={() => navigate('/messages')}
+                sx={{ mt: 3, bgcolor: COLORS.primary, borderRadius: 3, fontWeight: 700, textTransform: 'none' }}
+              >
+                Go to Messages to Send/Accept Invite
+              </Button>
+            </CardContent>
+          </Card>
+        </Box>
+      )}
     </Box>
   );
 }
