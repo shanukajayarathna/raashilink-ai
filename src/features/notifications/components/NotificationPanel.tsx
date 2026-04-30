@@ -44,7 +44,7 @@ export default function NotificationPanel({
     onClose();
     if (n.type === 'mutual_match' || n.type === 'message_received') {
       navigate('/messages', { state: { conversationId: n.conversationId } });
-    } else if (n.type === 'wedding_invite' || n.type === 'wedding_accepted') {
+    } else if (n.type === 'wedding_invite' || n.type === 'wedding_accepted' || n.type === 'wedding_planning_unlocked') {
       navigate('/wedding');
     } else if (n.type === 'interest_declined' || n.type === 'match_removed') {
       // No navigation needed — just dismiss
@@ -172,7 +172,7 @@ export default function NotificationPanel({
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          bgcolor: n.type === 'mutual_match' ? '#f59e0b' : n.type === 'message_received' ? '#2563eb' : n.type === 'interest_accepted' ? '#16a34a' : (n.type === 'interest_declined' || n.type === 'match_removed') ? '#6b7280' : (n.type === 'wedding_invite' || n.type === 'wedding_accepted') ? '#be185d' : '#8B1A2E',
+                          bgcolor: n.type === 'mutual_match' ? '#f59e0b' : n.type === 'message_received' ? '#2563eb' : n.type === 'interest_accepted' ? '#16a34a' : (n.type === 'interest_declined' || n.type === 'match_removed') ? '#6b7280' : (n.type === 'wedding_invite' || n.type === 'wedding_accepted' || n.type === 'wedding_planning_unlocked') ? '#be185d' : '#8B1A2E',
                           border: '2px solid white',
                         }}>
                           {n.type === 'mutual_match'
@@ -188,6 +188,8 @@ export default function NotificationPanel({
                             : n.type === 'wedding_invite'
                             ? <CalendarHeart size={10} color="white" />
                             : n.type === 'wedding_accepted'
+                            ? <CalendarHeart size={10} color="white" />
+                            : n.type === 'wedding_planning_unlocked'
                             ? <CalendarHeart size={10} color="white" />
                             : <Heart size={10} color="white" fill="white" />
                           }
@@ -234,6 +236,11 @@ export default function NotificationPanel({
                               <span style={{ color: '#be185d' }}>{n.fromUserName}</span>
                               {' '}accepted your wedding invite! 🎉
                             </>
+                          ) : n.type === 'wedding_planning_unlocked' ? (
+                            <>
+                              <span style={{ color: '#be185d' }}>{n.fromUserName}</span>
+                              {' '}& you can now plan your wedding together! 🎊
+                            </>
                           ) : (
                             <>
                               <span style={{ color: '#8B1A2E' }}>{n.fromUserName}</span>
@@ -279,14 +286,14 @@ export default function NotificationPanel({
                                 Tap to dismiss
                               </Typography>
                             </Box>
-                          ) : (n.type === 'interest_declined' || n.type === 'match_removed') ? (
+                          ) : n.type === 'match_removed' ? (
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: '#6b7280' }}>
                               <HeartOff size={11} />
                               <Typography variant="caption" sx={{ color: '#6b7280', fontWeight: 600 }}>
                                 Tap to dismiss
                               </Typography>
                             </Box>
-                          ) : (n.type === 'wedding_invite' || n.type === 'wedding_accepted') ? (
+                          ) : (n.type === 'wedding_invite' || n.type === 'wedding_accepted' || n.type === 'wedding_planning_unlocked') ? (
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: '#be185d' }}>
                               <CalendarHeart size={11} />
                               <Typography variant="caption" sx={{ color: '#be185d', fontWeight: 600 }}>
