@@ -163,13 +163,16 @@ const AdminDashboard: React.FC = () => {
 
   const drawer = (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: COLORS.primary, color: 'white' }}>
-      <Box sx={{ p: 3, display: 'flex', alignItems: 'center', gap: 2 }}>
+      <Box sx={{ p: 3, display: 'flex', alignItems: 'center', gap: 0 }}>
         <Box
           component="img"
-          src="/logo-white.png"
+          src="/RaashiLink_Logo.png"
           alt="RaashiLink Logo"
-          sx={{ height: 40, filter: 'drop-shadow(0 0 8px rgba(201, 168, 76, 0.4))' }}
-          onError={(e: any) => { e.target.src = 'https://via.placeholder.com/40x40?text=RL'; }}
+          sx={{ 
+            height: 60, 
+            mr: -3,
+            filter: 'brightness(0) invert(1) drop-shadow(0 0 8px rgba(201, 168, 76, 0.4))' 
+          }}
         />
         <Typography variant="h6" sx={{ fontFamily: 'Playfair Display', fontWeight: 700, letterSpacing: 1 }}>
           RaashiLink Admin
