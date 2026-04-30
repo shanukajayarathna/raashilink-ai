@@ -84,34 +84,41 @@ const LandingHeader = () => {
         right: 0,
         zIndex: 1000,
         transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
-        py: isScrolled ? 1.5 : 3,
+        py: isScrolled ? 1 : 1.5,
         bgcolor: isScrolled ? 'rgba(255, 255, 255, 0.95)' : 'transparent',
         backdropFilter: isScrolled ? 'blur(12px)' : 'none',
-        borderBottom: isScrolled ? `1px solid ${COLORS.primary}15` : 'none',
-        boxShadow: isScrolled ? '0 4px 20px rgba(0,0,0,0.05)' : 'none',
+        borderBottom: 'none',
+        boxShadow: isScrolled ? '0 10px 30px rgba(0,0,0,0.08)' : 'none',
       }}
     >
       <Container sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <Stack direction="row" spacing={2} alignItems="center" sx={{ flexGrow: 1 }}>
-          <Box sx={{ 
-            width: 42, 
-            height: 42, 
-            bgcolor: COLORS.primary, 
-            borderRadius: '12px', 
-            display: 'flex', 
-            alignItems: 'center', 
-            justifyContent: 'center',
-            boxShadow: isScrolled ? 'none' : '0 8px 16px rgba(0,0,0,0.2)',
-            transform: 'rotate(-5deg)'
-          }}>
-            <Star sx={{ color: COLORS.secondary, fontSize: 24 }} />
-          </Box>
+        <Stack direction="row" spacing={1} alignItems="center" sx={{ flexGrow: 1, position: 'relative', height: 48 }}>
+          <Box
+            component="img"
+            src="/RaashiLink_Logo.png"
+            alt="RaashiLink Logo"
+            sx={{ 
+              width: 120, 
+              height: 120, 
+              objectFit: 'contain',
+              position: 'absolute',
+              left: -30,
+              top: '50%',
+              transform: 'translateY(-50%)',
+              filter: isScrolled 
+                ? 'drop-shadow(0 4px 8px rgba(0,0,0,0.1))' 
+                : 'brightness(0) invert(1) drop-shadow(0 0 15px rgba(255,255,255,0.5))',
+              transition: 'all 0.4s ease'
+            }}
+          />
           <Typography variant="h5" sx={{ 
+            ml: '55px !important',
             color: isScrolled ? COLORS.primary : 'white', 
             fontWeight: 900, 
             fontFamily: 'Playfair Display',
             letterSpacing: '-0.5px',
-            textShadow: isScrolled ? 'none' : '0 2px 15px rgba(0,0,0,0.4)'
+            textShadow: isScrolled ? 'none' : '0 2px 15px rgba(0,0,0,0.4)',
+            transition: 'all 0.4s ease'
           }}>
             RaashiLink.AI
           </Typography>
@@ -913,7 +920,15 @@ export default function LandingPage() {
         <Container>
           <Grid container spacing={8}>
             <Grid size={{ xs: 12, md: 4 }}>
-              <Typography variant="h5" sx={{ color: COLORS.primary, fontWeight: 900, mb: 2 }}>RaashiLink.AI</Typography>
+              <Stack direction="row" spacing={-2} alignItems="center" sx={{ mb: 2 }}>
+                <Box
+                  component="img"
+                  src="/RaashiLink_Logo.png"
+                  alt="RaashiLink Logo"
+                  sx={{ width: 96, height: 96, objectFit: 'contain' }}
+                />
+                <Typography variant="h5" sx={{ color: COLORS.primary, fontWeight: 900 }}>RaashiLink.AI</Typography>
+              </Stack>
               <Typography variant="body2" sx={{ color: COLORS.textSecondary, mb: 3 }}>
                 Intelligent matchmaking and wedding planning for the modern Sri Lankan. <br />
                 සෑම පියවරකදීම ඔබ සමඟයි.
