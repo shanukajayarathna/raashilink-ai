@@ -10,7 +10,7 @@ const notificationSchema = new mongoose.Schema(
     },
     type: {
       type: String,
-      enum: ['interest_received', 'mutual_match', 'message_received', 'interest_accepted', 'interest_declined', 'wedding_invite', 'wedding_accepted', 'match_removed', 'engagement_invite', 'engagement_accepted', 'engagement_cancelled'],
+      enum: ['interest_received', 'mutual_match', 'message_received', 'interest_accepted', 'interest_declined', 'wedding_invite', 'wedding_accepted', 'match_removed'],
       required: true,
     },
     metadata: {
