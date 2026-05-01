@@ -41,12 +41,26 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
   const convPrevRef = useRef<Record<string, string>>({});
   const convSeeded = useRef(false);
   const clientMsgCountRef = useRef(0);
+  const activeConversationIdRef = useRef<string | null>(null);
   const [msgNotif, setMsgNotif] = useState<{ name: string; content: string; conversationId?: string } | null>(null);
   const [eventNotif, setEventNotif] = useState<{ icon: string; title: string; body: string; path?: string; color?: string } | null>(null);
   const [pendingMatchCount, setPendingMatchCount] = useState(0);
   const [pendingWeddingAcceptCount, setPendingWeddingAcceptCount] = useState(0);
   const eventNotifTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const notifTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showMsgNotif = useCallback((name: string, content: string, conversationId?: string) => {
+    if (notifTimerRef.current) clearTimeout(notifTimerRef.current);
+    setMsgNotif({ name, content, conversationId });
+    notifTimerRef.current = setTimeout(() => setMsgNotif(null), 4500);
+  }, []);
+
+  const showEventNotif = useCallback((icon: string, title: string, body: string, path?: string, color?: string) => {
+    if (eventNotifTimerRef.current) clearTimeout(eventNotifTimerRef.current);
+    setEventNotif({ icon, title, body, path, color });
+    eventNotifTimerRef.current = setTimeout(() => setEventNotif(null), 6000);
+  }, []);
+
+  const showEventNotifRef = useRef(showEventNotif);
   const navigate = useNavigate();
   const location = useLocation();
   const dispatch = useDispatch();
@@ -78,10 +92,22 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
   }, [token]);
 
   const pendingMessageActionCount = notifications.filter(
-    (n) => n.type === 'message_received' || n.type === 'engagement_invite'
+    (n) => n.type === 'message_received'
   ).length;
 
+  const shouldSuppressMessageNotif = useCallback((conversationId?: string | null) => {
+    if (location.pathname !== '/messages') return false;
+    if (!conversationId) return true;
+    return activeConversationIdRef.current === conversationId;
+  }, [location.pathname]);
+
+  const isPathActive = useCallback((path: string) => {
+    return location.pathname === path || location.pathname.startsWith(`${path}/`);
+  }, [location.pathname]);
+
   const getNavBadgeCount = (path: string) => {
+    // Do not show badge when the user is already in that section.
+    if (isPathActive(path) && path !== '/messages') return 0;
     if (path === '/matches') return pendingMatchCount;
     if (path === '/messages') return pendingMessageActionCount;
     if (path === '/wedding') return pendingWeddingAcceptCount;
@@ -167,6 +193,64 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
     };
   }, [fetchNotifications, fetchPendingMatchCount, fetchPendingWeddingCount]);
 
+  // Refresh only notification-related state (used by MessagesPage to avoid visible full-page refreshes)
+  useEffect(() => {
+    const onNotificationsRefresh = () => {
+      fetchNotifications(true);
+      fetchPendingMatchCount();
+      fetchPendingWeddingCount();
+    };
+    window.addEventListener('notifications:refresh', onNotificationsRefresh as EventListener);
+    return () => {
+      window.removeEventListener('notifications:refresh', onNotificationsRefresh as EventListener);
+    };
+  }, [fetchNotifications, fetchPendingMatchCount, fetchPendingWeddingCount]);
+
+  useEffect(() => {
+    const onActiveConversation = (event: Event) => {
+      const detail = (event as CustomEvent<{ conversationId?: string | null }>).detail;
+      const conversationId = detail?.conversationId || null;
+      activeConversationIdRef.current = conversationId;
+
+      // When the user opens a conversation, treat its latest preview as "seen" and
+      // clear any message notifications for that specific conversation (without
+      // forcing a full app refresh).
+      if (!conversationId) return;
+
+      if (currentUserId) {
+        try {
+          const seenMap = getSeenPreviews(currentUserId);
+          const latestPreview = convPrevRef.current[conversationId] || '';
+          if (latestPreview) {
+            seenMap[conversationId] = latestPreview;
+            saveSeenPreviews(currentUserId, seenMap);
+          }
+        } catch {
+          // ignore
+        }
+      }
+
+      setNotifications((prev) => {
+        let removed = 0;
+        const next = prev.filter((n) => {
+          const isMsg = n.type === 'message_received' && n.conversationId === conversationId;
+          if (isMsg) removed += 1;
+          return !isMsg;
+        });
+        if (removed > 0) {
+          clientMsgCountRef.current = Math.max(0, clientMsgCountRef.current - removed);
+          setUnreadCount((c) => Math.max(0, c - removed));
+        }
+        return next;
+      });
+    };
+
+    window.addEventListener('chat:activeConversation', onActiveConversation as EventListener);
+    return () => {
+      window.removeEventListener('chat:activeConversation', onActiveConversation as EventListener);
+    };
+  }, [currentUserId]);
+
   // ── Real-time notification bell updates ──────────────────────────────────
   // Listen to match/interest socket events and immediately refresh the bell
   // so both parties see notifications without waiting for the 30s poll.
@@ -203,6 +287,7 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
       fetchPendingMatchCount();
       fetchPendingWeddingCount();
       window.dispatchEvent(new CustomEvent('app:refresh'));
+      playInterestSound();
       showEventNotifRef.current('💔', 'Interest declined', `${payload.fromUserName || 'Someone'} has declined your interest.`, '/matches', '#6b7280');
     };
     const onMatchRemoved = (payload: any) => {
@@ -222,13 +307,29 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
 
     // Real-time server-pushed notifications (e.g. wedding invites)
     const onNotification = (payload: AppNotification) => {
-      window.dispatchEvent(new CustomEvent('app:refresh'));
-      fetchPendingWeddingCount();
+      if (payload.type === 'message_received' && shouldSuppressMessageNotif(payload.conversationId)) {
+        return;
+      }
+      let inserted = false;
       setNotifications((prev) => {
         if (prev.some((n) => n.id === payload.id)) return prev;
+        inserted = true;
         return [payload, ...prev];
       });
+      if (!inserted) return;
       setUnreadCount((c) => c + 1);
+      if (payload.type === 'message_received') {
+        if (payload.conversationId && payload.preview) {
+          convPrevRef.current[payload.conversationId] = payload.preview;
+        }
+        playMessageSound();
+        showMsgNotif(payload.fromUserName || 'New message', payload.preview || '', payload.conversationId || undefined);
+        return;
+      }
+      // Avoid triggering full app refreshes for simple chat messages.
+      // Non-message notifications can still request a refresh for other pages.
+      window.dispatchEvent(new CustomEvent('app:refresh'));
+      fetchPendingWeddingCount();
       if (payload.type === 'wedding_invite') {
         playWeddingInviteSound();
         showEventNotifRef.current('💍', `${payload.fromUserName} invited you!`, 'Plan your wedding together — tap to accept.', '/wedding', '#be185d');
@@ -236,18 +337,15 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
         playWeddingInviteSound();
         showEventNotifRef.current('🎉', `${payload.fromUserName} accepted your invite!`, 'Your wedding project is now shared. Time to start planning!', '/wedding', '#be185d');
         window.dispatchEvent(new CustomEvent('wedding:partnerAccepted'));
-      } else if (payload.type === 'engagement_invite') {
-        playInterestSound();
-        showEventNotifRef.current('💎', `${payload.fromUserName} proposed an engagement!`, 'Tap to view and respond to the proposal.', '/messages', '#C9A84C');
-      } else if (payload.type === 'engagement_accepted') {
-        playMatchSound();
-        showEventNotifRef.current('💍', `${payload.fromUserName} accepted your proposal!`, 'You are now engaged — celebrate and start planning!', '/messages', '#C9A84C');
-      } else if (payload.type === 'engagement_cancelled') {
-        showEventNotifRef.current('💔', 'Engagement cancelled', `${payload.fromUserName} has cancelled the engagement.`, '/messages', '#6b7280');
+      } else if (payload.type === 'wedding_planning_unlocked') {
+        playWeddingInviteSound();
+        showEventNotifRef.current('🎊', 'Wedding planning unlocked!', `You and ${payload.fromUserName} can now plan your wedding together!`, '/wedding', '#be185d');
+        window.dispatchEvent(new CustomEvent('planning:unlocked'));
       } else if (payload.type === 'interest_accepted') {
         playInterestSound();
         showEventNotifRef.current('🥳', `${payload.fromUserName} accepted your interest!`, 'You can now message each other.', '/messages', '#16a34a');
       } else if (payload.type === 'interest_declined') {
+        playInterestSound();
         showEventNotifRef.current('💔', 'Interest declined', `${payload.fromUserName} has declined your interest.`, '/matches', '#6b7280');
       } else if (payload.type === 'match_removed') {
         showEventNotifRef.current('👋', 'Match removed', `${payload.fromUserName} removed you from their matches.`, '/matches', '#6b7280');
@@ -286,7 +384,7 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
       socket.off('wedding_reset', onWeddingReset);
       window.removeEventListener('wedding:accepted', onWeddingAcceptedSelf);
     };
-  }, [token, fetchNotifications, fetchPendingMatchCount, fetchPendingWeddingCount]);
+  }, [token, fetchNotifications, fetchPendingMatchCount, fetchPendingWeddingCount, shouldSuppressMessageNotif, showMsgNotif]);
 
   const handleMarkRead = async (id: string) => {
     const notif = notifications.find((n) => n.id === id);
@@ -323,31 +421,17 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
     setUnreadCount(0);
   };
 
-  // When user navigates to /messages, silently remove all mutual_match + message_received notifications
+  // When user navigates to /messages, silently remove mutual_match notifications.
+  // Message notifications should remain until the user opens that specific conversation.
   useEffect(() => {
     if (location.pathname !== '/messages') return;
-    // Always save current previews as seen when the user opens /messages
-    if (currentUserId && Object.keys(convPrevRef.current).length > 0) {
-      saveSeenPreviews(currentUserId, { ...convPrevRef.current });
-    }
-    const toRemove = notifications.filter((n) => n.type === 'mutual_match' || n.type === 'message_received');
+    const toRemove = notifications.filter((n) => n.type === 'mutual_match');
     if (toRemove.length === 0) return;
     // Only call markAllRead for real DB notifications (not client-side msg ones)
     const dbOnes = toRemove.filter((n) => !n.id.startsWith('msg-'));
     if (dbOnes.length > 0) notificationService.markAllRead().catch(() => {});
-    clientMsgCountRef.current = 0;
-    setNotifications((prev) => prev.filter((n) => n.type !== 'mutual_match' && n.type !== 'message_received'));
+    setNotifications((prev) => prev.filter((n) => n.type !== 'mutual_match'));
     setUnreadCount((c) => Math.max(0, c - toRemove.length));
-    // Mark all current previews as seen so they don't re-fire on next login
-    if (currentUserId) {
-      const seenMap = { ...convPrevRef.current };
-      toRemove.forEach((n) => {
-        if (n.type === 'message_received' && n.conversationId && n.preview) {
-          seenMap[n.conversationId] = n.preview;
-        }
-      });
-      saveSeenPreviews(currentUserId, seenMap);
-    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname]);
 
@@ -378,25 +462,11 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
 
   const initials = (name: string) =>
     name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2);
-
-  const showMsgNotif = useCallback((name: string, content: string, conversationId?: string) => {
-    if (notifTimerRef.current) clearTimeout(notifTimerRef.current);
-    setMsgNotif({ name, content, conversationId });
-    notifTimerRef.current = setTimeout(() => setMsgNotif(null), 4500);
-  }, []);
-
-  const showEventNotif = useCallback((icon: string, title: string, body: string, path?: string, color?: string) => {
-    if (eventNotifTimerRef.current) clearTimeout(eventNotifTimerRef.current);
-    setEventNotif({ icon, title, body, path, color });
-    eventNotifTimerRef.current = setTimeout(() => setEventNotif(null), 6000);
-  }, []);
-
-  const showEventNotifRef = useRef(showEventNotif);
   useEffect(() => { showEventNotifRef.current = showEventNotif; }, [showEventNotif]);
 
   // Poll conversations globally so message notifications fire on every page
   useEffect(() => {
-    if (!token) return;
+    if (!token || !currentUserId) return;
     // Reset seed state on every (re-)login so the localStorage check always runs fresh
     convSeeded.current = false;
     convPrevRef.current = {};
@@ -473,7 +543,7 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
           }
           convPrevRef.current[c.id] = c.preview;
         });
-        if (notifName) {
+        if (notifName && !shouldSuppressMessageNotif(notifConvId)) {
           // Add to bell as well as popup
           const liveNotif: AppNotification = {
             id: `msg-live-${Date.now()}`,
@@ -499,7 +569,7 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
     poll();
     const interval = setInterval(poll, 5000);
     return () => clearInterval(interval);
-  }, [token, currentUserId, showMsgNotif]);
+  }, [token, currentUserId, showMsgNotif, shouldSuppressMessageNotif]);
 
   if (!token) return <>{children || <Outlet />}</>;
 
@@ -510,29 +580,31 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
       
       {/* Top Navigation */}
       <header className="fixed top-0 left-0 right-0 h-16 bg-white/80 backdrop-blur-md border-b border-primary/10 z-[1100] px-4 md:px-8 flex items-center justify-between">
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-0">
           <button 
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
             className="p-2 hover:bg-primary/5 rounded-lg lg:hidden"
           >
             <Menu className="w-6 h-6 text-primary" />
           </button>
-          <Link to="/dashboard" className="flex items-center gap-2">
-            <div className="w-10 h-10 bg-primary rounded-full flex items-center justify-center">
-              <Star className="w-6 h-6 text-secondary" />
-            </div>
-            <span className="text-xl font-serif font-bold text-primary hidden sm:block">RaashiLink.AI</span>
+          <Link to="/dashboard" className="flex items-center gap-0">
+            <img 
+              src="/RaashiLink_Logo.png" 
+              alt="RaashiLink Logo" 
+              className="w-20 h-20 object-contain drop-shadow-md -mr-6 -ml-2"
+            />
+            <span className="text-lg xl:text-xl font-serif font-bold text-primary hidden sm:block">RaashiLink.AI</span>
           </Link>
         </div>
 
         <div className="flex items-center gap-2 md:gap-4">
-          <div className="hidden lg:flex items-center gap-1">
+          <div className="hidden lg:flex items-center gap-0.5 xl:gap-1">
             {navItems.map((item) => (
               <Link 
                 key={item.path}
                 to={item.path}
                 className={cn(
-                      "px-3 py-2 rounded-full text-sm font-medium transition-colors whitespace-nowrap inline-flex items-center gap-1.5",
+                      "px-2 xl:px-3 py-2 rounded-full text-[13px] xl:text-sm font-medium transition-colors whitespace-nowrap inline-flex items-center gap-1 xl:gap-1.5",
                   location.pathname === item.path 
                     ? "bg-primary text-white" 
                     : "text-textSecondary hover:bg-primary/5 hover:text-primary"
@@ -628,15 +700,15 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
               initial={{ x: '-100%' }}
               animate={{ x: 0 }}
               exit={{ x: '-100%' }}
-              className="fixed top-0 left-0 bottom-0 w-72 bg-white z-[70] lg:hidden shadow-2xl flex flex-col"
+              className="fixed top-0 left-0 bottom-0 w-72 bg-cream mandala-bg z-[70] lg:hidden shadow-2xl flex flex-col"
             >
-              <div className="p-6 flex items-center justify-between border-b border-primary/5">
-                <div className="flex items-center gap-2">
-                  <Star className="w-6 h-6 text-secondary" />
-                  <span className="text-xl font-serif font-bold text-primary">RaashiLink</span>
-                </div>
-                <button onClick={() => setIsSidebarOpen(false)}>
-                  <X className="w-6 h-6 text-textSecondary" />
+              <div className="p-6 flex items-center justify-between border-b border-primary/5 bg-primary/5">
+                <span className="text-lg font-serif font-bold text-primary">Menu Navigation</span>
+                <button 
+                  onClick={() => setIsSidebarOpen(false)}
+                  className="p-2 hover:bg-primary/10 rounded-full transition-colors"
+                >
+                  <X className="w-6 h-6 text-primary" />
                 </button>
               </div>
               <nav className="flex-1 p-4 space-y-1">
@@ -668,7 +740,7 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
       </AnimatePresence>
 
       {/* Main Content */}
-      <main className="flex-1 pt-24 pb-12 px-4 md:px-8 w-full">
+      <main className="flex-1 pt-[50px] pb-12 px-4 md:px-8 w-full">
         <div className="max-w-7xl mx-auto">
           <motion.div
             key={location.pathname}
@@ -792,5 +864,3 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
     </div>
   );
 }
-
-
