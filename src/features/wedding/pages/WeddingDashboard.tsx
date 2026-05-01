@@ -148,6 +148,7 @@ export default function WeddingDashboard() {
   const [editBudgetOpen, setEditBudgetOpen] = useState(false);
   const [editBudgetValue, setEditBudgetValue] = useState('');
   const [savingBudget, setSavingBudget] = useState(false);
+  const [accessNoticeTick, setAccessNoticeTick] = useState(0);
 
   const { token, user } = useSelector((state: RootState) => state.auth);
 
@@ -399,7 +400,19 @@ export default function WeddingDashboard() {
   }, [token, fetchDataFromPartner]);
 
   const handleTabChange = (_: React.SyntheticEvent, newValue: number) => {
+    if (!isCoupled && newValue !== 0) {
+      setAccessNoticeTick(Date.now());
+      return;
+    }
     setActiveTab(newValue);
+  };
+
+  const handleSwitchTabFromOverview = (tabIndex: number) => {
+    if (!isCoupled && tabIndex !== 0) {
+      setAccessNoticeTick(Date.now());
+      return;
+    }
+    setActiveTab(tabIndex);
   };
 
   const markOnboardingStep = useCallback((step: keyof typeof emptyOnboardingSteps) => {
@@ -439,6 +452,7 @@ export default function WeddingDashboard() {
   const daysToGo = Math.ceil((new Date(couple.date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
   const isOverBudget = stats.spentSoFar > stats.totalBudget;
   const isCoupled = Array.isArray(rawProject?.coupleUserIds) && rawProject.coupleUserIds.length >= 2;
+  const planningAccessGranted = isCoupled;
   const hasPartner1HeroPic = Boolean(couple.partner1Pic);
   const hasPartner2HeroPic = Boolean(couple.partner2Pic);
   const useSplitHeroCover = Boolean(isCoupled && (hasPartner1HeroPic || hasPartner2HeroPic));
@@ -539,6 +553,26 @@ export default function WeddingDashboard() {
               </Typography>
             </Box>
           </Stack>
+        </Alert>
+      )}
+
+      {!planningAccessGranted && (
+        <Alert
+          key={accessNoticeTick}
+          severity="warning"
+          sx={{
+            mb: 3,
+            borderRadius: 4,
+            border: '1px solid #F0D88A',
+            bgcolor: '#FFF9EC',
+          }}
+        >
+          <Typography variant="subtitle2" sx={{ fontWeight: 800, color: '#7A6020' }}>
+            Editing is locked until both partners accept wedding planning together.
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            You can view the overview now. Checklist, vendors, budget, and timeline will unlock after mutual acceptance.
+          </Typography>
         </Alert>
       )}
 
@@ -1012,7 +1046,17 @@ export default function WeddingDashboard() {
           color={COLORS.primary}
           action={
             <Tooltip title="Edit budget">
-              <IconButton size="small" onClick={() => { setEditBudgetValue(String(stats.totalBudget)); setEditBudgetOpen(true); }}>
+              <IconButton
+                size="small"
+                onClick={() => {
+                  if (!planningAccessGranted) {
+                    setAccessNoticeTick(Date.now());
+                    return;
+                  }
+                  setEditBudgetValue(String(stats.totalBudget));
+                  setEditBudgetOpen(true);
+                }}
+              >
                 <Edit3 size={16} />
               </IconButton>
             </Tooltip>
@@ -1080,11 +1124,11 @@ export default function WeddingDashboard() {
           exit={{ opacity: 0, x: -10 }}
           transition={{ duration: 0.3 }}
         >
-          {activeTab === 0 && <OverviewTab data={weddingData} onSwitchTab={setActiveTab} project={rawProject} budget={rawBudget} />}
-          {activeTab === 1 && <ChecklistTab checklist={rawProject?.checklist || []} onChecklistChange={(updated) => setRawProject((p: any) => ({ ...p, checklist: updated }))} />}
-          {activeTab === 2 && <VendorTab vendors={rawVendors} bookedVendorIds={rawProject?.vendors || []} onStatusChange={refreshVendors} />}
-          {activeTab === 3 && <BudgetTab totalBudget={rawBudget?.totalBudget || rawProject?.totalBudget || 0} totalSpent={rawBudget?.totalSpent || 0} expenses={rawBudget?.expenses || rawProject?.expenses || []} onExpenseAdded={refreshBudget} onBudgetUpdated={refreshBudget} />}
-          {activeTab === 4 && <TimelineTab weddingDate={rawProject?.weddingDate || couple.date} checklist={rawProject?.checklist || []} onChecklistChange={(updated: any[]) => setRawProject((p: any) => ({ ...p, checklist: updated }))} />}
+          {activeTab === 0 && <OverviewTab data={weddingData} onSwitchTab={handleSwitchTabFromOverview} project={rawProject} budget={rawBudget} />}
+          {activeTab === 1 && planningAccessGranted && <ChecklistTab checklist={rawProject?.checklist || []} onChecklistChange={(updated) => setRawProject((p: any) => ({ ...p, checklist: updated }))} />}
+          {activeTab === 2 && planningAccessGranted && <VendorTab vendors={rawVendors} bookedVendorIds={rawProject?.vendors || []} onStatusChange={refreshVendors} />}
+          {activeTab === 3 && planningAccessGranted && <BudgetTab totalBudget={rawBudget?.totalBudget || rawProject?.totalBudget || 0} totalSpent={rawBudget?.totalSpent || 0} expenses={rawBudget?.expenses || rawProject?.expenses || []} onExpenseAdded={refreshBudget} onBudgetUpdated={refreshBudget} />}
+          {activeTab === 4 && planningAccessGranted && <TimelineTab weddingDate={rawProject?.weddingDate || couple.date} checklist={rawProject?.checklist || []} onChecklistChange={(updated: any[]) => setRawProject((p: any) => ({ ...p, checklist: updated }))} />}
         </motion.div>
       </AnimatePresence>
 
