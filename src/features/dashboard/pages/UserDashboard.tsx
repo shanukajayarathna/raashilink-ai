@@ -1493,7 +1493,7 @@ export default function UserDashboard() {
               {!mutualMatchesLoading && mutualMatches.length > 0 && (
                 <Alert severity="info" icon={<CheckCircleOutline sx={{ color: COLORS.accent }} />} sx={{ mb: 3, borderRadius: 3, border: `1px solid ${alpha(COLORS.accent, 0.2)}`, bgcolor: alpha(COLORS.accent, 0.04), color: COLORS.textPrimary }}>
                   <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                    Success Roadmap: Open chat → Propose engagement → Send wedding invite
+                    Success Roadmap: Open chat → Send wedding invite → Start planning together
                   </Typography>
                 </Alert>
               )}
@@ -1573,14 +1573,6 @@ export default function UserDashboard() {
                               <LocationOn sx={{ fontSize: 12, color: '#999' }} />
                               <Typography variant="caption" sx={{ color: '#888' }} noWrap>{match.location}</Typography>
                             </Stack>
-                          )}
-
-                          {match.engagementStatus === 'accepted' && (
-                            <Chip
-                              size="small"
-                              label="Engaged 💎"
-                              sx={{ bgcolor: '#C9A84C22', color: '#7A6020', fontWeight: 800, fontSize: '0.65rem' }}
-                            />
                           )}
 
                           <Stack direction="row" spacing={1} sx={{ mt: 0.5, width: '100%' }}>
