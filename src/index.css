@@ -14,12 +14,14 @@
 
 @layer base {
   html {
-    overflow-y: scroll; /* Always reserve space for scrollbar to prevent layout shift */
-    scrollbar-gutter: stable; /* Even more stable scrollbar handling for modern browsers */
+    overflow-y: scroll; 
+    scrollbar-gutter: stable;
   }
 
   body {
     @apply bg-cream text-[#1C1C1C] font-sans;
+    /* Prevent MUI and other libraries from causing layout shift when opening modals */
+    padding-right: 0 !important;
   }
   h1, h2, h3, h4 {
     @apply font-serif;
