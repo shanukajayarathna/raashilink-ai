@@ -21,8 +21,6 @@ const matchSchema = new Schema(
     dimensionScores: { type: dimensionScoresSchema, required: true },
     mutualInterest: { type: Boolean, default: false, index: true },
     explanation: { type: String, trim: true, maxlength: 4000 },
-    engagementStatus: { type: String, enum: ['none', 'proposed', 'accepted'], default: 'none' },
-    engagementProposerId: { type: Schema.Types.ObjectId, ref: 'User', default: null },
   },
   {
     timestamps: true,
