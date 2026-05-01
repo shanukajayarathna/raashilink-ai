@@ -231,21 +231,19 @@ export default function VendorPortal() {
             bgcolor: 'white'
           }}
         >
-          <Box sx={{ p: 3, display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Box sx={{ p: 3, display: 'flex', alignItems: 'center', gap: 0 }}>
             <Box
+              component="img"
+              src="/RaashiLink_Logo.png"
+              alt="RaashiLink Logo"
               sx={{
-                width: 40,
-                height: 40,
-                bgcolor: COLORS.primary,
-                borderRadius: '10px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: COLORS.secondary
+                width: 60,
+                height: 60,
+                mr: -2.5,
+                objectFit: 'contain',
+                filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.1))'
               }}
-            >
-              <Star size={24} />
-            </Box>
+            />
             <Typography variant="h6" sx={{ fontFamily: 'Playfair Display', fontWeight: 700, color: COLORS.primary }}>
               RaashiLink
             </Typography>
