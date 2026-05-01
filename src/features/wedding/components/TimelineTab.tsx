@@ -108,9 +108,10 @@ interface TimelineTabProps {
   weddingDate?: string;
   checklist?: any[];
   onChecklistChange?: (updated: any[]) => void;
+  readOnly?: boolean;
 }
 
-export default function TimelineTab({ weddingDate, checklist = [], onChecklistChange }: TimelineTabProps) {
+export default function TimelineTab({ weddingDate, checklist = [], onChecklistChange, readOnly }: TimelineTabProps) {
     const [localChecklist, setLocalChecklist] = useState<any[]>(checklist);
     React.useEffect(() => { setLocalChecklist(checklist); }, [checklist]);
 
@@ -167,6 +168,7 @@ export default function TimelineTab({ weddingDate, checklist = [], onChecklistCh
   }, [localChecklist, timeline]);
 
   const handleToggleTask = async (taskTitle: string) => {
+    if (readOnly) return;
     const idx = findTaskIdx(taskTitle);
     if (idx === -1) return;
     setTogglingIdx(idx);
@@ -215,7 +217,8 @@ export default function TimelineTab({ weddingDate, checklist = [], onChecklistCh
           </Typography>
         </Box>
         <Button variant="contained" startIcon={<Plus size={18} />}
-          onClick={() => setAddTaskModal({ ...EMPTY_TASK_MODAL, open: true })}
+          onClick={() => !readOnly && setAddTaskModal({ ...EMPTY_TASK_MODAL, open: true })}
+          disabled={readOnly}
           sx={{ bgcolor: COLORS.primary, borderRadius: 3, fontWeight: 700, textTransform: 'none', '&:hover': { bgcolor: '#6B1423' } }}>
           Add Task
         </Button>
@@ -302,7 +305,7 @@ export default function TimelineTab({ weddingDate, checklist = [], onChecklistCh
                     </Stack>
 
                     <Collapse in={isExpanded}>
-                      <Box sx={{ mt: 3, pt: 3, borderTop: '1px solid', borderColor: 'divider' }}>
+                      <Box sx={{ mt: 2, pt: 2, borderTop: '1px solid', borderColor: 'divider' }}>
                         <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary', mb: 2, display: 'block', textTransform: 'uppercase', letterSpacing: 0.5 }}>
                           Suggested tasks for this phase
                         </Typography>
@@ -314,9 +317,9 @@ export default function TimelineTab({ weddingDate, checklist = [], onChecklistCh
                                 bgcolor: task.completed ? `${COLORS.success}08` : task.inChecklist ? `${COLORS.primary}05` : 'transparent',
                                 borderColor: task.completed ? `${COLORS.success}20` : task.inChecklist ? `${COLORS.primary}15` : 'divider',
                               }}>
-                              <Tooltip title={task.inChecklist ? (task.completed ? 'Mark incomplete' : 'Mark complete') : 'Not in your checklist yet'}>
+                              <Tooltip title={readOnly ? "Locked" : (task.inChecklist ? (task.completed ? 'Mark incomplete' : 'Mark complete') : 'Not in your checklist yet')}>
                                 <span>
-                                  <IconButton size="small" disabled={!task.inChecklist || togglingIdx === task.idx}
+                                  <IconButton size="small" disabled={!task.inChecklist || togglingIdx === task.idx || readOnly}
                                     onClick={(e) => { e.stopPropagation(); handleToggleTask(task.title); }}
                                     sx={{ color: task.completed ? COLORS.success : task.inChecklist ? 'text.secondary' : 'text.disabled', p: 0.25 }}>
                                     {togglingIdx === task.idx
@@ -331,19 +334,21 @@ export default function TimelineTab({ weddingDate, checklist = [], onChecklistCh
                                 {task.title}
                               </Typography>
                               {!task.inChecklist && (
-                                <Tooltip title="Add to checklist">
-                                  <IconButton size="small" onClick={(e) => {
-                                    e.stopPropagation();
-                                    setAddTaskModal({
-                                      ...EMPTY_TASK_MODAL,
-                                      open: true,
-                                      title: task.title,
-                                      dueDate: formatDateInput(milestone.ts),
-                                    });
-                                  }}
-                                    sx={{ color: COLORS.primary, p: 0.25 }}>
-                                    <Plus size={16} />
-                                  </IconButton>
+                                <Tooltip title={readOnly ? "Locked" : "Add to checklist"}>
+                                  <span>
+                                    <IconButton size="small" disabled={readOnly} onClick={(e) => {
+                                      e.stopPropagation();
+                                      setAddTaskModal({
+                                        ...EMPTY_TASK_MODAL,
+                                        open: true,
+                                        title: task.title,
+                                        dueDate: formatDateInput(milestone.ts),
+                                      });
+                                    }}
+                                      sx={{ color: COLORS.primary, p: 0.25 }}>
+                                      <Plus size={16} />
+                                    </IconButton>
+                                  </span>
                                 </Tooltip>
                               )}
                             </Stack>
@@ -373,7 +378,7 @@ export default function TimelineTab({ weddingDate, checklist = [], onChecklistCh
                                 >
                                   <IconButton
                                     size="small"
-                                    disabled={togglingIdx === task.idx}
+                                    disabled={togglingIdx === task.idx || readOnly}
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       handleToggleTask(task.title);
