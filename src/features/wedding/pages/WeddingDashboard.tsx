@@ -5,14 +5,14 @@ import {
   LinearProgress, useTheme, useMediaQuery, Skeleton,
   Tooltip, Badge, Alert, CircularProgress, Chip,
   Dialog, DialogTitle, DialogContent, DialogActions,
-  TextField, InputAdornment
+  TextField, InputAdornment, Backdrop
 } from '@mui/material';
 import { 
   Heart, Calendar, MapPin, Edit3, Camera, 
   CheckCircle2, DollarSign, Users, LayoutDashboard,
   ClipboardList, Store, BarChart3, Milestone,
   TrendingUp, AlertCircle, Plus, Sparkles,
-  ChevronRight, ArrowRight, XCircle, PartyPopper
+  ChevronRight, ArrowRight, XCircle, PartyPopper, Trash2, FileText
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useSelector } from 'react-redux';
@@ -20,7 +20,7 @@ import { useNavigate } from 'react-router-dom';
 import { RootState } from '@/app/store/store';
 import weddingService from '../services/weddingService';
 import { connectSocket } from '@/shared/hooks/useRealtimeUpdates';
-import api from '@/shared/config/axiosConfig';
+import { generateWeddingReport } from '../utils/weddingReportGenerator';
 
 // Sub-components
 import OverviewTab from '../components/OverviewTab';
@@ -54,6 +54,13 @@ const emptyOnboardingSteps = {
   vendors: false,
 };
 
+const handleFormatNumber = (val: string) => {
+  if (!val) return '';
+  const rawValue = val.replace(/\D/g, '');
+  if (!rawValue) return '';
+  return Number(rawValue).toLocaleString('en-US');
+};
+
 function buildCoupleOnboardingKey(project: any) {
   const ids = Array.isArray(project?.coupleUserIds)
     ? project.coupleUserIds
@@ -65,9 +72,9 @@ function buildCoupleOnboardingKey(project: any) {
 }
 
 function buildWeddingDashboardData(project: any, budgetSummary: any, vendorsPayload: any, user: any) {
-  const checklist = Array.isArray(project?.checklist) ? project.checklist : [];
+  const checklist = Array.isArray(project?.checklist) ? project.checklist.filter(Boolean) : [];
   const bookedVendors = Array.isArray(project?.vendors)
-    ? project.vendors.filter((entry: any) => ['requested', 'booked'].includes(entry?.status)).length
+    ? project.vendors.filter((entry: any) => entry && ['requested', 'booked'].includes(entry?.status)).length
     : 0;
   const totalVendors = vendorsPayload?.data?.total || vendorsPayload?.data?.items?.length || 0;
   const completedTasks = checklist.filter((item: any) => item?.completed).length;
@@ -121,19 +128,17 @@ export default function WeddingDashboard() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [weddingData, setWeddingData] = useState<any>(null);
   const [rawProject, setRawProject] = useState<any>(null);
   const [rawBudget, setRawBudget] = useState<any>(null);
   const [rawVendors, setRawVendors] = useState<any[]>([]);
   const [pendingInvite, setPendingInvite] = useState<{ inviterId: string; inviterName: string; inviterProfilePic: string | null } | null>(null);
-  const [engagementSummary, setEngagementSummary] = useState<{ status: 'none' | 'proposed' | 'accepted'; partnerId: string | null }>({
-    status: 'none',
-    partnerId: null,
-  });
   const [acceptingInvite, setAcceptingInvite] = useState(false);
   const [resetting, setResetting] = useState(false);
-  const [stopConfirm, setStopConfirm] = useState(false);
+  const [resetDialogOpen, setResetDialogOpen] = useState(false);
+  const [globalLoading, setGlobalLoading] = useState({ open: false, message: '' });
   // Onboarding quick-setup state
   const [setupDateOpen, setSetupDateOpen] = useState(false);
   const [setupBudgetOpen, setSetupBudgetOpen] = useState(false);
@@ -143,6 +148,8 @@ export default function WeddingDashboard() {
   const [onboardingDismissed, setOnboardingDismissed] = useState(false);
   const [onboardingSteps, setOnboardingSteps] = useState(emptyOnboardingSteps);
   const [onboardingCoupleKey, setOnboardingCoupleKey] = useState<string | null>(null);
+  const [planningAccessGranted, setPlanningAccessGranted] = useState(false);
+  const wasCoupledRef = useRef(false);
   const tabsAnchorRef = useRef<HTMLDivElement | null>(null);
 
   const [editBudgetOpen, setEditBudgetOpen] = useState(false);
@@ -152,31 +159,13 @@ export default function WeddingDashboard() {
 
   const { token, user } = useSelector((state: RootState) => state.auth);
 
-  const fetchEngagementSummary = useCallback(async () => {
-    if (!token) {
-      setEngagementSummary({ status: 'none', partnerId: null });
-      return;
-    }
-    try {
-      const res: any = await api.get('/matches/engagement/me');
-      const status = res?.data?.data?.status;
-      const partnerId = res?.data?.data?.partnerId || null;
-      setEngagementSummary({
-        status: status === 'accepted' || status === 'proposed' ? status : 'none',
-        partnerId,
-      });
-    } catch {
-      setEngagementSummary({ status: 'none', partnerId: null });
-    }
-  }, [token]);
-
-  const fetchData = useCallback(async () => {
-    setLoading(true);
+  const fetchData = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const [projectResponse, budgetResponse, vendorsResponse, pendingInviteData] = await Promise.all([
-        weddingService.getProject(),
-        weddingService.getBudget(),
-        weddingService.getVendors(),
+        weddingService.getProject().catch(() => ({ data: null })),
+        weddingService.getBudget().catch(() => ({ data: null })),
+        weddingService.getVendors().catch(() => ({ data: { items: [] } })),
         weddingService.getPendingInvite().catch(() => null),
       ]);
 
@@ -188,15 +177,25 @@ export default function WeddingDashboard() {
       setRawBudget(budget);
       setRawVendors(vendorList);
       setPendingInvite(pendingInviteData);
+      
+      if (project) {
+        const couples = project.coupleUserIds || [];
+        const isCoupled = couples.length >= 2;
+        setPlanningAccessGranted(isCoupled);
+      }
+
       setWeddingData(
         buildWeddingDashboardData(project, budgetResponse, vendorsResponse, user)
       );
       setError(null);
     } catch (err) {
       console.error('Failed to load wedding details', err);
-      setError('Failed to load wedding details. Please try again.');
+      if (!silent) {
+        setError('Failed to load wedding details. Please try again.');
+      }
     } finally {
       setLoading(false);
+      setIsInitialLoad(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
@@ -207,11 +206,23 @@ export default function WeddingDashboard() {
       const budgetResponse = await weddingService.getBudget();
       const budget = budgetResponse?.data;
       setRawBudget(budget);
+      
+      // Also update project if it contains budget info
+      if (budget?.expenses) {
+        setRawProject((prev: any) => prev ? { ...prev, expenses: budget.expenses, totalBudget: budget.totalBudget } : prev);
+      }
+
       setWeddingData((prev: any) => prev ? {
         ...prev,
-        stats: { ...prev.stats, totalBudget: Number(budget?.totalBudget || 0), spentSoFar: Number(budget?.totalSpent || 0) }
+        stats: { 
+          ...prev.stats, 
+          totalBudget: Number(budget?.totalBudget || 0), 
+          spentSoFar: Number(budget?.totalSpent || 0) 
+        }
       } : prev);
-    } catch { /* silent */ }
+    } catch (err) {
+      console.warn('Failed to refresh budget', err);
+    }
   }, []);
 
   const refreshChecklist = useCallback(async () => {
@@ -264,9 +275,10 @@ export default function WeddingDashboard() {
 
   const handleResetWedding = async () => {
     setResetting(true);
+    setGlobalLoading({ open: true, message: 'Resetting wedding plan...' });
     try {
       await weddingService.resetWedding();
-      setStopConfirm(false);
+      setResetDialogOpen(false);
       setPendingInvite(null);
       // Reset onboarding so the next partner pairing starts fresh
       try {
@@ -278,18 +290,24 @@ export default function WeddingDashboard() {
       setOnboardingDismissed(false);
       setOnboardingSteps(emptyOnboardingSteps);
       setOnboardingCoupleKey(null);
+      
+      // Force a clean state before fetching new solo data
+      setPlanningAccessGranted(false);
       await fetchData();
+      
       window.dispatchEvent(new CustomEvent('wedding:reset'));
     } catch (err) {
       console.error('Failed to reset wedding', err);
     } finally {
       setResetting(false);
+      setGlobalLoading({ open: false, message: '' });
     }
   };
 
   const handleAcceptInvite = async () => {
     if (!pendingInvite) return;
     setAcceptingInvite(true);
+    setGlobalLoading({ open: true, message: 'Accepting invitation...' });
     try {
       await weddingService.acceptInvite(pendingInvite.inviterId);
       setPendingInvite(null);
@@ -302,27 +320,27 @@ export default function WeddingDashboard() {
       console.error('Failed to accept invite', err);
     } finally {
       setAcceptingInvite(false);
+      setGlobalLoading({ open: false, message: '' });
     }
   };
 
   useEffect(() => {
     if (token) {
       fetchData();
-      fetchEngagementSummary();
       return;
     }
     setRawProject(null);
     setRawBudget(null);
     setRawVendors([]);
     setWeddingData(buildWeddingDashboardData(null, null, null, user));
-    setEngagementSummary({ status: 'none', partnerId: null });
     setLoading(false);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, user, fetchEngagementSummary]);
+  }, [token, user]);
 
   useEffect(() => {
     const isCoupledProject = Array.isArray(rawProject?.coupleUserIds) && rawProject.coupleUserIds.length >= 2;
     if (!isCoupledProject) {
+      wasCoupledRef.current = false;
       setOnboardingCoupleKey(null);
       setOnboardingDismissed(false);
       setOnboardingSteps(emptyOnboardingSteps);
@@ -331,6 +349,21 @@ export default function WeddingDashboard() {
 
     const key = buildCoupleOnboardingKey(rawProject);
     if (!key) return;
+
+    const justBecameCoupled = !wasCoupledRef.current;
+    wasCoupledRef.current = true;
+
+    if (justBecameCoupled) {
+      try {
+        localStorage.removeItem(`${ONBOARDING_DISMISSED_KEY}:${key}`);
+        localStorage.removeItem(`${ONBOARDING_STEPS_KEY}:${key}`);
+      } catch { /* ignore */ }
+      setOnboardingCoupleKey(key);
+      setOnboardingDismissed(false);
+      setOnboardingSteps(emptyOnboardingSteps);
+      return;
+    }
+
     setOnboardingCoupleKey(key);
 
     try {
@@ -353,12 +386,16 @@ export default function WeddingDashboard() {
 
   // Refresh when the inviter's partner accepts (socket event dispatched from MainLayout)
   useEffect(() => {
-    const onPartnerAccepted = () => fetchData();
-    const onReset = () => fetchData();
-    const onAppRefresh = () => {
-      fetchData();
-      fetchEngagementSummary();
+    const onPartnerAccepted = () => fetchData(true);
+    const onReset = () => {
+      setRawProject(null);
+      setRawBudget(null);
+      setRawVendors([]);
+      setWeddingData(buildWeddingDashboardData(null, null, null, user));
+      setPlanningAccessGranted(false);
+      fetchData(true);
     };
+    const onAppRefresh = () => fetchData(true);
     window.addEventListener('wedding:partnerAccepted', onPartnerAccepted);
     window.addEventListener('wedding:reset', onReset);
     window.addEventListener('app:refresh', onAppRefresh);
@@ -368,28 +405,21 @@ export default function WeddingDashboard() {
       window.removeEventListener('app:refresh', onAppRefresh);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fetchEngagementSummary]);
+  }, []);
 
-  const fetchDataFromPartner = useCallback((payload?: any) => {
-    // Granular update: only refresh the slice that changed
-    const type = payload?.type as string | undefined;
-    if (type === 'project') { fetchData(); return; }
-    if (type === 'checklist') { refreshChecklist(); return; }
-    if (type === 'budget') { refreshBudget(); return; }
-    if (type === 'vendor') { refreshVendors(); return; }
-    // Fallback: refresh everything
-    fetchData();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [refreshChecklist, refreshBudget, refreshVendors]);
+  const fetchDataFromPartner = useCallback(() => {
+    // Always refresh all data when a partner makes a change to ensure both ends are perfectly in sync
+    fetchData(true);
+  }, [fetchData]);
 
   // Real-time: refresh on all wedding socket events
   useEffect(() => {
     if (!token) return;
     const socket = connectSocket(token);
     socket.on('wedding_updated', fetchDataFromPartner);
-    socket.on('wedding_invite', fetchData);    // invitee's dashboard refreshes when invite arrives
-    socket.on('wedding_accepted', fetchData);  // inviter's dashboard refreshes when accepted
-    socket.on('wedding_reset', fetchData);     // both dashboards refresh on dissolution
+    socket.on('wedding_invite', () => fetchData(true));    // invitee's dashboard refreshes when invite arrives
+    socket.on('wedding_accepted', () => fetchData(true));  // inviter's dashboard refreshes when accepted
+    socket.on('wedding_reset', () => fetchData(true));     // both dashboards refresh on dissolution
     return () => {
       socket.off('wedding_updated', fetchDataFromPartner);
       socket.off('wedding_invite', fetchData);
@@ -400,18 +430,41 @@ export default function WeddingDashboard() {
   }, [token, fetchDataFromPartner]);
 
   const handleTabChange = (_: React.SyntheticEvent, newValue: number) => {
-    if (!isCoupled && newValue !== 0) {
-      setAccessNoticeTick(Date.now());
-      return;
-    }
     setActiveTab(newValue);
   };
 
-  const handleSwitchTabFromOverview = (tabIndex: number) => {
-    if (!isCoupled && tabIndex !== 0) {
-      setAccessNoticeTick(Date.now());
-      return;
+  const handleDownloadReport = () => {
+    if (!weddingData) return;
+    
+    setGlobalLoading({ open: true, message: 'Generating Wedding Report...' });
+    
+    try {
+      const reportData = {
+        couple: {
+          partner1: weddingData.couple.partner1,
+          partner2: weddingData.couple.partner2,
+          date: weddingData.couple.date,
+        },
+        stats: {
+          totalBudget: weddingData.stats.totalBudget,
+          totalSpent: weddingData.stats.totalSpent,
+          remaining: weddingData.stats.totalBudget - weddingData.stats.totalSpent,
+          progress: weddingData.stats.overallProgress,
+          daysLeft: weddingData.stats.daysLeft,
+        },
+        expenses: rawProject?.expenses || [],
+        checklist: rawProject?.checklist || [],
+      };
+      
+      generateWeddingReport(reportData);
+    } catch (err) {
+      console.error('PDF generation failed:', err);
+    } finally {
+      setGlobalLoading({ open: false, message: '' });
     }
+  };
+
+  const handleSwitchTabFromOverview = (tabIndex: number) => {
     setActiveTab(tabIndex);
   };
 
@@ -445,14 +498,13 @@ export default function WeddingDashboard() {
     });
   }, [markOnboardingStep]);
 
-  if (loading) return <WeddingSkeleton />;
+  if (loading && isInitialLoad) return <WeddingSkeleton />;
   if (error) return <WeddingError error={error} onRetry={() => window.location.reload()} />;
 
   const { couple, stats } = weddingData;
   const daysToGo = Math.ceil((new Date(couple.date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
   const isOverBudget = stats.spentSoFar > stats.totalBudget;
   const isCoupled = Array.isArray(rawProject?.coupleUserIds) && rawProject.coupleUserIds.length >= 2;
-  const planningAccessGranted = isCoupled;
   const hasPartner1HeroPic = Boolean(couple.partner1Pic);
   const hasPartner2HeroPic = Boolean(couple.partner2Pic);
   const useSplitHeroCover = Boolean(isCoupled && (hasPartner1HeroPic || hasPartner2HeroPic));
@@ -464,47 +516,30 @@ export default function WeddingDashboard() {
     rawProject?.pendingInvite?.status === 'pending' &&
     rawProject?.pendingInvite?.inviteeId != null &&              // guard: must have a real invitee (not a default null)
     String(rawProject?.pendingInvite?.inviteeId) !== currentUserId; // guard: must not be the invitee
-  const canShowNextStepBanner = engagementSummary.status === 'accepted' && !pendingInvite && !isCoupled && !hasSentInvite;
 
   return (
     <Container maxWidth="xl" sx={{ py: 4, pb: 10 }}>
-      {/* Next-step banner: engaged but wedding project not yet linked */}
-      {canShowNextStepBanner && (
-        <Alert
-          icon={<Heart size={20} />}
-          severity="success"
-          sx={{
-            mb: 3, borderRadius: 4, alignItems: 'center',
-            bgcolor: '#FFF8E7', border: '1px solid #F0D88A',
-            '& .MuiAlert-icon': { color: '#C9A84C' },
-            '& .MuiAlert-message': { width: '100%' },
-          }}
-          action={
-            <Button
-              size="small"
-              variant="contained"
-              onClick={() => {
-                if (engagementSummary.partnerId) {
-                  navigate('/messages', { state: { openUserId: engagementSummary.partnerId, startConversation: true } });
-                } else {
-                  navigate('/messages');
-                }
-              }}
-              sx={{ bgcolor: '#C9A84C', '&:hover': { bgcolor: '#A8883E' }, color: 'white', borderRadius: 3, fontWeight: 700, textTransform: 'none', px: 2, whiteSpace: 'nowrap' }}
+      {/* Page Title & Actions */}
+      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 4 }}>
+        <Box>
+          <Typography variant="h4" sx={{ fontWeight: 900, color: COLORS.primary, fontFamily: 'Playfair Display', letterSpacing: -0.5 }}>
+            Wedding Planner
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Manage your budget, checklist, and vendors in one place.
+          </Typography>
+        </Box>
+        {isMobile && (
+          <Tooltip title="Download PDF Report">
+            <IconButton 
+              onClick={handleDownloadReport}
+              sx={{ color: COLORS.primary, bgcolor: `${COLORS.primary}10`, '&:hover': { bgcolor: `${COLORS.primary}20` } }}
             >
-              Go to Messages
-            </Button>
-          }
-        >
-          <Typography variant="subtitle2" sx={{ fontWeight: 800, color: '#7A6020' }}>
-            💎 You're engaged! Next step: invite your partner to plan together
-          </Typography>
-          <Typography variant="caption" color="text.secondary">
-            Go to your chat with your partner → tap the ❤️ button → send a Wedding Invite. Once they accept, you'll share this dashboard.
-          </Typography>
-        </Alert>
-      )}
-
+              <FileText size={24} />
+            </IconButton>
+          </Tooltip>
+        )}
+      </Stack>
       {/* Pending Wedding Invite Banner */}
       {pendingInvite && (
         <Alert
@@ -528,10 +563,12 @@ export default function WeddingDashboard() {
               </Button>
               <Button
                 size="small"
-                disabled={acceptingInvite}
+                disabled={acceptingInvite || globalLoading.open}
                 onClick={async () => {
+                  setGlobalLoading({ open: true, message: 'Declining invitation...' });
                   try { await weddingService.resetWedding(); } catch { /* ignore */ }
                   setPendingInvite(null);
+                  setGlobalLoading({ open: false, message: '' });
                 }}
                 sx={{ color: 'text.secondary', borderRadius: 3, fontWeight: 700, textTransform: 'none' }}
               >
@@ -715,7 +752,7 @@ export default function WeddingDashboard() {
           <Button onClick={() => setSetupDateOpen(false)} disabled={savingSetup}>Cancel</Button>
           <Button variant="contained" disabled={!setupDate || savingSetup}
             onClick={async () => {
-              setSavingSetup(true);
+              setGlobalLoading({ open: true, message: 'Saving Wedding Date...' });
               try {
                 await weddingService.updateProject({ weddingDate: setupDate });
                 setSetupDateOpen(false);
@@ -728,7 +765,7 @@ export default function WeddingDashboard() {
                     date: setupDate,
                   },
                 }) : prev);
-              } catch { /* ignore */ } finally { setSavingSetup(false); }
+              } catch { /* ignore */ } finally { setGlobalLoading({ open: false, message: '' }); }
             }}
             sx={{ bgcolor: '#C9A84C', '&:hover': { bgcolor: '#A8883E' }, minWidth: 120, minHeight: 36 }}
           >
@@ -747,30 +784,30 @@ export default function WeddingDashboard() {
             Your total wedding budget in LKR. You can update this any time from the Budget tab.
           </Typography>
           <TextField
-            fullWidth type="number" label="Total Budget (LKR)" value={setupBudget}
-            onChange={(e) => setSetupBudget(e.target.value)}
+            fullWidth type="text" label="Total Budget (LKR)" value={setupBudget}
+            onChange={(e) => setSetupBudget(handleFormatNumber(e.target.value))}
             InputProps={{ startAdornment: <InputAdornment position="start">LKR</InputAdornment> }}
-            inputProps={{ min: 0 }}
           />
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setSetupBudgetOpen(false)} disabled={savingSetup}>Cancel</Button>
-          <Button variant="contained" disabled={!setupBudget || Number(setupBudget) <= 0 || savingSetup}
+          <Button variant="contained" disabled={!setupBudget || Number(setupBudget.replace(/,/g, '')) <= 0 || savingSetup}
             onClick={async () => {
-              setSavingSetup(true);
+              setGlobalLoading({ open: true, message: 'Saving Total Budget...' });
               try {
-                await weddingService.updateProject({ totalBudget: Number(setupBudget) });
+                const numVal = Number(setupBudget.replace(/,/g, ''));
+                await weddingService.updateProject({ totalBudget: numVal });
                 setSetupBudgetOpen(false);
                 setSetupBudget('');
-                setRawProject((prev: any) => prev ? ({ ...prev, totalBudget: Number(setupBudget) }) : prev);
+                setRawProject((prev: any) => prev ? ({ ...prev, totalBudget: numVal }) : prev);
                 setWeddingData((prev: any) => prev ? ({
                   ...prev,
                   stats: {
                     ...prev.stats,
-                    totalBudget: Number(setupBudget),
+                    totalBudget: numVal,
                   },
                 }) : prev);
-              } catch { /* ignore */ } finally { setSavingSetup(false); }
+              } catch { /* ignore */ } finally { setGlobalLoading({ open: false, message: '' }); }
             }}
             sx={{ bgcolor: '#C9A84C', '&:hover': { bgcolor: '#A8883E' }, minWidth: 136, minHeight: 36 }}
           >
@@ -994,47 +1031,49 @@ export default function WeddingDashboard() {
                 )}
 
                 {/* Stop planning together */}
-                {!stopConfirm ? (
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    color="error"
-                    startIcon={<XCircle size={14} />}
-                    onClick={() => setStopConfirm(true)}
-                    sx={{ borderRadius: 3, textTransform: 'none', fontWeight: 700 }}
-                  >
-                    {isCoupled ? 'Stop Planning Together' : 'Cancel Invitation'}
-                  </Button>
-                ) : (
-                  <Stack direction="row" spacing={1} alignItems="center">
-                    <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600 }}>
-                      Are you sure?
-                    </Typography>
-                    <Button
-                      size="small"
-                      variant="contained"
-                      color="error"
-                      disabled={resetting}
-                      onClick={handleResetWedding}
-                      sx={{ borderRadius: 3, textTransform: 'none', fontWeight: 700, minWidth: 92, minHeight: 32 }}
-                    >
-                      {resetting ? <CircularProgress size={14} color="inherit" /> : 'Yes, stop'}
-                    </Button>
-                    <Button
-                      size="small"
-                      variant="text"
-                      disabled={resetting}
-                      onClick={() => setStopConfirm(false)}
-                      sx={{ borderRadius: 3, textTransform: 'none', fontWeight: 700 }}
-                    >
-                      Keep
-                    </Button>
-                  </Stack>
-                )}
+                <Button
+                  size="small"
+                  variant="outlined"
+                  color="error"
+                  startIcon={<XCircle size={14} />}
+                  onClick={() => setResetDialogOpen(true)}
+                  sx={{ borderRadius: 3, textTransform: 'none', fontWeight: 700 }}
+                >
+                  {isCoupled ? 'Stop Planning Together' : 'Cancel Invitation'}
+                </Button>
               </Stack>
             </Box>
           </motion.div>
         </AnimatePresence>
+      )}
+      {/* Planning Locked / Exploration Mode Notice */}
+      {!planningAccessGranted && !loading && (
+        <Alert 
+          severity="info" 
+          icon={<Sparkles size={20} color={COLORS.primary} />}
+          sx={{ 
+            mb: 4, 
+            borderRadius: 4, 
+            bgcolor: '#FFF8E7', 
+            border: '1px solid #E6C87E',
+            '& .MuiAlert-message': { width: '100%' }
+          }}
+        >
+          <Typography variant="subtitle2" sx={{ fontWeight: 800, color: COLORS.primary }}>
+            Planning Exploration Mode
+          </Typography>
+          <Typography variant="body2" color="textSecondary" sx={{ mb: 1 }}>
+            You are exploring the planning dashboard in read-only mode. To unlock collaborative features (checklist edits, budget management, and vendor booking), you need to send a wedding planning invitation to your partner.
+          </Typography>
+          <Button 
+            variant="contained"
+            size="small"
+            onClick={() => navigate('/messages')}
+            sx={{ bgcolor: COLORS.primary, borderRadius: 2, fontWeight: 700, textTransform: 'none', px: 3 }}
+          >
+            Go to Messages to Send Invite
+          </Button>
+        </Alert>
       )}
 
       {/* Stat Cards */}
@@ -1090,19 +1129,21 @@ export default function WeddingDashboard() {
       </Grid>
 
       {/* Navigation Tabs */}
-      <Box ref={tabsAnchorRef} sx={{ borderBottom: 1, borderColor: 'divider', mb: 4 }}>
+      <Box ref={tabsAnchorRef} sx={{ borderBottom: 1, borderColor: 'divider', mb: 4, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <Tabs 
           value={activeTab} 
           onChange={handleTabChange} 
-          variant={isMobile ? "scrollable" : "fullWidth"}
+          variant={isMobile ? "scrollable" : "standard"}
           scrollButtons="auto"
           sx={{
+            flex: 1,
             '& .MuiTabs-indicator': { bgcolor: COLORS.primary, height: 3 },
             '& .MuiTab-root': { 
               textTransform: 'none', 
               fontWeight: 700, 
-              fontSize: '1rem',
+              fontSize: '0.95rem',
               color: COLORS.textSecondary,
+              minWidth: isMobile ? 'auto' : 120,
               '&.Mui-selected': { color: COLORS.primary }
             }
           }}
@@ -1113,24 +1154,66 @@ export default function WeddingDashboard() {
           <Tab icon={<BarChart3 size={18} />} iconPosition="start" label="Budget" />
           <Tab icon={<Milestone size={18} />} iconPosition="start" label="Timeline" />
         </Tabs>
+
+        {!isMobile && (
+          <Button
+            size="small"
+            startIcon={<FileText size={18} />}
+            onClick={handleDownloadReport}
+            sx={{ 
+              ml: 2, 
+              mb: 1, 
+              color: COLORS.primary, 
+              borderColor: COLORS.primary,
+              fontWeight: 700,
+              borderRadius: 2,
+              px: 2,
+              whiteSpace: 'nowrap',
+              '&:hover': { bgcolor: `${COLORS.primary}08`, borderColor: COLORS.primary }
+            }}
+            variant="outlined"
+          >
+            Download Report
+          </Button>
+        )}
       </Box>
 
       {/* Tab Content */}
-      <AnimatePresence mode="wait">
+      <Box sx={{ minHeight: 700, position: 'relative' }}>
+        <AnimatePresence mode="wait">
         <motion.div
           key={activeTab}
-          initial={{ opacity: 0, x: 10 }}
-          animate={{ opacity: 1, x: 0 }}
-          exit={{ opacity: 0, x: -10 }}
-          transition={{ duration: 0.3 }}
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -10 }}
+          transition={{ duration: 0.35, ease: [0.4, 0, 0.2, 1] }}
         >
           {activeTab === 0 && <OverviewTab data={weddingData} onSwitchTab={handleSwitchTabFromOverview} project={rawProject} budget={rawBudget} />}
-          {activeTab === 1 && planningAccessGranted && <ChecklistTab checklist={rawProject?.checklist || []} onChecklistChange={(updated) => setRawProject((p: any) => ({ ...p, checklist: updated }))} />}
-          {activeTab === 2 && planningAccessGranted && <VendorTab vendors={rawVendors} bookedVendorIds={rawProject?.vendors || []} onStatusChange={refreshVendors} />}
-          {activeTab === 3 && planningAccessGranted && <BudgetTab totalBudget={rawBudget?.totalBudget || rawProject?.totalBudget || 0} totalSpent={rawBudget?.totalSpent || 0} expenses={rawBudget?.expenses || rawProject?.expenses || []} onExpenseAdded={refreshBudget} onBudgetUpdated={refreshBudget} />}
-          {activeTab === 4 && planningAccessGranted && <TimelineTab weddingDate={rawProject?.weddingDate || couple.date} checklist={rawProject?.checklist || []} onChecklistChange={(updated: any[]) => setRawProject((p: any) => ({ ...p, checklist: updated }))} />}
+          {activeTab === 1 && <ChecklistTab readOnly={!planningAccessGranted} checklist={rawProject?.checklist || []} onChecklistChange={(updated) => setRawProject((p: any) => ({ ...p, checklist: updated }))} currentUserId={currentUserId} partnerId={isCoupled ? rawProject?.coupleUserIds?.map((u: any) => String(typeof u === 'object' ? (u?._id || u?.id || '') : u || '')).find((id: string) => id !== currentUserId) : undefined} setGlobalLoading={setGlobalLoading} />}
+          {activeTab === 2 && <VendorTab readOnly={!planningAccessGranted} vendors={rawVendors} bookedVendorIds={rawProject?.vendors || []} expenses={rawProject?.expenses || []} totalBudget={rawProject?.totalBudget || 0} onStatusChange={refreshVendors} />}
+          {activeTab === 3 && (
+            <BudgetTab 
+              readOnly={!planningAccessGranted} 
+              totalBudget={rawBudget?.totalBudget ?? rawProject?.totalBudget ?? 0} 
+              totalSpent={rawBudget?.totalSpent ?? 0} 
+              expenses={rawBudget?.expenses ?? rawProject?.expenses ?? []} 
+              onExpenseAdded={refreshBudget} 
+              onBudgetUpdated={refreshBudget} 
+              setGlobalLoading={setGlobalLoading}
+            />
+          )}
+          {activeTab === 4 && <TimelineTab 
+            readOnly={!planningAccessGranted} 
+            weddingDate={rawProject?.weddingDate || couple.date} 
+            checklist={rawProject?.checklist || []} 
+            onChecklistChange={(updated: any[]) => setRawProject((p: any) => ({ ...p, checklist: updated }))} 
+            setGlobalLoading={setGlobalLoading}
+            currentUserId={currentUserId}
+            partnerId={isCoupled ? rawProject?.coupleUserIds?.map((u: any) => String(typeof u === 'object' ? (u?._id || u?.id || '') : u || '')).find((id: string) => id !== currentUserId) : undefined}
+          />}
         </motion.div>
       </AnimatePresence>
+    </Box>
 
       {/* Edit Total Budget Dialog */}
       <Dialog open={editBudgetOpen} onClose={() => !savingBudget && setEditBudgetOpen(false)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: 4 } }}>
@@ -1142,30 +1225,30 @@ export default function WeddingDashboard() {
             Update your total wedding budget. This affects the budget overview and spending breakdown.
           </Typography>
           <TextField
-            fullWidth type="number" label="Total Budget (LKR)" value={editBudgetValue}
-            onChange={(e) => setEditBudgetValue(e.target.value)}
+            fullWidth type="text" label="Total Budget (LKR)" value={editBudgetValue}
+            onChange={(e) => setEditBudgetValue(handleFormatNumber(e.target.value))}
             InputProps={{ startAdornment: <InputAdornment position="start">LKR</InputAdornment> }}
-            inputProps={{ min: 0 }}
             autoFocus
           />
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setEditBudgetOpen(false)} disabled={savingBudget}>Cancel</Button>
-          <Button variant="contained" disabled={!editBudgetValue || Number(editBudgetValue) < 0 || savingBudget}
+          <Button variant="contained" disabled={!editBudgetValue || Number(editBudgetValue.replace(/,/g, '')) < 0 || savingBudget}
             onClick={async () => {
-              setSavingBudget(true);
+              setGlobalLoading({ open: true, message: 'Updating Total Budget...' });
               try {
-                await weddingService.updateProject({ totalBudget: Number(editBudgetValue) });
+                const numVal = Number(editBudgetValue.replace(/,/g, ''));
+                await weddingService.updateProject({ totalBudget: numVal });
                 setEditBudgetOpen(false);
-                setRawProject((prev: any) => prev ? ({ ...prev, totalBudget: Number(editBudgetValue) }) : prev);
+                setRawProject((prev: any) => prev ? ({ ...prev, totalBudget: numVal }) : prev);
                 setWeddingData((prev: any) => prev ? ({
                   ...prev,
                   stats: {
                     ...prev.stats,
-                    totalBudget: Number(editBudgetValue),
+                    totalBudget: numVal,
                   },
                 }) : prev);
-              } catch { /* ignore */ } finally { setSavingBudget(false); }
+              } catch { /* ignore */ } finally { setGlobalLoading({ open: false, message: '' }); }
             }}
             sx={{ bgcolor: '#C9A84C', '&:hover': { bgcolor: '#A8883E' } }}
           >
@@ -1174,7 +1257,46 @@ export default function WeddingDashboard() {
         </DialogActions>
       </Dialog>
 
-      {/* Reset / Cancel Wedding Confirmation Dialog — removed, inline confirm used instead */}
+      {/* Reset Wedding Confirmation Dialog */}
+      <Dialog open={resetDialogOpen} onClose={() => !resetting && setResetDialogOpen(false)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: 4 } }}>
+        <DialogTitle sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <AlertCircle size={20} color={COLORS.error} />
+          {isCoupled ? 'Stop Planning Together?' : 'Cancel Invitation?'}
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary">
+            {isCoupled 
+              ? 'This will reset your shared wedding plan for both you and your partner. To plan together again later, you must send a new wedding invite. Continue?'
+              : 'This will cancel your pending wedding invitation. You can always send a new one later if you change your mind.'
+            }
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setResetDialogOpen(false)} disabled={resetting}>Keep</Button>
+          <Button
+            variant="contained"
+            color="error"
+            onClick={async () => {
+              setResetDialogOpen(false);
+              await handleResetWedding();
+            }}
+            disabled={resetting}
+            startIcon={resetting ? <CircularProgress size={14} color="inherit" /> : <Trash2 size={14} />}
+            sx={{ borderRadius: 3, textTransform: 'none', fontWeight: 700 }}
+          >
+            {resetting ? 'Resetting…' : 'Yes, Reset'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Global Loading Backdrop */}
+      <Backdrop
+        sx={{ color: '#fff', zIndex: (theme) => theme.zIndex.modal + 999, flexDirection: 'column', gap: 2 }}
+        open={globalLoading.open}
+      >
+        <CircularProgress color="inherit" />
+        <Typography variant="h6" sx={{ fontWeight: 600 }}>{globalLoading.message}</Typography>
+      </Backdrop>
     </Container>
   );
 }
