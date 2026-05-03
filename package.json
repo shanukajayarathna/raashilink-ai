@@ -35,6 +35,8 @@
     "framer-motion": "^12.38.0",
     "ioredis": "^5.10.1",
     "jsonwebtoken": "^9.0.2",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.7",
     "lucide-react": "^0.546.0",
     "mongoose": "^8.14.3",
     "motion": "^12.23.24",
