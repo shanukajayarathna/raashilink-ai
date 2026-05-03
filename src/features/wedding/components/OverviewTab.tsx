@@ -5,7 +5,7 @@ import {
   LinearProgress, Divider, Avatar
 } from '@mui/material';
 import { 
-  PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend 
+  PieChart, Pie, Cell, Tooltip, Legend 
 } from 'recharts';
 import { 
   Plus, ChevronRight, Calendar, CheckCircle2, 
@@ -31,12 +31,15 @@ const CHART_COLORS = [COLORS.primary, COLORS.secondary, COLORS.accent, '#4CAF50'
 export default function OverviewTab({ data, onSwitchTab, project, budget }: { data: any, onSwitchTab: (idx: number) => void, project?: any, budget?: any }) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const chartWidth = isMobile ? 280 : 420;
+  const chartHeight = isMobile ? 240 : 280;
 
   // Build budget chart data from real expenses grouped by category, or fall back to empty
-  const expenses: any[] = Array.isArray(project?.expenses) ? project.expenses : [];
+  const expenses: any[] = Array.isArray(budget?.expenses) ? budget.expenses : (Array.isArray(project?.expenses) ? project.expenses : []);
   const budgetChartData = expenses.length > 0
     ? Object.entries(
         expenses.reduce((acc: Record<string, number>, e: any) => {
+          if (!e) return acc;
           acc[e.category] = (acc[e.category] || 0) + Number(e.amount || 0);
           return acc;
         }, {})
@@ -46,7 +49,7 @@ export default function OverviewTab({ data, onSwitchTab, project, budget }: { da
   // Upcoming pending tasks from real checklist
   const checklist: any[] = Array.isArray(project?.checklist) ? project.checklist : [];
   const upcomingTasks = checklist
-    .filter((t: any) => !t.completed)
+    .filter((t: any) => t && !t.completed)
     .slice(0, 5)
     .map((t: any, i: number) => ({
       id: String(i),
@@ -80,21 +83,21 @@ export default function OverviewTab({ data, onSwitchTab, project, budget }: { da
                 </Button>
               </Stack>
 
-              <Box sx={{ height: 300, width: '100%' }}>
+              <Box sx={{ height: 300, width: '100%', minWidth: 0 }}>
                 {budgetChartData.length === 0 ? (
                   <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, color: 'text.secondary' }}>
                     <TrendingUp size={40} opacity={0.3} />
                     <Typography variant="body2">No expenses logged yet. Add expenses in the Budget tab.</Typography>
                   </Box>
                 ) : (
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
+                <Box sx={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <PieChart width={chartWidth} height={chartHeight}>
                     <Pie
                       data={budgetChartData}
                       cx="50%"
                       cy="50%"
-                      innerRadius={60}
-                      outerRadius={100}
+                      innerRadius={isMobile ? 45 : 60}
+                      outerRadius={isMobile ? 78 : 100}
                       paddingAngle={5}
                       dataKey="value"
                     >
@@ -108,11 +111,11 @@ export default function OverviewTab({ data, onSwitchTab, project, budget }: { da
                     />
                     <Legend verticalAlign="bottom" height={36} />
                   </PieChart>
-                </ResponsiveContainer>
+                </Box>
                 )}
               </Box>
 
-              <Box sx={{ mt: 4, p: 3, bgcolor: COLORS.cream, borderRadius: 4, border: '1px dashed', borderColor: COLORS.secondary }}>
+              <Box sx={{ mt: 2, p: 3, bgcolor: COLORS.cream, borderRadius: 4, border: '1px dashed', borderColor: COLORS.secondary }}>
                 <Stack direction="row" spacing={2} alignItems="center">
                   <Box sx={{ p: 1, bgcolor: 'white', borderRadius: '50%', color: COLORS.secondary }}>
                     <Sparkles size={20} />
