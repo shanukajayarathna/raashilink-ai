@@ -6,7 +6,8 @@ import {
   Table, TableBody, TableCell, TableContainer, 
   TableHead, TableRow, Paper, LinearProgress,
   Dialog, DialogTitle, DialogContent, DialogActions,
-  Fab, useTheme, useMediaQuery, Alert, Tooltip, Chip, CircularProgress, Switch
+  Fab, useTheme, useMediaQuery, Alert, Tooltip, Chip, CircularProgress, Switch,
+  Checkbox, alpha
 } from '@mui/material';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, 
@@ -41,15 +42,24 @@ const CATEGORIES = [
 
 const EMPTY_EXPENSE = { title: '', category: CATEGORIES[0], amount: '', notes: '', paid: false };
 
+const handleFormatNumber = (val: string | number) => {
+  if (!val) return '';
+  const rawValue = String(val).replace(/\D/g, '');
+  if (!rawValue) return '';
+  return Number(rawValue).toLocaleString('en-US');
+};
+
 interface BudgetTabProps {
   totalBudget?: number;
   totalSpent?: number;
   expenses?: any[];
   onExpenseAdded?: () => void;
   onBudgetUpdated?: () => void;
+  readOnly?: boolean;
+  setGlobalLoading?: (state: { open: boolean; message: string }) => void;
 }
 
-export default function BudgetTab({ totalBudget = 0, totalSpent = 0, expenses = [], onExpenseAdded, onBudgetUpdated }: BudgetTabProps) {
+export default function BudgetTab({ totalBudget = 0, totalSpent = 0, expenses = [], onExpenseAdded, onBudgetUpdated, readOnly, setGlobalLoading }: BudgetTabProps) {
   const [expenseModal, setExpenseModal] = useState<{ open: boolean; mode: 'add' | 'edit'; index: number | null }>({ open: false, mode: 'add', index: null });
   const [form, setForm] = useState<any>(EMPTY_EXPENSE);
   const [saving, setSaving] = useState(false);
@@ -58,12 +68,16 @@ export default function BudgetTab({ totalBudget = 0, totalSpent = 0, expenses = 
   const [budgetDialogOpen, setBudgetDialogOpen] = useState(false);
   const [budgetInput, setBudgetInput] = useState(String(totalBudget));
   const [savingBudget, setSavingBudget] = useState(false);
-    const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
+  const [clearAllConfirm, setClearAllConfirm] = useState(false);
+  const [selectedIndices, setSelectedIndices] = useState<number[]>([]);
+  const [isBulkActionLoading, setIsBulkActionLoading] = useState(false);
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
   const categoryMap: Record<string, number> = {};
   expenses.forEach((e: any) => {
+    if (!e) return;
     const cat = e.category || 'Others';
     categoryMap[cat] = (categoryMap[cat] || 0) + Number(e.amount || 0);
   });
@@ -80,34 +94,77 @@ export default function BudgetTab({ totalBudget = 0, totalSpent = 0, expenses = 
   const openAdd = () => { setForm(EMPTY_EXPENSE); setExpenseModal({ open: true, mode: 'add', index: null }); };
   const openEdit = (idx: number) => {
     const e = expenses[idx];
-    setForm({ title: e.title, category: e.category || CATEGORIES[0], amount: String(e.amount), notes: e.notes || '', paid: !!e.paid });
+    setForm({ title: e.title, category: e.category || CATEGORIES[0], amount: handleFormatNumber(e.amount), notes: e.notes || '', paid: !!e.paid });
     setExpenseModal({ open: true, mode: 'edit', index: idx });
   };
 
   const handleSave = async () => {
     if (!form.title.trim() || !form.amount) return;
     setSaving(true);
+    if (setGlobalLoading) setGlobalLoading({ open: true, message: 'Saving Expense...' });
     try {
+      const numAmount = Number(String(form.amount).replace(/,/g, ''));
       if (expenseModal.mode === 'add') {
-        await weddingService.addExpense({ title: form.title.trim(), category: form.category, amount: Number(form.amount), notes: form.notes, paid: !!form.paid });
+        await weddingService.addExpense({ title: form.title.trim(), category: form.category, amount: numAmount, notes: form.notes, paid: !!form.paid });
       } else if (expenseModal.index !== null) {
-        await weddingService.updateExpense(expenseModal.index, { title: form.title.trim(), category: form.category, amount: Number(form.amount), notes: form.notes, paid: form.paid });
+        await weddingService.updateExpense(expenseModal.index, { title: form.title.trim(), category: form.category, amount: numAmount, notes: form.notes, paid: form.paid });
       }
       onExpenseAdded?.();
       setExpenseModal({ open: false, mode: 'add', index: null });
     } catch { /* silent */ }
-    finally { setSaving(false); }
+    finally {
+      setSaving(false);
+      if (setGlobalLoading) setGlobalLoading({ open: false, message: '' });
+    }
   };
 
   const handleDelete = async (idx: number, confirmed = false) => {
     if (!confirmed) { setDeleteConfirm(idx); return; }
     setDeleteConfirm(null);
     setDeleting(idx);
+    if (setGlobalLoading) setGlobalLoading({ open: true, message: 'Deleting Expense...' });
     try {
       await weddingService.deleteExpense(idx);
       onExpenseAdded?.();
     } catch { /* silent */ }
-    finally { setDeleting(null); }
+    finally {
+      setDeleting(null);
+      if (setGlobalLoading) setGlobalLoading({ open: false, message: '' });
+    }
+  };
+
+  const handleClearAll = async () => {
+    if (readOnly) return;
+    setIsBulkActionLoading(true);
+    try {
+      await weddingService.clearAllExpenses();
+      onExpenseAdded?.();
+      setClearAllConfirm(false);
+    } catch {
+      // silent
+    } finally {
+      setIsBulkActionLoading(false);
+    }
+  };
+
+  const handleDeleteSelected = async () => {
+    if (readOnly || selectedIndices.length === 0) return;
+    setIsBulkActionLoading(true);
+    try {
+      await weddingService.deleteMultipleExpenses(selectedIndices);
+      onExpenseAdded?.();
+      setSelectedIndices([]);
+    } catch {
+      // silent
+    } finally {
+      setIsBulkActionLoading(false);
+    }
+  };
+
+  const toggleSelect = (idx: number) => {
+    setSelectedIndices(prev => 
+      prev.includes(idx) ? prev.filter(i => i !== idx) : [...prev, idx]
+    );
   };
 
   const handleTogglePaid = async (idx: number, paid: boolean, expense: any) => {
@@ -130,12 +187,16 @@ export default function BudgetTab({ totalBudget = 0, totalSpent = 0, expenses = 
 
   const handleSaveBudget = async () => {
     setSavingBudget(true);
+    if (setGlobalLoading) setGlobalLoading({ open: true, message: 'Updating Budget...' });
     try {
-      await weddingService.updateProject({ totalBudget: Number(budgetInput) || 0 });
+      await weddingService.updateProject({ totalBudget: Number(String(budgetInput).replace(/,/g, '')) || 0 });
       onBudgetUpdated?.();
       setBudgetDialogOpen(false);
     } catch { /* silent */ }
-    finally { setSavingBudget(false); }
+    finally {
+      setSavingBudget(false);
+      if (setGlobalLoading) setGlobalLoading({ open: false, message: '' });
+    }
   };
 
   return (
@@ -143,7 +204,7 @@ export default function BudgetTab({ totalBudget = 0, totalSpent = 0, expenses = 
       {/* Budget Summary Cards */}
       <Grid container spacing={3} sx={{ mb: 6 }}>
         <SummaryCard title="Total Budget" value={`LKR ${totalBudget.toLocaleString()}`} icon={<DollarSign size={24} />} color={COLORS.primary} delay={0.1}
-          action={<Tooltip title="Edit budget"><IconButton size="small" onClick={() => { setBudgetInput(String(totalBudget)); setBudgetDialogOpen(true); }} sx={{ color: COLORS.primary }}><Edit3 size={14} /></IconButton></Tooltip>} />
+          action={<Tooltip title={readOnly ? "Locked" : "Edit budget"}><IconButton size="small" disabled={readOnly} onClick={() => { setBudgetInput(totalBudget ? totalBudget.toLocaleString('en-US') : ''); setBudgetDialogOpen(true); }} sx={{ color: COLORS.primary }}><Edit3 size={14} /></IconButton></Tooltip>} />
         <SummaryCard title="Total Spent" value={`LKR ${totalSpent.toLocaleString()}`} icon={<TrendingUp size={24} />} color={COLORS.accent} delay={0.2} />
         <SummaryCard title="Remaining" value={`LKR ${remaining.toLocaleString()}`} icon={<TrendingDown size={24} />} color={isOverBudget ? COLORS.error : COLORS.success} delay={0.3} />
         <SummaryCard title="Budget Used" value={`${100 - variancePct}%`} icon={isOverBudget ? <ArrowUpRight size={24} /> : <ArrowDownRight size={24} />} color={isOverBudget ? COLORS.error : COLORS.success} subtitle={isOverBudget ? 'Over Budget' : `${variancePct}% remaining`} delay={0.4} />
@@ -181,11 +242,49 @@ export default function BudgetTab({ totalBudget = 0, totalSpent = 0, expenses = 
         <Typography variant="h6" sx={{ fontWeight: 800, color: COLORS.primary, fontFamily: 'Playfair Display' }}>
           All Expenses
         </Typography>
-        <Button variant="contained" startIcon={<Plus size={18} />} onClick={openAdd}
-          sx={{ bgcolor: COLORS.primary, borderRadius: 3, fontWeight: 700, textTransform: 'none', '&:hover': { bgcolor: '#6B1423' } }}>
-          Add Expense
-        </Button>
+        <Stack direction="row" spacing={2}>
+          {!readOnly && expenses.length > 0 && (
+            <Button 
+              variant="outlined" 
+              color="error" 
+              startIcon={<Trash2 size={18} />} 
+              onClick={() => setClearAllConfirm(true)}
+              sx={{ borderRadius: 3, fontWeight: 700, textTransform: 'none' }}
+            >
+              Clear All
+            </Button>
+          )}
+          <Button variant="contained" startIcon={<Plus size={18} />} onClick={openAdd}
+            disabled={readOnly}
+            sx={{ bgcolor: COLORS.primary, borderRadius: 3, fontWeight: 700, textTransform: 'none', '&:hover': { bgcolor: '#6B1423' } }}>
+            Add Expense
+          </Button>
+        </Stack>
       </Stack>
+      {selectedIndices.length > 0 && (
+        <motion.div initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }}>
+          <Alert 
+            severity="warning" 
+            sx={{ mb: 3, borderRadius: 4, display: 'flex', alignItems: 'center' }}
+            action={
+              <Button 
+                color="error" 
+                variant="contained" 
+                size="small" 
+                onClick={handleDeleteSelected}
+                disabled={isBulkActionLoading}
+                startIcon={isBulkActionLoading ? <CircularProgress size={14} color="inherit" /> : <Trash2 size={14} />}
+                sx={{ borderRadius: 2, fontWeight: 800, textTransform: 'none' }}
+              >
+                Delete Selected ({selectedIndices.length})
+              </Button>
+            }
+          >
+            Selection Mode: {selectedIndices.length} items selected.
+          </Alert>
+        </motion.div>
+      )}
+
       {expenses.length === 0 ? (
         <Box sx={{ py: 6, textAlign: 'center', color: 'text.secondary', mb: 6 }}>
           <Receipt size={40} opacity={0.3} style={{ margin: '0 auto 8px' }} />
@@ -196,6 +295,20 @@ export default function BudgetTab({ totalBudget = 0, totalSpent = 0, expenses = 
           <Table>
             <TableHead sx={{ bgcolor: COLORS.cream }}>
               <TableRow>
+                {!readOnly && (
+                  <TableCell sx={{ width: 40, p: 1 }}>
+                    <Checkbox 
+                      size="small"
+                      indeterminate={selectedIndices.length > 0 && selectedIndices.length < expenses.length}
+                      checked={expenses.length > 0 && selectedIndices.length === expenses.length}
+                      onChange={(e) => {
+                        if (e.target.checked) setSelectedIndices(expenses.map((_, i) => i));
+                        else setSelectedIndices([]);
+                      }}
+                      sx={{ color: COLORS.primary, '&.Mui-checked': { color: COLORS.primary } }}
+                    />
+                  </TableCell>
+                )}
                 <TableCell sx={{ fontWeight: 800, color: COLORS.primary }}>Title</TableCell>
                 <TableCell sx={{ fontWeight: 800, color: COLORS.primary }}>Category</TableCell>
                 <TableCell sx={{ fontWeight: 800, color: COLORS.primary }}>Amount (LKR)</TableCell>
@@ -206,7 +319,21 @@ export default function BudgetTab({ totalBudget = 0, totalSpent = 0, expenses = 
             </TableHead>
             <TableBody>
               {expenses.map((e: any, i: number) => (
-                <TableRow key={i} sx={{ '&:last-child td, &:last-child th': { border: 0 } }}>
+                <TableRow key={i} sx={{ 
+                  '&:last-child td, &:last-child th': { border: 0 },
+                  bgcolor: selectedIndices.includes(i) ? alpha(COLORS.primary, 0.05) : 'inherit',
+                  transition: 'background-color 0.2s'
+                }}>
+                  {!readOnly && (
+                    <TableCell sx={{ p: 1 }}>
+                      <Checkbox 
+                        size="small"
+                        checked={selectedIndices.includes(i)}
+                        onChange={() => toggleSelect(i)}
+                        sx={{ color: COLORS.primary, '&.Mui-checked': { color: COLORS.error } }}
+                      />
+                    </TableCell>
+                  )}
                   <TableCell sx={{ fontWeight: 700 }}>{e.title}</TableCell>
                   <TableCell>
                     <Chip label={e.category} size="small" sx={{ fontWeight: 700, bgcolor: `${COLORS.primary}10`, color: COLORS.primary, fontSize: '0.7rem' }} />
@@ -218,7 +345,7 @@ export default function BudgetTab({ totalBudget = 0, totalSpent = 0, expenses = 
                         size="small"
                         color="success"
                         checked={!!e.paid}
-                        disabled={togglingPaid === i}
+                        disabled={togglingPaid === i || readOnly}
                         onChange={(evt) => handleTogglePaid(i, evt.target.checked, e)}
                       />
                       {togglingPaid === i ? (
@@ -233,13 +360,13 @@ export default function BudgetTab({ totalBudget = 0, totalSpent = 0, expenses = 
                   <TableCell sx={{ color: 'text.secondary', fontSize: '0.8rem' }}>{e.notes || '—'}</TableCell>
                   <TableCell align="right">
                     <Stack direction="row" spacing={0.5} justifyContent="flex-end">
-                      <Tooltip title="Edit">
-                        <IconButton size="small" onClick={() => openEdit(i)} sx={{ color: COLORS.primary }}>
+                      <Tooltip title={readOnly ? "Locked" : "Edit"}>
+                        <IconButton size="small" disabled={readOnly} onClick={() => openEdit(i)} sx={{ color: COLORS.primary }}>
                           <Edit3 size={15} />
                         </IconButton>
                       </Tooltip>
-                      <Tooltip title="Delete">
-                        <IconButton size="small" disabled={deleting === i} onClick={() => setDeleteConfirm(i)} sx={{ color: COLORS.error }}>
+                      <Tooltip title={readOnly ? "Locked" : "Delete"}>
+                        <IconButton size="small" disabled={deleting === i || readOnly} onClick={() => setDeleteConfirm(i)} sx={{ color: COLORS.error }}>
                           {deleting === i ? <CircularProgress size={14} color="inherit" /> : <Trash2 size={15} />}
                         </IconButton>
                       </Tooltip>
@@ -251,6 +378,25 @@ export default function BudgetTab({ totalBudget = 0, totalSpent = 0, expenses = 
           </Table>
         </TableContainer>
       )}
+
+      {/* Clear All Confirmation Dialog */}
+      <Dialog open={clearAllConfirm} onClose={() => !isBulkActionLoading && setClearAllConfirm(false)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: 4 } }}>
+        <DialogTitle sx={{ fontWeight: 800, color: COLORS.error }}>Clear All Expenses?</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2">
+            This will permanently delete <strong>all recorded expenses</strong> in your budget. This action cannot be undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setClearAllConfirm(false)} disabled={isBulkActionLoading}>Cancel</Button>
+          <Button variant="contained" color="error" disabled={isBulkActionLoading}
+            onClick={handleClearAll}
+            startIcon={isBulkActionLoading ? <CircularProgress size={14} color="inherit" /> : undefined}
+            sx={{ borderRadius: 3, fontWeight: 700 }}>
+            Clear Everything
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={deleteConfirm !== null} onClose={() => deleting === null && setDeleteConfirm(null)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: 4 } }}>
@@ -285,7 +431,7 @@ export default function BudgetTab({ totalBudget = 0, totalSpent = 0, expenses = 
                 {CATEGORIES.map(cat => <MenuItem key={cat} value={cat}>{cat}</MenuItem>)}
               </Select>
             </FormControl>
-            <TextField fullWidth label="Amount (LKR)" type="number" value={form.amount} onChange={(e) => setForm((x: any) => ({ ...x, amount: e.target.value }))} inputProps={{ min: 0 }} />
+            <TextField fullWidth label="Amount (LKR)" type="text" value={form.amount} onChange={(e) => setForm((x: any) => ({ ...x, amount: handleFormatNumber(e.target.value) }))} />
             <TextField fullWidth label="Notes (optional)" multiline rows={2} value={form.notes} onChange={(e) => setForm((x: any) => ({ ...x, notes: e.target.value }))} />
             <Stack direction="row" alignItems="center" spacing={1}>
               <Typography variant="body2" sx={{ fontWeight: 600 }}>Mark as Paid</Typography>
@@ -307,10 +453,10 @@ export default function BudgetTab({ totalBudget = 0, totalSpent = 0, expenses = 
       <Dialog open={budgetDialogOpen} onClose={() => !savingBudget && setBudgetDialogOpen(false)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: 6 } }}>
         <DialogTitle sx={{ fontWeight: 800, fontFamily: 'Playfair Display', color: COLORS.primary }}>Set Total Budget</DialogTitle>
         <DialogContent>
-          <TextField fullWidth autoFocus label="Total Budget (LKR)" type="number" value={budgetInput}
-            onChange={(e) => setBudgetInput(e.target.value)}
+          <TextField fullWidth autoFocus label="Total Budget (LKR)" type="text" value={budgetInput}
+            onChange={(e) => setBudgetInput(handleFormatNumber(e.target.value))}
             onKeyDown={(e) => e.key === 'Enter' && handleSaveBudget()}
-            inputProps={{ min: 0 }} sx={{ mt: 1 }} />
+            sx={{ mt: 1 }} />
         </DialogContent>
         <DialogActions sx={{ p: 3 }}>
           <Button onClick={() => setBudgetDialogOpen(false)} disabled={savingBudget} sx={{ color: 'text.secondary', fontWeight: 700 }}>Cancel</Button>
