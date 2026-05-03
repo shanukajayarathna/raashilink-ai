@@ -24,6 +24,7 @@ import {
   Tooltip,
   Grid,
   CircularProgress,
+  Alert,
 } from '@mui/material';
 import {
   Plus,
@@ -35,6 +36,8 @@ import {
   Search,
   Calendar,
   User,
+  Square,
+  CheckSquare,
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
@@ -68,6 +71,7 @@ interface Task {
   title: string;
   category: string;
   assignedTo: string;
+  rawAssignedTo: string;
   due: string;
   status: 'completed' | 'pending' | 'overdue';
   apiIndex: number;
@@ -76,6 +80,10 @@ interface Task {
 interface ChecklistTabProps {
   checklist?: any[];
   onChecklistChange?: (updated: any[]) => void;
+  readOnly?: boolean;
+  currentUserId?: string;
+  partnerId?: string;
+  setGlobalLoading?: (state: { open: boolean; message: string }) => void;
 }
 
 function inferCategory(item: any) {
@@ -90,7 +98,7 @@ function inferCategory(item: any) {
   return 'Logistics';
 }
 
-function buildTasks(checklist: any[]): Task[] {
+function buildTasks(checklist: any[], currentUserId?: string, partnerId?: string): Task[] {
   const now = new Date();
   return checklist.map((item: any, idx: number) => {
     let status: Task['status'] = item.completed ? 'completed' : 'pending';
@@ -98,11 +106,16 @@ function buildTasks(checklist: any[]): Task[] {
       status = 'overdue';
     }
 
+    let displayAssignedTo = item.assignedTo || 'Both';
+    if (currentUserId && String(item.assignedTo) === String(currentUserId)) displayAssignedTo = 'You';
+    else if (partnerId && String(item.assignedTo) === String(partnerId)) displayAssignedTo = 'Partner';
+
     return {
       id: `task-${idx}`,
       title: item.title,
       category: inferCategory(item),
-      assignedTo: item.assignedTo || 'Both',
+      assignedTo: displayAssignedTo,
+      rawAssignedTo: item.assignedTo || 'Both',
       due: item.dueDate
         ? new Date(item.dueDate).toLocaleDateString('en-GB', {
             day: '2-digit',
@@ -125,9 +138,9 @@ const EMPTY_TASK = {
 
 const MotionCard = motion(Card);
 
-export default function ChecklistTab({ checklist: initialChecklist, onChecklistChange }: ChecklistTabProps) {
+export default function ChecklistTab({ checklist: initialChecklist, onChecklistChange, readOnly, currentUserId, partnerId, setGlobalLoading }: ChecklistTabProps) {
   const [checklist, setChecklist] = useState<any[]>(() => initialChecklist || []);
-  const [tasks, setTasks] = useState<Task[]>(() => buildTasks(initialChecklist || []));
+  const [tasks, setTasks] = useState<Task[]>(() => buildTasks(initialChecklist || [], currentUserId, partnerId));
   const [filter, setFilter] = useState('All');
   const [search, setSearch] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -140,16 +153,19 @@ export default function ChecklistTab({ checklist: initialChecklist, onChecklistC
   const [addingTask, setAddingTask] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<Task | null>(null);
+  const [clearAllConfirm, setClearAllConfirm] = useState(false);
+  const [selectedIndices, setSelectedIndices] = useState<number[]>([]);
+  const [isBulkActionLoading, setIsBulkActionLoading] = useState(false);
 
   React.useEffect(() => {
     const nextChecklist = initialChecklist || [];
     setChecklist(nextChecklist);
-    setTasks(buildTasks(nextChecklist));
-  }, [initialChecklist]);
+    setTasks(buildTasks(nextChecklist, currentUserId, partnerId));
+  }, [initialChecklist, currentUserId, partnerId]);
 
   const applyChecklist = (updatedChecklist: any[]) => {
     setChecklist(updatedChecklist);
-    setTasks(buildTasks(updatedChecklist));
+    setTasks(buildTasks(updatedChecklist, currentUserId, partnerId));
     onChecklistChange?.(updatedChecklist);
   };
 
@@ -175,6 +191,7 @@ export default function ChecklistTab({ checklist: initialChecklist, onChecklistC
   }, [filter, search, tasks]);
 
   const handleToggleTask = async (task: Task) => {
+    if (readOnly) return;
     setTogglingIdx(task.apiIndex);
     const previousChecklist = [...checklist];
     const updatedChecklist = checklist.map((item, idx) =>
@@ -206,6 +223,7 @@ export default function ChecklistTab({ checklist: initialChecklist, onChecklistC
   const handleAddTask = async () => {
     if (!taskForm.title.trim()) return;
     setAddingTask(true);
+    if (setGlobalLoading) setGlobalLoading({ open: true, message: 'Adding Task...' });
     try {
       await weddingService.addTask({
         title: taskForm.title.trim(),
@@ -220,6 +238,7 @@ export default function ChecklistTab({ checklist: initialChecklist, onChecklistC
       // silent
     } finally {
       setAddingTask(false);
+      if (setGlobalLoading) setGlobalLoading({ open: false, message: '' });
     }
   };
 
@@ -250,7 +269,7 @@ export default function ChecklistTab({ checklist: initialChecklist, onChecklistC
     setTaskForm({
       title: task.title,
       category: task.category,
-      assignedTo: task.assignedTo,
+      assignedTo: task.rawAssignedTo,
       due: sourceItem?.dueDate ? new Date(sourceItem.dueDate).toISOString().split('T')[0] : '',
     });
     setEditModalOpen(true);
@@ -259,6 +278,7 @@ export default function ChecklistTab({ checklist: initialChecklist, onChecklistC
   const handleEditTask = async () => {
     if (editingTaskIndex === null || !taskForm.title.trim()) return;
     setSavingEdit(true);
+    if (setGlobalLoading) setGlobalLoading({ open: true, message: 'Saving Changes...' });
     const previousChecklist = [...checklist];
     const updatedChecklist = checklist.map((item, idx) =>
       idx === editingTaskIndex
@@ -287,6 +307,7 @@ export default function ChecklistTab({ checklist: initialChecklist, onChecklistC
       applyChecklist(previousChecklist);
     } finally {
       setSavingEdit(false);
+      if (setGlobalLoading) setGlobalLoading({ open: false, message: '' });
     }
   };
 
@@ -294,6 +315,7 @@ export default function ChecklistTab({ checklist: initialChecklist, onChecklistC
     if (!confirmed) { setDeleteConfirm(task); return; }
     setDeleteConfirm(null);
     setDeletingIdx(task.apiIndex);
+    if (setGlobalLoading) setGlobalLoading({ open: true, message: 'Deleting Task...' });
     const previousChecklist = [...checklist];
     const updatedChecklist = checklist.filter((_, idx) => idx !== task.apiIndex);
     applyChecklist(updatedChecklist);
@@ -304,7 +326,45 @@ export default function ChecklistTab({ checklist: initialChecklist, onChecklistC
       applyChecklist(previousChecklist);
     } finally {
       setDeletingIdx(null);
+      if (setGlobalLoading) setGlobalLoading({ open: false, message: '' });
     }
+  };
+
+  const handleClearAll = async () => {
+    if (readOnly) return;
+    setIsBulkActionLoading(true);
+    try {
+      await weddingService.clearAllTasks();
+      applyChecklist([]);
+      setClearAllConfirm(false);
+      setSelectedIndices([]); // reset selection
+    } catch {
+      // silent
+    } finally {
+      setIsBulkActionLoading(false);
+    }
+  };
+
+  const handleDeleteSelected = async () => {
+    if (readOnly || selectedIndices.length === 0) return;
+    setIsBulkActionLoading(true);
+    const previousChecklist = [...checklist];
+    const updatedChecklist = checklist.filter((_, idx) => !selectedIndices.includes(idx));
+    applyChecklist(updatedChecklist);
+    try {
+      await weddingService.deleteMultipleTasks(selectedIndices);
+      setSelectedIndices([]);
+    } catch {
+      applyChecklist(previousChecklist);
+    } finally {
+      setIsBulkActionLoading(false);
+    }
+  };
+
+  const toggleSelect = (apiIndex: number) => {
+    setSelectedIndices(prev => 
+      prev.includes(apiIndex) ? prev.filter(i => i !== apiIndex) : [...prev, apiIndex]
+    );
   };
 
   const confirmDelete = () => {
@@ -334,36 +394,57 @@ export default function ChecklistTab({ checklist: initialChecklist, onChecklistC
                 {tasks.filter((t) => t.status === 'completed').length} of {tasks.length} tasks completed
               </Typography>
             </Box>
-            <Stack direction="row" spacing={2}>
-              <Button
-                variant="contained"
-                startIcon={<Sparkles size={18} />}
-                onClick={handleAISuggest}
-                disabled={isAISuggesting}
-                sx={{
-                  bgcolor: COLORS.secondary,
-                  color: COLORS.primary,
-                  fontWeight: 700,
-                  borderRadius: 3,
-                  '&:hover': { bgcolor: '#B89740' },
-                }}
-              >
-                {isAISuggesting ? 'AI Suggesting...' : 'AI Suggest Tasks'}
-              </Button>
-              <Button
-                variant="outlined"
-                startIcon={<Plus size={18} />}
-                onClick={() => setIsModalOpen(true)}
-                sx={{
-                  color: 'white',
-                  borderColor: 'rgba(255,255,255,0.3)',
-                  borderRadius: 3,
-                  fontWeight: 700,
-                }}
-              >
-                Add Task
-              </Button>
-            </Stack>
+              <Stack direction="row" spacing={1.5}>
+                {!readOnly && tasks.length > 0 && (
+                  <Button
+                    variant="outlined"
+                    startIcon={<Trash2 size={18} />}
+                    onClick={() => setClearAllConfirm(true)}
+                    sx={{
+                      color: 'white',
+                      borderColor: 'rgba(255,255,255,0.3)',
+                      borderRadius: 3,
+                      fontWeight: 700,
+                      textTransform: 'none',
+                      '&:hover': { bgcolor: 'rgba(255,255,255,0.1)', borderColor: 'white' },
+                    }}
+                  >
+                    Clear All
+                  </Button>
+                )}
+                <Button
+                  variant="contained"
+                  startIcon={<Sparkles size={18} />}
+                  onClick={handleAISuggest}
+                  disabled={isAISuggesting || readOnly}
+                  sx={{
+                    bgcolor: COLORS.secondary,
+                    color: COLORS.primary,
+                    fontWeight: 700,
+                    borderRadius: 3,
+                    textTransform: 'none',
+                    '&:hover': { bgcolor: '#B89740' },
+                  }}
+                >
+                  {isAISuggesting ? 'Suggesting...' : 'AI Suggest'}
+                </Button>
+                <Button
+                  variant="contained"
+                  startIcon={<Plus size={18} />}
+                  onClick={() => !readOnly && setIsModalOpen(true)}
+                  disabled={readOnly}
+                  sx={{
+                    bgcolor: 'white',
+                    color: COLORS.primary,
+                    borderRadius: 3,
+                    fontWeight: 700,
+                    textTransform: 'none',
+                    '&:hover': { bgcolor: '#f0f0f0' },
+                  }}
+                >
+                  Add Task
+                </Button>
+              </Stack>
           </Stack>
 
           <Box sx={{ position: 'relative', pt: 1 }}>
@@ -425,11 +506,42 @@ export default function ChecklistTab({ checklist: initialChecklist, onChecklistC
         />
       </Stack>
 
+      {selectedIndices.length > 0 && (
+        <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
+          <Alert 
+            severity="warning" 
+            sx={{ mb: 3, borderRadius: 4, display: 'flex', alignItems: 'center' }}
+            action={
+              <Button 
+                color="error" 
+                variant="contained" 
+                size="small" 
+                onClick={handleDeleteSelected}
+                disabled={isBulkActionLoading}
+                startIcon={isBulkActionLoading ? <CircularProgress size={14} color="inherit" /> : <Trash2 size={14} />}
+                sx={{ borderRadius: 2, fontWeight: 800, textTransform: 'none' }}
+              >
+                Delete Selected ({selectedIndices.length})
+              </Button>
+            }
+          >
+            Bulk Actions: You have selected {selectedIndices.length} tasks.
+          </Alert>
+        </motion.div>
+      )}
+
+      <Box sx={{ minHeight: 600 }}>
       {tasks.length === 0 ? (
         <Box sx={{ py: 8, textAlign: 'center', color: 'text.secondary' }}>
           <CheckCircle2 size={48} opacity={0.3} style={{ margin: '0 auto 12px' }} />
           <Typography variant="body1" fontWeight={600}>No tasks yet</Typography>
           <Typography variant="body2">Add your first task or use AI Suggest to get started.</Typography>
+        </Box>
+      ) : filteredTasks.length === 0 ? (
+        <Box sx={{ py: 12, textAlign: 'center', color: 'text.secondary' }}>
+          <Search size={48} opacity={0.3} style={{ margin: '0 auto 12px' }} />
+          <Typography variant="body1" fontWeight={600}>No matches found</Typography>
+          <Typography variant="body2">Try a different filter or search term.</Typography>
         </Box>
       ) : (
         <DragDropContext onDragEnd={handleDragEnd}>
@@ -481,15 +593,35 @@ export default function ChecklistTab({ checklist: initialChecklist, onChecklistC
                                     <GripVertical size={20} />
                                   </Box>
 
-                                  {togglingIdx === task.apiIndex ? (
-                                    <CircularProgress size={20} sx={{ color: COLORS.primary }} />
-                                  ) : (
-                                    <Checkbox
-                                      checked={task.status === 'completed'}
-                                      onChange={() => handleToggleTask(task)}
-                                      sx={{ color: COLORS.primary, '&.Mui-checked': { color: COLORS.success } }}
-                                    />
-                                  )}
+                                    {!readOnly && (
+                                      <Tooltip title="Select for bulk action">
+                                        <Checkbox 
+                                          size="small"
+                                          checked={selectedIndices.includes(task.apiIndex)}
+                                          onChange={() => toggleSelect(task.apiIndex)}
+                                          icon={<Square size={18} />}
+                                          checkedIcon={<CheckSquare size={18} />}
+                                          sx={{ mr: 1, color: 'text.disabled', '&.Mui-checked': { color: COLORS.error } }}
+                                        />
+                                      </Tooltip>
+                                    )}
+                                    {togglingIdx === task.apiIndex ? (
+                                      <CircularProgress size={20} sx={{ mx: 1.5, color: COLORS.primary }} />
+                                    ) : (
+                                      <Tooltip title={task.status === 'completed' ? "Mark as pending" : "Mark as completed"}>
+                                        <IconButton
+                                          onClick={() => handleToggleTask(task)}
+                                          disabled={readOnly}
+                                          sx={{ 
+                                            p: 1,
+                                            color: task.status === 'completed' ? COLORS.success : 'text.disabled',
+                                            '&:hover': { bgcolor: `${COLORS.success}10` }
+                                          }}
+                                        >
+                                          <CheckCircle2 size={24} fill={task.status === 'completed' ? COLORS.success : 'transparent'} />
+                                        </IconButton>
+                                      </Tooltip>
+                                    )}
 
                                   <Box sx={{ flexGrow: 1 }}>
                                     <Typography
@@ -546,11 +678,11 @@ export default function ChecklistTab({ checklist: initialChecklist, onChecklistC
                                   />
 
                                   <Stack direction="row" spacing={0.5}>
-                                    <Tooltip title="Edit task">
+                                    <Tooltip title={readOnly ? "Locked" : "Edit task"}>
                                       <span>
                                         <IconButton
                                           size="small"
-                                          disabled={savingEdit || deletingIdx === task.apiIndex}
+                                          disabled={savingEdit || deletingIdx === task.apiIndex || readOnly}
                                           onClick={() => openEditTask(task)}
                                           sx={{ color: COLORS.primary }}
                                         >
@@ -558,11 +690,11 @@ export default function ChecklistTab({ checklist: initialChecklist, onChecklistC
                                         </IconButton>
                                       </span>
                                     </Tooltip>
-                                    <Tooltip title="Delete task">
+                                    <Tooltip title={readOnly ? "Locked" : "Delete task"}>
                                       <span>
                                         <IconButton
                                           size="small"
-                                          disabled={deletingIdx === task.apiIndex}
+                                          disabled={deletingIdx === task.apiIndex || readOnly}
                                           onClick={() => setDeleteConfirm(task)}
                                           sx={{ color: COLORS.error }}
                                         >
@@ -590,6 +722,26 @@ export default function ChecklistTab({ checklist: initialChecklist, onChecklistC
           </Droppable>
         </DragDropContext>
       )}
+      </Box>
+
+      {/* Clear All Confirmation Dialog */}
+      <Dialog open={clearAllConfirm} onClose={() => !isBulkActionLoading && setClearAllConfirm(false)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: 4 } }}>
+        <DialogTitle sx={{ fontWeight: 800, color: COLORS.error }}>Clear Checklist?</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2">
+            This will permanently delete <strong>all tasks</strong> in your checklist. This action cannot be undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setClearAllConfirm(false)} disabled={isBulkActionLoading}>Cancel</Button>
+          <Button variant="contained" color="error" disabled={isBulkActionLoading}
+            onClick={handleClearAll}
+            startIcon={isBulkActionLoading ? <CircularProgress size={14} color="inherit" /> : undefined}
+            sx={{ borderRadius: 3, fontWeight: 700 }}>
+            Clear Everything
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={!!deleteConfirm} onClose={() => deletingIdx === null && setDeleteConfirm(null)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: 4 } }}>
@@ -651,9 +803,12 @@ export default function ChecklistTab({ checklist: initialChecklist, onChecklistC
                     value={taskForm.assignedTo}
                     onChange={(e) => setTaskForm((t) => ({ ...t, assignedTo: e.target.value }))}
                   >
-                    <MenuItem value="You">You</MenuItem>
-                    <MenuItem value="Partner">Partner</MenuItem>
+                    {currentUserId && <MenuItem value={currentUserId}>You</MenuItem>}
+                    {partnerId && <MenuItem value={partnerId}>Partner</MenuItem>}
                     <MenuItem value="Both">Both</MenuItem>
+                    {['You', 'Partner'].includes(taskForm.assignedTo) && (
+                      <MenuItem value={taskForm.assignedTo} sx={{ display: 'none' }}>{taskForm.assignedTo}</MenuItem>
+                    )}
                   </Select>
                 </FormControl>
               </Grid>
@@ -725,9 +880,12 @@ export default function ChecklistTab({ checklist: initialChecklist, onChecklistC
                     value={taskForm.assignedTo}
                     onChange={(e) => setTaskForm((t) => ({ ...t, assignedTo: e.target.value }))}
                   >
-                    <MenuItem value="You">You</MenuItem>
-                    <MenuItem value="Partner">Partner</MenuItem>
+                    {currentUserId && <MenuItem value={currentUserId}>You</MenuItem>}
+                    {partnerId && <MenuItem value={partnerId}>Partner</MenuItem>}
                     <MenuItem value="Both">Both</MenuItem>
+                    {['You', 'Partner'].includes(taskForm.assignedTo) && (
+                      <MenuItem value={taskForm.assignedTo} sx={{ display: 'none' }}>{taskForm.assignedTo}</MenuItem>
+                    )}
                   </Select>
                 </FormControl>
               </Grid>
