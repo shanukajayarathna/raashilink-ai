@@ -15,6 +15,7 @@ import {
   CardContent,
   ToggleButtonGroup,
   ToggleButton,
+  Alert,
 } from '@mui/material';
 import {
   Sparkles,
@@ -150,16 +151,10 @@ export default function HoneymoonDestinations() {
   }, [token]);
 
   useEffect(() => {
-    if (planningCheckLoading || planningAccessGranted) return;
-    const previousOverflow = document.body.style.overflow;
-    const previousHtmlOverflow = document.documentElement.style.overflow;
-    document.body.style.overflow = 'hidden';
-    document.documentElement.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      document.documentElement.style.overflow = previousHtmlOverflow;
-    };
-  }, [planningCheckLoading, planningAccessGranted]);
+    // Ensure scrolling is enabled
+    document.body.style.overflow = 'auto';
+    document.documentElement.style.overflow = 'auto';
+  }, []);
 
   // Unlock immediately when partner accepts the wedding invite
   useEffect(() => {
@@ -218,6 +213,35 @@ export default function HoneymoonDestinations() {
               transition={{ duration: 0.6 }}
             >
               <Box sx={{ textAlign: 'center', mb: 8 }}>
+                {!planningAccessGranted && !planningCheckLoading && (
+                  <Alert 
+                    severity="info" 
+                    icon={<Sparkles size={20} color={COLORS.primary} />}
+                    sx={{ 
+                      mb: 4, 
+                      borderRadius: 4, 
+                      bgcolor: '#FFF8E7', 
+                      border: '1px solid #E6C87E',
+                      textAlign: 'left',
+                      mx: 'auto',
+                      maxWidth: 800
+                    }}
+                  >
+                    <Typography variant="subtitle2" sx={{ fontWeight: 800, color: COLORS.primary }}>
+                      Explore & Wishlist Honeymoon Destinations
+                    </Typography>
+                    <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mb: 1 }}>
+                      You can browse and wishlist destinations now. Collaborative planning features will unlock once both partners accept the wedding invite.
+                    </Typography>
+                    <Button 
+                      size="small" 
+                      onClick={() => navigate('/messages')}
+                      sx={{ color: COLORS.primary, fontWeight: 700, textTransform: 'none', p: 0 }}
+                    >
+                      Go to Messages to invite partner →
+                    </Button>
+                  </Alert>
+                )}
                 <Typography variant="h2" sx={{ fontWeight: 900, fontFamily: 'Playfair Display', color: COLORS.primary, mb: 2 }}>
                   Let's find your perfect honeymoon
                 </Typography>
@@ -429,43 +453,7 @@ export default function HoneymoonDestinations() {
 
       </Box>
 
-      {!planningCheckLoading && !planningAccessGranted && (
-        <Box
-          sx={{
-            position: 'fixed',
-            top: '64px',
-            left: 0,
-            right: 0,
-            bottom: 0,
-            zIndex: 1099,
-            backdropFilter: 'blur(14px)',
-            WebkitBackdropFilter: 'blur(14px)',
-            bgcolor: 'rgba(18, 12, 6, 0.25)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            p: 3,
-          }}
-        >
-          <Card sx={{ maxWidth: 560, borderRadius: 5, border: '1px solid #E6C87E', boxShadow: '0 16px 40px rgba(0,0,0,0.18)' }}>
-            <CardContent sx={{ p: 4, textAlign: 'center' }}>
-              <Typography variant="h5" sx={{ fontWeight: 900, color: COLORS.primary, mb: 1 }}>
-                Honeymoon planning is locked
-              </Typography>
-              <Typography variant="body1" sx={{ color: COLORS.textSecondary }}>
-                This section unlocks after both partners accept wedding planning together.
-              </Typography>
-              <Button
-                variant="contained"
-                onClick={() => navigate('/messages')}
-                sx={{ mt: 3, bgcolor: COLORS.primary, borderRadius: 3, fontWeight: 700, textTransform: 'none' }}
-              >
-                Go to Messages to Send/Accept Invite
-              </Button>
-            </CardContent>
-          </Card>
-        </Box>
-      )}
+      {/* Full screen lock overlay removed for better exploration experience */}
     </Box>
   );
 }
