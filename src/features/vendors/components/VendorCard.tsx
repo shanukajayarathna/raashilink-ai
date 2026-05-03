@@ -39,13 +39,19 @@ interface VendorCardProps {
     verified: boolean;
     popular?: boolean;
     isFavorite?: boolean;
+    city?: string;
+    serviceArea?: string[];
+    minPrice?: number;
+    maxPrice?: number;
+    availabilityCalendar?: any[];
   };
   onRequestQuote: (vendor: any) => void;
+  disabled?: boolean;
 }
 
 const MotionCard = motion(Card);
 
-export default function VendorCard({ vendor, onRequestQuote }: VendorCardProps) {
+export default function VendorCard({ vendor, onRequestQuote, disabled }: VendorCardProps) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
@@ -191,6 +197,7 @@ export default function VendorCard({ vendor, onRequestQuote }: VendorCardProps) 
                   fullWidth 
                   variant="contained" 
                   onClick={() => onRequestQuote(vendor)}
+                  disabled={disabled}
                   sx={{ 
                     bgcolor: COLORS.secondary, 
                     color: COLORS.primary,
