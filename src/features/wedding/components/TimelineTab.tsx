@@ -13,6 +13,8 @@ import {
 import { motion } from 'motion/react';
 import weddingService from '../services/weddingService';
 
+const MotionBox = motion(Box);
+
 const COLORS = {
   primary: '#8B1A2E',
   secondary: '#C9A84C',
@@ -105,15 +107,18 @@ function buildTimeline(weddingDate: Date) {
 }
 
 interface TimelineTabProps {
-  weddingDate?: string;
-  checklist?: any[];
-  onChecklistChange?: (updated: any[]) => void;
+  weddingDate: string | Date;
+  checklist: any[];
+  onChecklistChange: (updated: any[]) => void;
   readOnly?: boolean;
+  setGlobalLoading?: (state: { open: boolean, message: string }) => void;
+  currentUserId?: string;
+  partnerId?: string;
 }
 
-export default function TimelineTab({ weddingDate, checklist = [], onChecklistChange, readOnly }: TimelineTabProps) {
-    const [localChecklist, setLocalChecklist] = useState<any[]>(checklist);
-    React.useEffect(() => { setLocalChecklist(checklist); }, [checklist]);
+export default function TimelineTab({ weddingDate, checklist: initialChecklist, onChecklistChange, readOnly, setGlobalLoading, currentUserId, partnerId }: TimelineTabProps) {
+    const [localChecklist, setLocalChecklist] = useState<any[]>(initialChecklist || []);
+    React.useEffect(() => { setLocalChecklist(initialChecklist || []); }, [initialChecklist]);
 
   const parsedDate = weddingDate ? new Date(weddingDate) : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
   const timeline = buildTimeline(parsedDate);
@@ -183,9 +188,10 @@ export default function TimelineTab({ weddingDate, checklist = [], onChecklistCh
     } finally { setTogglingIdx(null); }
   };
 
-  const handleAddToChecklist = async () => {
+  const handleAddTask = async () => {
     if (!addTaskModal.title.trim()) return;
     setAddTaskModal(s => ({ ...s, saving: true }));
+    if (setGlobalLoading) setGlobalLoading({ open: true, message: 'Adding Task...' });
     try {
       await weddingService.addTask({
         title: addTaskModal.title.trim(),
@@ -202,7 +208,10 @@ export default function TimelineTab({ weddingDate, checklist = [], onChecklistCh
       setAddTaskModal(EMPTY_TASK_MODAL);
     } catch {
       // silent
-    } finally { setAddTaskModal(s => ({ ...s, saving: false })); }
+    } finally {
+      setAddTaskModal(s => ({ ...s, saving: false }));
+      if (setGlobalLoading) setGlobalLoading({ open: false, message: '' });
+    }
   };
 
   return (
@@ -431,7 +440,7 @@ export default function TimelineTab({ weddingDate, checklist = [], onChecklistCh
         <DialogContent>
           <TextField fullWidth autoFocus label="Task title" value={addTaskModal.title}
             onChange={(e) => setAddTaskModal(s => ({ ...s, title: e.target.value }))}
-            onKeyDown={(e) => e.key === 'Enter' && handleAddToChecklist()}
+            onKeyDown={(e) => e.key === 'Enter' && handleAddTask()}
             sx={{ mt: 1 }} />
 
           <FormControl fullWidth sx={{ mt: 2 }}>
@@ -454,9 +463,12 @@ export default function TimelineTab({ weddingDate, checklist = [], onChecklistCh
               label="Assign To"
               onChange={(e) => setAddTaskModal((s) => ({ ...s, assignedTo: e.target.value }))}
             >
+              {currentUserId && <MenuItem value={currentUserId}>You</MenuItem>}
+              {partnerId && <MenuItem value={partnerId}>Partner</MenuItem>}
               <MenuItem value="Both">Both</MenuItem>
-              <MenuItem value="You">You</MenuItem>
-              <MenuItem value="Partner">Partner</MenuItem>
+              {['You', 'Partner'].includes(addTaskModal.assignedTo) && (
+                <MenuItem value={addTaskModal.assignedTo} sx={{ display: 'none' }}>{addTaskModal.assignedTo}</MenuItem>
+              )}
             </Select>
           </FormControl>
 
@@ -473,7 +485,7 @@ export default function TimelineTab({ weddingDate, checklist = [], onChecklistCh
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setAddTaskModal(EMPTY_TASK_MODAL)} disabled={addTaskModal.saving}>Cancel</Button>
           <Button variant="contained" disabled={!addTaskModal.title.trim() || addTaskModal.saving}
-            onClick={handleAddToChecklist}
+            onClick={handleAddTask}
             sx={{ bgcolor: COLORS.primary, '&:hover': { bgcolor: '#6B1423' } }}>
             {addTaskModal.saving ? <CircularProgress size={16} color="inherit" /> : 'Add Task'}
           </Button>
@@ -482,5 +494,3 @@ export default function TimelineTab({ weddingDate, checklist = [], onChecklistCh
     </Box>
   );
 }
-
-const MotionBox = motion(Box);
