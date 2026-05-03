@@ -136,6 +136,66 @@ const weddingService = {
     const response = await axiosInstance.delete(`/wedding/expenses/${index}`);
     return response.data;
   },
+
+  clearAllTasks: async () => {
+    try {
+      const response = await axiosInstance.put('/wedding/project', { checklist: [] });
+      return response.data;
+    } catch (err) {
+      console.warn('Bulk clear all tasks failed, falling back to individual deletes', err);
+      const res = await axiosInstance.get('/wedding/project');
+      const checklist = res.data?.data?.checklist || [];
+      // Delete in reverse to maintain indices
+      for (let i = checklist.length - 1; i >= 0; i--) {
+        await axiosInstance.delete(`/wedding/tasks/${i}`);
+      }
+    }
+  },
+
+  clearAllExpenses: async () => {
+    try {
+      const response = await axiosInstance.put('/wedding/budget', { expenses: [] });
+      return response.data;
+    } catch (err) {
+      console.warn('Bulk clear all expenses failed, falling back to individual deletes', err);
+      const res = await axiosInstance.get('/wedding/budget');
+      const expenses = res.data?.data?.expenses || [];
+      // Delete in reverse to maintain indices
+      for (let i = expenses.length - 1; i >= 0; i--) {
+        await axiosInstance.delete(`/wedding/expenses/${i}`);
+      }
+    }
+  },
+
+  deleteMultipleTasks: async (indices: number[]) => {
+    try {
+      const projectRes = await axiosInstance.get('/wedding/project');
+      const checklist = projectRes.data?.data?.checklist || [];
+      const updated = checklist.filter((_: any, idx: number) => !indices.includes(idx));
+      return await axiosInstance.put('/wedding/project', { checklist: updated });
+    } catch (err) {
+      console.warn('Bulk delete multiple tasks failed, falling back to individual deletes', err);
+      const sortedIndices = [...indices].sort((a, b) => b - a);
+      for (const idx of sortedIndices) {
+        await axiosInstance.delete(`/wedding/tasks/${idx}`);
+      }
+    }
+  },
+
+  deleteMultipleExpenses: async (indices: number[]) => {
+    try {
+      const budgetRes = await axiosInstance.get('/wedding/budget');
+      const expenses = budgetRes.data?.data?.expenses || [];
+      const updated = expenses.filter((_: any, idx: number) => !indices.includes(idx));
+      return await axiosInstance.put('/wedding/budget', { expenses: updated });
+    } catch (err) {
+      console.warn('Bulk delete multiple expenses failed, falling back to individual deletes', err);
+      const sortedIndices = [...indices].sort((a, b) => b - a);
+      for (const idx of sortedIndices) {
+        await axiosInstance.delete(`/wedding/expenses/${idx}`);
+      }
+    }
+  }
 };
 
 export default weddingService;
