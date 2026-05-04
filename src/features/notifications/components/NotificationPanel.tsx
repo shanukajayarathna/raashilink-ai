@@ -44,7 +44,7 @@ export default function NotificationPanel({
     onClose();
     if (n.type === 'mutual_match' || n.type === 'message_received') {
       navigate('/messages', { state: { conversationId: n.conversationId } });
-    } else if (n.type === 'wedding_invite' || n.type === 'wedding_accepted' || n.type === 'wedding_planning_unlocked') {
+    } else if (n.type === 'wedding_invite' || n.type === 'wedding_accepted' || n.type === 'wedding_planning_unlocked' || n.type === 'wedding_cancelled') {
       navigate('/wedding');
     } else if (n.type === 'interest_declined' || n.type === 'match_removed') {
       // No navigation needed — just dismiss
@@ -172,7 +172,7 @@ export default function NotificationPanel({
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          bgcolor: n.type === 'mutual_match' ? '#f59e0b' : n.type === 'message_received' ? '#2563eb' : n.type === 'interest_accepted' ? '#16a34a' : (n.type === 'interest_declined' || n.type === 'match_removed') ? '#6b7280' : (n.type === 'wedding_invite' || n.type === 'wedding_accepted' || n.type === 'wedding_planning_unlocked') ? '#be185d' : '#8B1A2E',
+                          bgcolor: n.type === 'mutual_match' ? '#f59e0b' : n.type === 'message_received' ? '#2563eb' : n.type === 'interest_accepted' ? '#16a34a' : (n.type === 'interest_declined' || n.type === 'match_removed' || n.type === 'wedding_cancelled') ? '#6b7280' : (n.type === 'wedding_invite' || n.type === 'wedding_accepted' || n.type === 'wedding_planning_unlocked') ? '#be185d' : '#8B1A2E',
                           border: '2px solid white',
                         }}>
                           {n.type === 'mutual_match'
@@ -191,6 +191,8 @@ export default function NotificationPanel({
                             ? <CalendarHeart size={10} color="white" />
                             : n.type === 'wedding_planning_unlocked'
                             ? <CalendarHeart size={10} color="white" />
+                            : n.type === 'wedding_cancelled'
+                            ? <HeartOff size={10} color="white" />
                             : <Heart size={10} color="white" fill="white" />
                           }
                         </Box>
@@ -240,6 +242,11 @@ export default function NotificationPanel({
                             <>
                               <span style={{ color: '#be185d' }}>{n.fromUserName}</span>
                               {' '}& you can now plan your wedding together! 🎊
+                            </>
+                          ) : n.type === 'wedding_cancelled' ? (
+                            <>
+                              <span style={{ color: '#6b7280' }}>{n.metadata?.cancelledBySelf ? 'You' : (n.fromUserName || 'This user')}</span>
+                              {n.metadata?.isDecline ? ' declined the wedding invite' : ' cancelled wedding planning'}
                             </>
                           ) : (
                             <>
@@ -298,6 +305,13 @@ export default function NotificationPanel({
                               <CalendarHeart size={11} />
                               <Typography variant="caption" sx={{ color: '#be185d', fontWeight: 600 }}>
                                 {n.type === 'wedding_invite' ? 'Accept on Wedding page' : 'Go to Wedding page'}
+                              </Typography>
+                            </Box>
+                          ) : n.type === 'wedding_cancelled' ? (
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: '#6b7280' }}>
+                              <HeartOff size={11} />
+                              <Typography variant="caption" sx={{ color: '#6b7280', fontWeight: 600 }}>
+                                Go to Wedding page
                               </Typography>
                             </Box>
                           ) : (
