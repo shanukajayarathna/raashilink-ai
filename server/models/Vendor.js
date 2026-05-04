@@ -49,6 +49,19 @@ const capacitySchema = new Schema(
   { _id: false }
 );
 
+const vendorPackageSchema = new Schema(
+  {
+    packageId: { type: String, trim: true, maxlength: 80 },
+    name: { type: String, required: true, trim: true, maxlength: 160 },
+    description: { type: String, trim: true, maxlength: 1200 },
+    price: { type: Number, min: 0, default: 0 },
+    currency: { type: String, trim: true, default: 'LKR', maxlength: 10 },
+    durationHours: { type: Number, min: 0, default: 0 },
+    isActive: { type: Boolean, default: true },
+  },
+  { _id: false }
+);
+
 const socialLinksSchema = new Schema(
   {
     facebook: { type: String, trim: true, validate: httpUrlValidator },
@@ -108,6 +121,7 @@ const vendorSchema = new Schema(
     pricingRange: { type: pricingRangeSchema, required: true },
     featuredServices: { type: [String], default: [] },
     packageSummary: { type: [String], default: [] },
+    packages: { type: [vendorPackageSchema], default: [] },
     responseTime: { type: String, trim: true, maxlength: 120 },
     leadTimeDays: { type: Number, min: 0, default: 0 },
     capacity: { type: capacitySchema, default: () => ({}) },
