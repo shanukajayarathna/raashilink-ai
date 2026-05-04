@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { 
   Box, 
   Typography, 
@@ -10,7 +10,6 @@ import {
   useTheme,
   alpha,
   Divider,
-  Skeleton,
   List,
   ListItem,
   ListItemText,
@@ -57,50 +56,74 @@ const COLORS = {
   chartColors: ['#8B1A2E', '#C9A84C', '#1A6B72', '#2e7d32', '#d32f2f']
 };
 
-const viewData = [
-  { name: 'Week 1', views: 400, quotes: 24 },
-  { name: 'Week 2', views: 300, quotes: 13 },
-  { name: 'Week 3', views: 200, quotes: 98 },
-  { name: 'Week 4', views: 278, quotes: 39 },
-  { name: 'Week 5', views: 189, quotes: 48 },
-  { name: 'Week 6', views: 239, quotes: 38 },
-  { name: 'Week 7', views: 349, quotes: 43 },
-];
+interface AnalyticsViewProps {
+  quoteItems?: any[];
+  vendorProfile?: any;
+}
 
-const revenueData = [
-  { name: 'Jan', amount: 450000 },
-  { name: 'Feb', amount: 520000 },
-  { name: 'Mar', amount: 380000 },
-  { name: 'Apr', amount: 610000 },
-  { name: 'May', amount: 480000 },
-  { name: 'Jun', amount: 590000 },
-];
+function buildRevenueData(quoteItems: any[]) {
+  const monthMap: Record<string, number> = {};
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  quoteItems
+    .filter((q) => q.status === 'accepted' && q.response?.price)
+    .forEach((q) => {
+      const d = q.weddingDate ? new Date(q.weddingDate) : new Date(q.createdAt);
+      if (isNaN(d.getTime())) return;
+      const key = months[d.getMonth()];
+      monthMap[key] = (monthMap[key] || 0) + Number(q.response.price || 0);
+    });
+  return months
+    .filter((m) => monthMap[m] !== undefined)
+    .map((name) => ({ name, amount: monthMap[name] }));
+}
 
-const reviewData = [
-  { name: '5 Stars', value: 85 },
-  { name: '4 Stars', value: 10 },
-  { name: '3 Stars', value: 3 },
-  { name: '2 Stars', value: 1 },
-  { name: '1 Star', value: 1 },
-];
+function buildReviewData(reviews: any[]) {
+  const counts = [0, 0, 0, 0, 0]; // index 0 = 1 star, index 4 = 5 stars
+  reviews.forEach((r) => {
+    const idx = Math.round(r.rating) - 1;
+    if (idx >= 0 && idx < 5) counts[idx]++;
+  });
+  const total = counts.reduce((a, b) => a + b, 0) || 1;
+  return [
+    { name: '5 Stars', value: Math.round((counts[4] / total) * 100) },
+    { name: '4 Stars', value: Math.round((counts[3] / total) * 100) },
+    { name: '3 Stars', value: Math.round((counts[2] / total) * 100) },
+    { name: '2 Stars', value: Math.round((counts[1] / total) * 100) },
+    { name: '1 Star', value: Math.round((counts[0] / total) * 100) },
+  ];
+}
 
-const keywords = [
-  'Wedding photography Colombo',
-  'Traditional Kandyan wedding',
-  'Galle Face wedding shoot',
-  'Best wedding photographer Sri Lanka',
-  'Budget wedding photography',
-  'Cinematic wedding video'
-];
+export default function AnalyticsView({ quoteItems = [], vendorProfile = null }: AnalyticsViewProps) {
+  const reviews: any[] = vendorProfile?.reviews || [];
+  const reviewData = buildReviewData(reviews);
+  const revenueData = buildRevenueData(quoteItems);
 
-export default function AnalyticsView() {
-  const [loading, setLoading] = useState(true);
+  const totalQuotes = quoteItems.length;
+  const acceptedQuotes = quoteItems.filter((q) => q.status === 'accepted').length;
+  const respondedQuotes = quoteItems.filter((q) => q.status === 'responded').length;
+  const totalRevenue = quoteItems
+    .filter((q) => q.status === 'accepted')
+    .reduce((sum, q) => sum + Number(q.response?.price || 0), 0);
 
-  useEffect(() => {
-    setTimeout(() => setLoading(false), 1000);
-  }, []);
+  // Build weekly quote trend for the chart
+  const weeklyData = (() => {
+    const weeks: Record<string, { name: string; views: number; quotes: number }> = {};
+    quoteItems.forEach((q) => {
+      const d = q.createdAt ? new Date(q.createdAt) : new Date();
+      const weekNum = Math.floor(d.getDate() / 7) + 1;
+      const key = `Week ${weekNum}`;
+      if (!weeks[key]) weeks[key] = { name: key, views: 0, quotes: 0 };
+      weeks[key].quotes += 1;
+    });
+    const data = Object.values(weeks);
+    return data.length > 0 ? data : [{ name: 'Week 1', views: 0, quotes: 0 }];
+  })();
 
-  if (loading) return <Skeleton variant="rectangular" height={600} sx={{ borderRadius: '20px' }} />;
+  const keywords = [
+    ...(vendorProfile?.category ? [`${vendorProfile.category} in ${vendorProfile.city || 'Sri Lanka'}`] : []),
+    ...(vendorProfile?.serviceArea || []).map((a: string) => `Wedding ${vendorProfile?.category || 'vendor'} ${a}`),
+    'RaashiLink wedding vendor',
+  ].slice(0, 6);
 
   return (
     <Box>
@@ -126,12 +149,12 @@ export default function AnalyticsView() {
         {/* Profile Views Trend */}
         <Grid size={{ xs: 12, lg: 8 }}>
           <Paper elevation={0} sx={{ p: 3, borderRadius: '20px', border: '1px solid rgba(139,26,46,0.08)', height: '100%' }}>
-            <Typography variant="h6" sx={{ fontWeight: 700, mb: 3 }}>Profile Views & Quotes (Last 30 Days)</Typography>
+            <Typography variant="h6" sx={{ fontWeight: 700, mb: 3 }}>Quote Activity (by Week)</Typography>
             <Box sx={{ height: 300, width: '100%' }}>
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={viewData}>
+                <AreaChart data={weeklyData}>
                   <defs>
-                    <linearGradient id="colorViews" x1="0" y1="0" x2="0" y2="1">
+                    <linearGradient id="colorQuotes" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor={COLORS.primary} stopOpacity={0.1}/>
                       <stop offset="95%" stopColor={COLORS.primary} stopOpacity={0}/>
                     </linearGradient>
@@ -142,8 +165,7 @@ export default function AnalyticsView() {
                   <RechartsTooltip 
                     contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }}
                   />
-                  <Area type="monotone" dataKey="views" stroke={COLORS.primary} strokeWidth={3} fillOpacity={1} fill="url(#colorViews)" />
-                  <Area type="monotone" dataKey="quotes" stroke={COLORS.secondary} strokeWidth={3} fillOpacity={0} />
+                  <Area type="monotone" dataKey="quotes" name="Quote Requests" stroke={COLORS.primary} strokeWidth={3} fillOpacity={1} fill="url(#colorQuotes)" />
                 </AreaChart>
               </ResponsiveContainer>
             </Box>
@@ -156,9 +178,9 @@ export default function AnalyticsView() {
             <Typography variant="h6" sx={{ fontWeight: 700, mb: 3 }}>Conversion Funnel</Typography>
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
               {[
-                { label: 'Profile Views', value: '1,240', percent: 100, color: COLORS.accent },
-                { label: 'Quote Requests', value: '48', percent: 3.8, color: COLORS.primary },
-                { label: 'Confirmed Bookings', value: '12', percent: 0.9, color: '#2e7d32' },
+                { label: 'Total Quotes Received', value: String(totalQuotes), percent: 100, color: COLORS.accent },
+                { label: 'Responded', value: String(respondedQuotes + acceptedQuotes), percent: totalQuotes > 0 ? Math.round(((respondedQuotes + acceptedQuotes) / totalQuotes) * 100) : 0, color: COLORS.primary },
+                { label: 'Confirmed Bookings', value: String(acceptedQuotes), percent: totalQuotes > 0 ? Math.round((acceptedQuotes / totalQuotes) * 100) : 0, color: '#2e7d32' },
               ].map((item, i) => (
                 <Box key={i}>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
@@ -174,7 +196,7 @@ export default function AnalyticsView() {
                     />
                   </Box>
                   <Typography variant="caption" color="textSecondary" sx={{ mt: 0.5, display: 'block' }}>
-                    {item.percent}% of total views
+                    {item.percent}% of total quotes
                   </Typography>
                 </Box>
               ))}
@@ -185,8 +207,15 @@ export default function AnalyticsView() {
         {/* Revenue Chart */}
         <Grid size={{ xs: 12, lg: 6 }}>
           <Paper elevation={0} sx={{ p: 3, borderRadius: '20px', border: '1px solid rgba(139,26,46,0.08)', height: '100%' }}>
-            <Typography variant="h6" sx={{ fontWeight: 700, mb: 3 }}>Revenue Trend (LKR)</Typography>
+            <Typography variant="h6" sx={{ fontWeight: 700, mb: 3 }}>
+              Revenue Trend (LKR) — Total: LKR {totalRevenue.toLocaleString()}
+            </Typography>
             <Box sx={{ height: 300, width: '100%' }}>
+              {revenueData.length === 0 ? (
+                <Typography variant="body2" color="textSecondary" sx={{ textAlign: 'center', py: 8 }}>
+                  No confirmed booking revenue yet.
+                </Typography>
+              ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={revenueData}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(0,0,0,0.05)" />
@@ -196,9 +225,10 @@ export default function AnalyticsView() {
                     cursor={{ fill: 'rgba(0,0,0,0.02)' }}
                     contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }}
                   />
-                  <Bar dataKey="amount" fill={COLORS.primary} radius={[6, 6, 0, 0]} barSize={40} />
+                  <Bar dataKey="amount" name="Revenue (LKR)" fill={COLORS.primary} radius={[6, 6, 0, 0]} barSize={40} />
                 </BarChart>
               </ResponsiveContainer>
+              )}
             </Box>
           </Paper>
         </Grid>
