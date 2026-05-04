@@ -4,9 +4,9 @@ import {
   List, ListItem, ListItemButton, ListItemAvatar, ListItemText,
   Divider, CircularProgress, useTheme, useMediaQuery,
   Dialog, DialogTitle, DialogContent, DialogActions, Button, Chip, Tooltip,
-  Snackbar, Alert,
+  Snackbar, Alert, Backdrop
 } from '@mui/material';
-import { Send, ArrowLeft, MessageCircle, Trash2, PlusCircle, Heart } from 'lucide-react';
+import { Send, ArrowLeft, MessageCircle, Trash2, PlusCircle, Heart, AlertCircle } from 'lucide-react';
 import { useSelector } from 'react-redux';
 import { RootState } from '@/app/store/store';
 import api from '@/shared/config/axiosConfig';
@@ -78,6 +78,8 @@ export default function MessagesPage() {
   // Wedding planning status with the current conversation partner
   const [weddingStatus, setWeddingStatus] = useState<'none' | 'invited' | 'coupled'>('none');
   const [cancellingWedding, setCancellingWedding] = useState(false);
+  const [resetDialogOpen, setResetDialogOpen] = useState(false);
+  const [globalLoading, setGlobalLoading] = useState({ open: false, message: '' });
 
   const mapMutualMatch = useCallback((match: any): MutualMatch => ({
     id: match.id,
@@ -797,18 +799,7 @@ export default function MessagesPage() {
               <IconButton
                 size="small"
                 disabled={cancellingWedding}
-                onClick={async () => {
-                  setCancellingWedding(true);
-                  try {
-                    await weddingService.resetWedding();
-                    setWeddingStatus('none');
-                    setInviteSnack({ open: true, msg: 'Left the shared wedding plan.', severity: 'error' });
-                  } catch {
-                    setInviteSnack({ open: true, msg: 'Failed to leave. Try again.', severity: 'error' });
-                  } finally {
-                    setCancellingWedding(false);
-                  }
-                }}
+                onClick={() => setResetDialogOpen(true)}
                 sx={{ color: 'text.disabled', p: 0.25 }}
               >
                 {cancellingWedding ? <CircularProgress size={12} /> : '✕'}
@@ -829,18 +820,7 @@ export default function MessagesPage() {
               <IconButton
                 size="small"
                 disabled={cancellingWedding}
-                onClick={async () => {
-                  setCancellingWedding(true);
-                  try {
-                    await weddingService.resetWedding();
-                    setWeddingStatus('none');
-                    setInviteSnack({ open: true, msg: 'Wedding invite cancelled.', severity: 'error' });
-                  } catch {
-                    setInviteSnack({ open: true, msg: 'Failed to cancel. Try again.', severity: 'error' });
-                  } finally {
-                    setCancellingWedding(false);
-                  }
-                }}
+                onClick={() => setResetDialogOpen(true)}
                 sx={{ color: 'text.disabled', p: 0.25 }}
               >
                 {cancellingWedding ? <CircularProgress size={12} /> : '✕'}
@@ -1016,15 +996,22 @@ export default function MessagesPage() {
             onClick={async () => {
               if (!selectedConv) return;
               setSendingInvite(true);
+              setGlobalLoading({ open: true, message: 'Sending invitation...' });
               try {
-                await weddingService.invitePartner(selectedConv.otherUserId);
-                setWeddingStatus('invited');
-                setInviteSnack({ open: true, msg: `Invitation sent to ${selectedConv.title}! They need to accept to link your wedding project.`, severity: 'success' });
+                const res: any = await weddingService.invitePartner(selectedConv.otherUserId);
+                if (res.autoConfirmed) {
+                  setWeddingStatus('coupled');
+                  setInviteSnack({ open: true, msg: `You and ${selectedConv.title} are now planning together! 💒`, severity: 'success' });
+                } else {
+                  setWeddingStatus('invited');
+                  setInviteSnack({ open: true, msg: `Invitation sent to ${selectedConv.title}! They need to accept to link your wedding project.`, severity: 'success' });
+                }
                 setWeddingInviteOpen(false);
               } catch {
                 setInviteSnack({ open: true, msg: 'Failed to send invitation. Please try again.', severity: 'error' });
               } finally {
                 setSendingInvite(false);
+                setGlobalLoading({ open: false, message: '' });
               }
             }}
             disabled={sendingInvite}
@@ -1032,6 +1019,52 @@ export default function MessagesPage() {
             sx={{ bgcolor: '#8B1A2E', '&:hover': { bgcolor: '#6B1422' } }}
           >
             {sendingInvite ? 'Sending…' : 'Send Invite'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Reset Wedding Confirmation Dialog */}
+      <Dialog open={resetDialogOpen} onClose={() => !cancellingWedding && setResetDialogOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <AlertCircle size={20} color={theme.palette.error.main} />
+          {weddingStatus === 'invited' ? 'Cancel Invitation?' : 'Reset Wedding Plan?'}
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary">
+            {weddingStatus === 'invited' 
+              ? 'This will cancel and reset the current wedding planning invite. To start planning again later, you must send a new wedding invite. Continue?'
+              : 'This will reset the current wedding plan for both users. If you want to plan together again, you must send a new wedding invite. Continue?'
+            }
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setResetDialogOpen(false)} disabled={cancellingWedding}>Keep</Button>
+          <Button
+            variant="contained"
+            color="error"
+            onClick={async () => {
+              setCancellingWedding(true);
+              setGlobalLoading({ open: true, message: 'Resetting wedding plan...' });
+              try {
+                await weddingService.resetWedding();
+                setWeddingStatus('none');
+                setInviteSnack({ 
+                  open: true, 
+                  msg: weddingStatus === 'invited' ? 'Wedding planning invite cancelled.' : 'Wedding plan reset.', 
+                  severity: 'error' 
+                });
+                setResetDialogOpen(false);
+              } catch {
+                setInviteSnack({ open: true, msg: 'Failed to reset. Try again.', severity: 'error' });
+              } finally {
+                setCancellingWedding(false);
+                setGlobalLoading({ open: false, message: '' });
+              }
+            }}
+            disabled={cancellingWedding}
+            startIcon={cancellingWedding ? <CircularProgress size={14} color="inherit" /> : <Trash2 size={14} />}
+          >
+            {cancellingWedding ? 'Resetting…' : 'Yes, Reset'}
           </Button>
         </DialogActions>
       </Dialog>
@@ -1068,6 +1101,15 @@ export default function MessagesPage() {
           {inviteSnack.msg}
         </Alert>
       </Snackbar>
+
+      {/* Global Loading Backdrop */}
+      <Backdrop
+        sx={{ color: '#fff', zIndex: (theme) => theme.zIndex.modal + 999, flexDirection: 'column', gap: 2 }}
+        open={globalLoading.open}
+      >
+        <CircularProgress color="inherit" />
+        <Typography variant="h6" sx={{ fontWeight: 600 }}>{globalLoading.message}</Typography>
+      </Backdrop>
     </>
   );
 }
