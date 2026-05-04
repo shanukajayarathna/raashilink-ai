@@ -22,12 +22,43 @@ function notifyPartner(project, currentUserId, type = null) {
   }
 }
 
+function normalizeVendorPackages(vendor) {
+  const richPackages = Array.isArray(vendor?.packages)
+    ? vendor.packages
+        .filter((item) => item && item.name)
+        .map((item, index) => ({
+          id: String(item.packageId || `pkg-${index + 1}`),
+          name: String(item.name),
+          price: Number(item.price || 0),
+          currency: String(item.currency || 'LKR'),
+          isActive: item.isActive !== false,
+        }))
+    : [];
+
+  if (richPackages.length > 0) {
+    return richPackages.filter((item) => item.isActive);
+  }
+
+  if (Array.isArray(vendor?.packageSummary) && vendor.packageSummary.length > 0) {
+    return vendor.packageSummary
+      .filter(Boolean)
+      .map((item, index) => ({
+        id: `summary-${index + 1}`,
+        name: String(item),
+        price: 0,
+        currency: 'LKR',
+      }));
+  }
+
+  return [];
+}
+
 /**
  * Fully resets wedding projects for two users:
  * - Deletes any shared/coupled project and any solo projects for both users
  * - Creates two fresh blank solo projects (one per user)
  * - Cleans up all wedding notifications between the pair
- * - Emits wedding_reset to both users
+ * - Caller emits wedding_reset with context to both users
  */
 export async function resetBothWeddingProjects(userIdA, userIdB) {
   const freshDate = () => new Date(Date.now() + 1000 * 60 * 60 * 24 * 180);
@@ -51,8 +82,28 @@ export async function resetBothWeddingProjects(userIdA, userIdB) {
     { coupleUserIds: [userIdB], weddingDate: freshDate(), totalBudget: 0, expenses: [], checklist: [], vendors: [] },
   ]);
 
-  // Notify both users so their dashboards refresh
-  emitToUser(String(userIdB), 'wedding_reset', { message: 'Wedding project has been reset' });
+}
+
+async function notifyWeddingCancelled({ recipientId, resetterId, resetterName, resetterProfilePic, cancelledBySelf, isDecline = false }) {
+  const notif = await Notification.create({
+    userId: recipientId,
+    type: 'wedding_cancelled',
+    fromUserId: resetterId,
+    fromUserName: resetterName,
+    fromUserProfilePic: resetterProfilePic || null,
+    metadata: { resetterId: String(resetterId), cancelledBySelf: Boolean(cancelledBySelf), isDecline: Boolean(isDecline) },
+  });
+
+  emitToUser(String(recipientId), 'notification', {
+    id: String(notif._id),
+    type: 'wedding_cancelled',
+    fromUserId: String(resetterId),
+    fromUserName: resetterName,
+    fromUserProfilePic: resetterProfilePic || null,
+    metadata: { resetterId: String(resetterId), cancelledBySelf: Boolean(cancelledBySelf), isDecline: Boolean(isDecline) },
+    read: false,
+    createdAt: notif.createdAt,
+  });
 }
 
 function calculateBudget(project) {
@@ -286,6 +337,8 @@ export const requestQuote = asyncHandler(async (req, res) => {
     location,
     venueName,
     preferredPackage,
+    selectedPackageId,
+    selectedPackageName,
     coverageHours,
     budgetMin,
     budgetMax,
@@ -307,6 +360,12 @@ export const requestQuote = asyncHandler(async (req, res) => {
   const parsedBudgetMax = Number(budgetMax || quotedAmount || 0);
   const project = await getOrCreateProject(req.user._id);
   const requesterName = req.user?.name || [req.user?.firstName, req.user?.lastName].filter(Boolean).join(' ').trim() || 'RaashiLink Couple';
+  const vendorPackages = normalizeVendorPackages(vendor);
+  const selectedPackage = vendorPackages.find(
+    (item) =>
+      (selectedPackageId && String(item.id) === String(selectedPackageId)) ||
+      (selectedPackageName && item.name.toLowerCase() === String(selectedPackageName).toLowerCase())
+  );
   const quoteRequest = await QuoteRequest.create({
     vendorId: vendor._id,
     vendorUserId: vendor.userId,
@@ -319,7 +378,13 @@ export const requestQuote = asyncHandler(async (req, res) => {
       guestCount: Number(guestCount || 0),
       location: location || venueName || req.user?.location || '',
       venueName: venueName || '',
-      preferredPackage: preferredPackage || '',
+      preferredPackage: selectedPackage?.name || selectedPackageName || preferredPackage || '',
+      selectedPackage: {
+        id: selectedPackage?.id || selectedPackageId || '',
+        name: selectedPackage?.name || selectedPackageName || preferredPackage || '',
+        price: Number(selectedPackage?.price || 0),
+        currency: selectedPackage?.currency || 'LKR',
+      },
       coverageHours: Number(coverageHours || 0),
       budgetRange: {
         min: parsedBudgetMin,
@@ -343,11 +408,15 @@ export const requestQuote = asyncHandler(async (req, res) => {
     existing.requestedAt = new Date();
     existing.vendorName = vendor.businessName;
     existing.notes = requirements || existing.notes || '';
+    existing.selectedPackageId = selectedPackage?.id || selectedPackageId || '';
+    existing.selectedPackageName = selectedPackage?.name || selectedPackageName || preferredPackage || '';
   } else {
     project.vendors.push({
       vendorId,
       category: category || vendor.category,
       quotedAmount: Number(quotedAmount || parsedBudgetMax || 0),
+      selectedPackageId: selectedPackage?.id || selectedPackageId || '',
+      selectedPackageName: selectedPackage?.name || selectedPackageName || preferredPackage || '',
       quoteRequestId: quoteRequest._id,
       requestedAt: new Date(),
       vendorName: vendor.businessName,
@@ -358,6 +427,11 @@ export const requestQuote = asyncHandler(async (req, res) => {
 
   await project.save();
   notifyPartner(project, req.user._id, 'vendor');
+  emitToUser(String(vendor.userId), 'vendor_quote_request', {
+    quoteRequestId: String(quoteRequest._id),
+    vendorId: String(vendor._id),
+    requesterName,
+  });
 
   res.status(201).json({
     success: true,
@@ -430,6 +504,130 @@ export const invitePartner = asyncHandler(async (req, res) => {
   }
 
   project.pendingInvite = { inviteeId: partnerId, status: 'pending' };
+  
+  // --- Auto-Confirm Logic ---
+  // Check if the partner has already invited the current user
+  const partnerInvite = await WeddingProject.findOne({
+    coupleUserIds: partnerId,
+    'pendingInvite.inviteeId': req.user._id,
+    'pendingInvite.status': 'pending'
+  });
+
+  if (partnerInvite) {
+    // Mutual interest! Auto-accept the partner's invite instead of creating a new one
+    // We reuse the logic from acceptInvite here
+    if (!partnerInvite.coupleUserIds.some(id => String(id) === String(req.user._id))) {
+      partnerInvite.coupleUserIds.push(req.user._id);
+    }
+    partnerInvite.pendingInvite.status = 'accepted';
+    await partnerInvite.save();
+
+    // Remove the acceptor's solo project
+    await WeddingProject.deleteMany({
+      coupleUserIds: req.user._id,
+      _id: { $ne: partnerInvite._id }
+    });
+
+    // Keep both clients in sync with the same notification behavior as normal accept flow
+    const acceptor = await User.findById(req.user._id)
+      .select('personalInfo.firstName personalInfo.lastName personalInfo.profilePic name profilePic')
+      .lean();
+    const inviter = await User.findById(partnerId)
+      .select('personalInfo.firstName personalInfo.lastName personalInfo.profilePic name profilePic')
+      .lean();
+
+    const acceptorName =
+      [acceptor?.personalInfo?.firstName, acceptor?.personalInfo?.lastName].filter(Boolean).join(' ') ||
+      acceptor?.name ||
+      'Your match';
+    const inviterName =
+      [inviter?.personalInfo?.firstName, inviter?.personalInfo?.lastName].filter(Boolean).join(' ') ||
+      inviter?.name ||
+      'Your partner';
+
+    // Remove stale invite notifications from either side once auto-confirmed
+    await Notification.deleteMany({
+      $or: [
+        { userId: req.user._id, fromUserId: partnerId, type: 'wedding_invite' },
+        { userId: partnerId, fromUserId: req.user._id, type: 'wedding_invite' },
+      ],
+    });
+
+    const acceptedNotif = await Notification.create({
+      userId: partnerId,
+      type: 'wedding_accepted',
+      fromUserId: req.user._id,
+      fromUserName: acceptorName,
+      fromUserProfilePic: acceptor?.personalInfo?.profilePic || acceptor?.profilePic || null,
+      metadata: { acceptorId: String(req.user._id), autoConfirmed: true },
+    });
+
+    const [unlockNotifForInviter, unlockNotifForAcceptor] = await Promise.all([
+      Notification.create({
+        userId: partnerId,
+        type: 'wedding_planning_unlocked',
+        fromUserId: req.user._id,
+        fromUserName: acceptorName,
+        fromUserProfilePic: acceptor?.personalInfo?.profilePic || acceptor?.profilePic || null,
+        metadata: { partnerId: String(req.user._id), autoConfirmed: true },
+      }),
+      Notification.create({
+        userId: req.user._id,
+        type: 'wedding_planning_unlocked',
+        fromUserId: partnerId,
+        fromUserName: inviterName,
+        fromUserProfilePic: inviter?.personalInfo?.profilePic || inviter?.profilePic || null,
+        metadata: { partnerId: String(partnerId), autoConfirmed: true },
+      }),
+    ]);
+
+    emitToUser(partnerId, 'notification', {
+      id: String(acceptedNotif._id),
+      type: 'wedding_accepted',
+      fromUserId: String(req.user._id),
+      fromUserName: acceptorName,
+      fromUserProfilePic: acceptor?.personalInfo?.profilePic || acceptor?.profilePic || null,
+      metadata: { acceptorId: String(req.user._id), autoConfirmed: true },
+      read: false,
+      createdAt: acceptedNotif.createdAt,
+    });
+
+    emitToUser(partnerId, 'notification', {
+      id: String(unlockNotifForInviter._id),
+      type: 'wedding_planning_unlocked',
+      fromUserId: String(req.user._id),
+      fromUserName: acceptorName,
+      fromUserProfilePic: acceptor?.personalInfo?.profilePic || acceptor?.profilePic || null,
+      metadata: { partnerId: String(req.user._id), autoConfirmed: true },
+      read: false,
+      createdAt: unlockNotifForInviter.createdAt,
+    });
+
+    emitToUser(String(req.user._id), 'notification', {
+      id: String(unlockNotifForAcceptor._id),
+      type: 'wedding_planning_unlocked',
+      fromUserId: String(partnerId),
+      fromUserName: inviterName,
+      fromUserProfilePic: inviter?.personalInfo?.profilePic || inviter?.profilePic || null,
+      metadata: { partnerId: String(partnerId), autoConfirmed: true },
+      read: false,
+      createdAt: unlockNotifForAcceptor.createdAt,
+    });
+
+    // Socket events to both ends
+    emitToUser(String(req.user._id), 'wedding_accepted', { acceptorId: String(req.user._id), acceptorName });
+    emitToUser(String(partnerId), 'wedding_accepted', { acceptorId: String(req.user._id), acceptorName });
+    emitToUser(String(req.user._id), 'planning_unlocked', { partnerId: String(partnerId) });
+    emitToUser(String(partnerId), 'planning_unlocked', { partnerId: String(req.user._id) });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Mutual invitation detected! Wedding plan auto-confirmed.',
+      data: partnerInvite,
+      autoConfirmed: true
+    });
+  }
+
   await project.save();
 
   // Send notification to partner
@@ -626,6 +824,15 @@ export const getPendingInvite = asyncHandler(async (req, res) => {
 //   2. Either partner dissolves a coupled project
 //   3. Invitee formally declines an incoming invite
 export const resetWedding = asyncHandler(async (req, res) => {
+  const resetter = await User.findById(req.user._id)
+    .select('personalInfo.firstName personalInfo.lastName personalInfo.profilePic name profilePic')
+    .lean();
+  const resetterName =
+    [resetter?.personalInfo?.firstName, resetter?.personalInfo?.lastName].filter(Boolean).join(' ') ||
+    resetter?.name ||
+    'Your match';
+  const resetterProfilePic = resetter?.personalInfo?.profilePic || resetter?.profilePic || null;
+
   // --- Case 3: current user is the invitee wanting to decline ---
   const inviteeProject = await WeddingProject.findOne({
     'pendingInvite.inviteeId': req.user._id,
@@ -641,12 +848,45 @@ export const resetWedding = asyncHandler(async (req, res) => {
     await Notification.deleteMany({
       $or: [
         { userId: req.user._id, fromUserId: inviterId, type: 'wedding_invite' },
-        { userId: inviterId, fromUserId: req.user._id, type: { $in: ['wedding_invite', 'wedding_accepted'] } },
+        { userId: inviterId, fromUserId: req.user._id, type: { $in: ['wedding_invite', 'wedding_accepted', 'wedding_planning_unlocked'] } },
       ],
     });
+
+    await Promise.all([
+      notifyWeddingCancelled({
+        recipientId: req.user._id,
+        resetterId: req.user._id,
+        resetterName,
+        resetterProfilePic,
+        cancelledBySelf: true,
+        isDecline: true,
+      }),
+      notifyWeddingCancelled({
+        recipientId: inviterId,
+        resetterId: req.user._id,
+        resetterName,
+        resetterProfilePic,
+        cancelledBySelf: false,
+        isDecline: true,
+      }),
+    ]);
+
     if (inviterId) {
-      emitToUser(inviterId, 'wedding_reset', { message: 'Your wedding invitation was declined' });
+      emitToUser(inviterId, 'wedding_reset', {
+        message: `${resetterName} declined the wedding invite`,
+        resetterId: String(req.user._id),
+        resetterName,
+        cancelledBySelf: false,
+        isDecline: true,
+      });
     }
+    emitToUser(String(req.user._id), 'wedding_reset', {
+      message: 'You declined the wedding invite',
+      resetterId: String(req.user._id),
+      resetterName,
+      cancelledBySelf: true,
+      isDecline: true,
+    });
     return res.status(200).json({ success: true, message: 'Invitation declined' });
   }
 
@@ -668,6 +908,41 @@ export const resetWedding = asyncHandler(async (req, res) => {
   if (isCoupled) {
     // Both users get fresh blank projects
     await resetBothWeddingProjects(req.user._id, partnerId);
+
+    await Promise.all([
+      notifyWeddingCancelled({
+        recipientId: req.user._id,
+        resetterId: req.user._id,
+        resetterName,
+        resetterProfilePic,
+        cancelledBySelf: true,
+      }),
+      partnerId
+        ? notifyWeddingCancelled({
+            recipientId: partnerId,
+            resetterId: req.user._id,
+            resetterName,
+            resetterProfilePic,
+            cancelledBySelf: false,
+          })
+        : Promise.resolve(),
+    ]);
+
+    emitToUser(String(req.user._id), 'wedding_reset', {
+      message: 'You cancelled wedding planning',
+      resetterId: String(req.user._id),
+      resetterName,
+      cancelledBySelf: true,
+    });
+    if (partnerId) {
+      emitToUser(String(partnerId), 'wedding_reset', {
+        message: `${resetterName} cancelled wedding planning`,
+        resetterId: String(req.user._id),
+        resetterName,
+        cancelledBySelf: false,
+      });
+    }
+
     // resetBothWeddingProjects already emits wedding_reset to both, so we can return early
     return res.status(200).json({ success: true, message: 'Wedding project reset successfully' });
   } else {
@@ -680,15 +955,39 @@ export const resetWedding = asyncHandler(async (req, res) => {
   if (partnerId) {
     await Notification.deleteMany({
       $or: [
-        { userId: req.user._id, fromUserId: partnerId, type: { $in: ['wedding_invite', 'wedding_accepted'] } },
-        { userId: partnerId, fromUserId: req.user._id, type: { $in: ['wedding_invite', 'wedding_accepted'] } },
+        { userId: req.user._id, fromUserId: partnerId, type: { $in: ['wedding_invite', 'wedding_accepted', 'wedding_planning_unlocked'] } },
+        { userId: partnerId, fromUserId: req.user._id, type: { $in: ['wedding_invite', 'wedding_accepted', 'wedding_planning_unlocked'] } },
       ],
     });
-    const resetter = await User.findById(req.user._id).select('firstName lastName name').lean();
-    const resetterName = resetter?.firstName || resetter?.name || 'Your match';
-    emitToUser(partnerId, 'wedding_reset', {
+
+    await Promise.all([
+      notifyWeddingCancelled({
+        recipientId: req.user._id,
+        resetterId: req.user._id,
+        resetterName,
+        resetterProfilePic,
+        cancelledBySelf: true,
+      }),
+      notifyWeddingCancelled({
+        recipientId: partnerId,
+        resetterId: req.user._id,
+        resetterName,
+        resetterProfilePic,
+        cancelledBySelf: false,
+      }),
+    ]);
+
+    emitToUser(String(req.user._id), 'wedding_reset', {
+      message: 'You cancelled wedding planning',
+      resetterId: String(req.user._id),
       resetterName,
-      message: `${resetterName} has cancelled the wedding invite`,
+      cancelledBySelf: true,
+    });
+    emitToUser(partnerId, 'wedding_reset', {
+      message: `${resetterName} cancelled wedding planning`,
+      resetterId: String(req.user._id),
+      resetterName,
+      cancelledBySelf: false,
     });
   }
 
