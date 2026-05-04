@@ -30,8 +30,12 @@ const bookedVendorSchema = new Schema(
     vendorId: { type: Schema.Types.ObjectId, ref: 'Vendor', required: true },
     category: { type: String, trim: true, maxlength: 80 },
     quotedAmount: { type: Number, min: 0, default: 0 },
+    selectedPackageId: { type: String, trim: true, maxlength: 80 },
+    selectedPackageName: { type: String, trim: true, maxlength: 160 },
     quoteRequestId: { type: Schema.Types.ObjectId, ref: 'QuoteRequest' },
     requestedAt: { type: Date },
+    confirmedStart: { type: Date },
+    confirmedEnd: { type: Date },
     vendorName: { type: String, trim: true, maxlength: 160 },
     notes: { type: String, trim: true, maxlength: 2000 },
     status: {
