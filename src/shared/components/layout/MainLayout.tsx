@@ -341,6 +341,21 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
         playWeddingInviteSound();
         showEventNotifRef.current('🎊', 'Wedding planning unlocked!', `You and ${payload.fromUserName} can now plan your wedding together!`, '/wedding', '#be185d');
         window.dispatchEvent(new CustomEvent('planning:unlocked'));
+      } else if (payload.type === 'wedding_cancelled') {
+        playInterestSound();
+        const cancelledBySelf = Boolean(payload?.metadata?.cancelledBySelf);
+        const isDecline = Boolean(payload?.metadata?.isDecline);
+        const actorName = payload?.fromUserName || 'This user';
+        const verb = isDecline ? 'declined the wedding invite' : 'cancelled the wedding plan';
+        showEventNotifRef.current(
+          '💔',
+          isDecline ? 'Wedding invite declined' : 'Wedding planning cancelled',
+          cancelledBySelf
+            ? `You ${verb}. To plan again, send a new invite.`
+            : `${actorName} ${verb}. To plan again, send a new invite.`,
+          '/wedding',
+          '#6b7280'
+        );
       } else if (payload.type === 'interest_accepted') {
         playInterestSound();
         showEventNotifRef.current('🥳', `${payload.fromUserName} accepted your interest!`, 'You can now message each other.', '/messages', '#16a34a');
@@ -367,8 +382,20 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
     window.addEventListener('wedding:accepted', onWeddingAcceptedSelf);
 
     // When the other user removes the match, their wedding project gets reset
-    const onWeddingReset = () => {
-      showEventNotifRef.current('💔', 'Wedding project reset', 'Your match removed you — your wedding project has been reset.', '/wedding', '#6b7280');
+    const onWeddingReset = (payload: any) => {
+      const cancelledBySelf = Boolean(payload?.cancelledBySelf);
+      const isDecline = Boolean(payload?.isDecline);
+      const resetterName = payload?.resetterName || 'This user';
+      const verb = isDecline ? 'declined the wedding invite' : 'cancelled the wedding plan';
+      showEventNotifRef.current(
+        '💔',
+        isDecline ? 'Wedding invite declined' : 'Wedding project reset',
+        cancelledBySelf
+          ? `You ${verb}. To plan again, send a new invite.`
+          : `${resetterName} ${verb}. To plan again, send a new invite.`,
+        '/wedding',
+        '#6b7280'
+      );
       window.dispatchEvent(new CustomEvent('wedding:reset'));
       window.dispatchEvent(new CustomEvent('app:refresh'));
     };
