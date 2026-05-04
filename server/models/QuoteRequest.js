@@ -19,6 +19,12 @@ const quoteRequestDetailsSchema = new Schema(
     location: { type: String, trim: true, maxlength: 160 },
     venueName: { type: String, trim: true, maxlength: 160 },
     preferredPackage: { type: String, trim: true, maxlength: 160 },
+    selectedPackage: {
+      id: { type: String, trim: true, maxlength: 80 },
+      name: { type: String, trim: true, maxlength: 160 },
+      price: { type: Number, min: 0, default: 0 },
+      currency: { type: String, trim: true, default: 'LKR', maxlength: 10 },
+    },
     coverageHours: { type: Number, min: 0, default: 0 },
     budgetRange: { type: budgetRangeSchema, default: () => ({}) },
     contactName: { type: String, trim: true, maxlength: 160 },
@@ -39,6 +45,8 @@ const quoteResponseSchema = new Schema(
     price: { type: Number, min: 0, default: 0 },
     packageName: { type: String, trim: true, maxlength: 160 },
     message: { type: String, trim: true, maxlength: 4000 },
+    scheduledStart: { type: Date },
+    scheduledEnd: { type: Date },
     respondedAt: { type: Date },
   },
   { _id: false }
