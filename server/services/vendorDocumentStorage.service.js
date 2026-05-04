@@ -7,6 +7,7 @@ import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const localStorageDir = path.resolve(__dirname, '../uploads/vendor-documents');
+const localPortfolioDir = path.resolve(__dirname, '../uploads/vendor-portfolio');
 
 const storageProvider = String(process.env.VENDOR_DOCUMENT_STORAGE || 'local').toLowerCase();
 
@@ -89,6 +90,44 @@ async function storeDocumentLocally(file, baseApiUrl) {
     url: `${baseApiUrl}/uploads/vendor-documents/${fileName}`,
     fileName: file.originalname,
   };
+}
+
+async function storePortfolioLocally(file, baseApiUrl) {
+  fs.mkdirSync(localPortfolioDir, { recursive: true });
+  const fileName = buildSafeFileName(file.originalname);
+  const absolutePath = path.resolve(localPortfolioDir, fileName);
+  await fsPromises.writeFile(absolutePath, file.buffer);
+  return `${baseApiUrl}/uploads/vendor-portfolio/${fileName}`;
+}
+
+export async function storePortfolioImages({ files = [], baseApiUrl }) {
+  if (!Array.isArray(files) || files.length === 0) return [];
+
+  const s3Config = storageProvider === 's3' ? getS3Config() : null;
+  const useS3 = Boolean(s3Config);
+
+  const urls = [];
+  for (const file of files) {
+    if (useS3) {
+      const key = `vendor-portfolio/${buildSafeFileName(file.originalname)}`;
+      const client = getS3Client(s3Config);
+      await client.send(
+        new PutObjectCommand({
+          Bucket: s3Config.bucket,
+          Key: key,
+          Body: file.buffer,
+          ContentType: file.mimetype,
+        })
+      );
+      const url = s3Config.publicBaseUrl
+        ? `${s3Config.publicBaseUrl}/${key}`
+        : `https://${s3Config.bucket}.s3.${s3Config.region}.amazonaws.com/${key}`;
+      urls.push(url);
+    } else {
+      urls.push(await storePortfolioLocally(file, baseApiUrl));
+    }
+  }
+  return urls;
 }
 
 export async function storeVendorDocuments({ files = [], baseApiUrl }) {
