@@ -40,8 +40,38 @@ const vendorService = {
     return response.data;
   },
 
+  getVendorProfile: async () => {
+    const response = await axiosInstance.get('/vendors/profile');
+    return response.data;
+  },
+
+  updateVendorProfile: async (data: any) => {
+    const response = await axiosInstance.patch('/vendors/profile', data);
+    return response.data;
+  },
+
   updateQuoteRequest: async (quoteRequestId: string, data: any) => {
     const response = await axiosInstance.patch(`/vendors/quotes/${quoteRequestId}`, data);
+    return response.data;
+  },
+
+  uploadPortfolioImages: async (files: File[], onProgress?: (percent: number) => void) => {
+    const formData = new FormData();
+    files.forEach((file) => formData.append('images', file));
+    const response = await axiosInstance.post('/vendors/portfolio/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      onUploadProgress: onProgress
+        ? (event) => {
+            const percent = event.total ? Math.round((event.loaded * 100) / event.total) : 0;
+            onProgress(percent);
+          }
+        : undefined,
+    });
+    return response.data;
+  },
+
+  removePortfolioImage: async (imageUrl: string) => {
+    const response = await axiosInstance.delete('/vendors/portfolio/image', { data: { imageUrl } });
     return response.data;
   },
 
