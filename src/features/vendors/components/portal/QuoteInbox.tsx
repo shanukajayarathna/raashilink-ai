@@ -19,12 +19,12 @@ import {
   Typography,
   alpha,
 } from '@mui/material';
+
 import {
   Calendar,
   CheckCircle2,
   Clock,
   DollarSign,
-  Filter,
   MapPin,
   MessageSquare,
   Phone,
@@ -54,6 +54,8 @@ interface QuoteRequest {
   venueName?: string;
   budget: string;
   guestCount: number;
+  selectedPackageId?: string;
+  selectedPackageName?: string;
   preferredPackage?: string;
   coverageHours?: number;
   requirements: string;
@@ -66,6 +68,8 @@ interface QuoteRequest {
     price?: number;
     packageName?: string;
     message?: string;
+    scheduledStart?: string;
+    scheduledEnd?: string;
     respondedAt?: string;
   } | null;
 }
@@ -79,10 +83,14 @@ export default function QuoteInbox() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | QuoteStatus>('all');
   const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
   const [quoteForm, setQuoteForm] = useState({
     price: '',
     packageName: 'Custom Quote',
     message: '',
+    scheduledDate: '',
+    startTime: '10:00',
+    endTime: '14:00',
   });
 
   const fetchQuotes = async () => {
@@ -100,6 +108,23 @@ export default function QuoteInbox() {
 
   useEffect(() => {
     fetchQuotes();
+
+    const intervalId = window.setInterval(() => {
+      fetchQuotes();
+    }, 15000);
+
+    const handleRefresh = () => {
+      fetchQuotes();
+    };
+
+    window.addEventListener('focus', handleRefresh);
+    window.addEventListener('app:refresh', handleRefresh as EventListener);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', handleRefresh);
+      window.removeEventListener('app:refresh', handleRefresh as EventListener);
+    };
   }, []);
 
   const filteredQuotes = useMemo(() => {
@@ -114,21 +139,26 @@ export default function QuoteInbox() {
     });
   }, [quotes, search, statusFilter]);
 
-  const handleRespond = async () => {
+  const handleApprove = async () => {
     if (!selectedQuote) return;
+    if (!quoteForm.scheduledDate || !quoteForm.startTime || !quoteForm.endTime) return;
     setSubmitting(true);
+    setSubmitError('');
     try {
       await vendorService.updateQuoteRequest(selectedQuote.id, {
-        status: 'responded',
+        status: 'accepted',
         price: Number(quoteForm.price || 0),
         packageName: quoteForm.packageName,
         message: quoteForm.message,
+        scheduledDate: quoteForm.scheduledDate,
+        startTime: quoteForm.startTime,
+        endTime: quoteForm.endTime,
       });
       setIsQuoteModalOpen(false);
       setSelectedQuote(null);
       await fetchQuotes();
-    } catch (error) {
-      console.error('Failed to respond to quote', error);
+    } catch (error: any) {
+      setSubmitError(error?.response?.data?.message || error?.message || 'Failed to confirm booking. Please try again.');
     } finally {
       setSubmitting(false);
     }
@@ -137,6 +167,7 @@ export default function QuoteInbox() {
   const handleDecline = async () => {
     if (!selectedQuote) return;
     setSubmitting(true);
+    setSubmitError('');
     try {
       await vendorService.updateQuoteRequest(selectedQuote.id, {
         status: 'declined',
@@ -145,8 +176,8 @@ export default function QuoteInbox() {
       setIsDeclineModalOpen(false);
       setSelectedQuote(null);
       await fetchQuotes();
-    } catch (error) {
-      console.error('Failed to decline quote', error);
+    } catch (error: any) {
+      setSubmitError(error?.response?.data?.message || error?.message || 'Failed to decline. Please try again.');
     } finally {
       setSubmitting(false);
     }
@@ -259,26 +290,33 @@ export default function QuoteInbox() {
                       <Grid size={{ xs: 12, md: 3 }} sx={{ display: 'flex', flexDirection: 'column', alignItems: { md: 'flex-end' }, gap: 2 }}>
                         {getStatusChip(quote.status)}
                         <Box sx={{ display: 'flex', gap: 1 }}>
-                          {quote.status === 'new' ? (
+                          {quote.status === 'new' || quote.status === 'responded' ? (
                             <>
                               <Button
                                 variant="contained"
                                 size="small"
                                 onClick={() => {
                                   setSelectedQuote(quote);
-                                  setQuoteForm({ price: '', packageName: quote.preferredPackage || 'Custom Quote', message: '' });
+                                  setQuoteForm({
+                                    price: quote.response?.price ? String(quote.response.price) : '',
+                                    packageName: quote.selectedPackageName || quote.preferredPackage || 'Custom Quote',
+                                    message: quote.response?.message || '',
+                                    scheduledDate: quote.weddingDate ? new Date(quote.weddingDate).toISOString().split('T')[0] : '',
+                                    startTime: '10:00',
+                                    endTime: '14:00',
+                                  });
                                   setIsQuoteModalOpen(true);
                                 }}
                                 sx={{ bgcolor: COLORS.primary, borderRadius: '8px', textTransform: 'none', '&:hover': { bgcolor: '#6b1423' } }}
                               >
-                                Send Quote
+                                Approve & Confirm
                               </Button>
                               <Button
                                 variant="outlined"
                                 size="small"
                                 onClick={() => {
                                   setSelectedQuote(quote);
-                                  setQuoteForm({ price: '', packageName: '', message: '' });
+                                  setQuoteForm({ price: '', packageName: '', message: '', scheduledDate: '', startTime: '10:00', endTime: '14:00' });
                                   setIsDeclineModalOpen(true);
                                 }}
                                 sx={{ color: COLORS.textSecondary, borderColor: 'rgba(0,0,0,0.1)', borderRadius: '8px', textTransform: 'none' }}
@@ -296,7 +334,10 @@ export default function QuoteInbox() {
                           {quote.venueName ? <Typography variant="body2" sx={{ color: COLORS.textSecondary }}><strong>Venue:</strong> {quote.venueName}</Typography> : null}
                           {quote.guestCount ? <Typography variant="body2" sx={{ color: COLORS.textSecondary }}><strong>Guests:</strong> {quote.guestCount}</Typography> : null}
                           {quote.coverageHours ? <Typography variant="body2" sx={{ color: COLORS.textSecondary }}><strong>Coverage:</strong> {quote.coverageHours} hours</Typography> : null}
-                          {quote.preferredPackage ? <Typography variant="body2" sx={{ color: COLORS.textSecondary }}><strong>Preferred package:</strong> {quote.preferredPackage}</Typography> : null}
+                          {quote.selectedPackageName || quote.preferredPackage ? <Typography variant="body2" sx={{ color: COLORS.textSecondary }}><strong>Requested package:</strong> {quote.selectedPackageName || quote.preferredPackage}</Typography> : null}
+                          {quote.response?.scheduledStart ? (
+                            <Typography variant="body2" sx={{ color: COLORS.textSecondary }}><strong>Confirmed slot:</strong> {new Date(quote.response.scheduledStart).toLocaleString()}</Typography>
+                          ) : null}
                           <Typography variant="body2" sx={{ color: COLORS.textSecondary, fontStyle: 'italic' }}>
                             "{quote.requirements || 'No extra requirements added.'}"
                           </Typography>
@@ -319,20 +360,36 @@ export default function QuoteInbox() {
 
       <Dialog open={isQuoteModalOpen} onClose={() => setIsQuoteModalOpen(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: '20px', p: 1 } }}>
         <DialogTitle sx={{ fontWeight: 700, fontFamily: 'Playfair Display', color: COLORS.primary }}>
-          Send Quote to {selectedQuote?.coupleName}
+          Approve Request for {selectedQuote?.coupleName}
         </DialogTitle>
         <DialogContent>
           <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 3 }}>
             <TextField label="Quoted Price (LKR)" fullWidth value={quoteForm.price} onChange={(e) => setQuoteForm({ ...quoteForm, price: e.target.value })} placeholder="e.g. 250000" />
             <TextField label="Package Name" fullWidth value={quoteForm.packageName} onChange={(e) => setQuoteForm({ ...quoteForm, packageName: e.target.value })} />
+            <Grid container spacing={2}>
+              <Grid size={{ xs: 12, sm: 4 }}>
+                <TextField label="Event Date" type="date" fullWidth value={quoteForm.scheduledDate} onChange={(e) => setQuoteForm({ ...quoteForm, scheduledDate: e.target.value })} InputLabelProps={{ shrink: true }} />
+              </Grid>
+              <Grid size={{ xs: 12, sm: 4 }}>
+                <TextField label="Start Time" type="time" fullWidth value={quoteForm.startTime} onChange={(e) => setQuoteForm({ ...quoteForm, startTime: e.target.value })} InputLabelProps={{ shrink: true }} />
+              </Grid>
+              <Grid size={{ xs: 12, sm: 4 }}>
+                <TextField label="End Time" type="time" fullWidth value={quoteForm.endTime} onChange={(e) => setQuoteForm({ ...quoteForm, endTime: e.target.value })} InputLabelProps={{ shrink: true }} />
+              </Grid>
+            </Grid>
             <TextField label="Personal Message" fullWidth multiline rows={4} value={quoteForm.message} onChange={(e) => setQuoteForm({ ...quoteForm, message: e.target.value })} placeholder="Describe what is included, any limits, and next steps." />
           </Box>
         </DialogContent>
-        <DialogActions sx={{ p: 3 }}>
-          <Button onClick={() => setIsQuoteModalOpen(false)} sx={{ color: COLORS.textSecondary }}>Cancel</Button>
-          <Button variant="contained" onClick={handleRespond} disabled={submitting} startIcon={<MessageSquare size={18} />} sx={{ bgcolor: COLORS.primary, borderRadius: '10px', px: 4, '&:hover': { bgcolor: '#6b1423' } }}>
-            {submitting ? 'Sending...' : 'Send Quote'}
-          </Button>
+        <DialogActions sx={{ p: 3, flexDirection: 'column', alignItems: 'stretch', gap: 1 }}>
+          {submitError && (
+            <Alert severity="error" sx={{ borderRadius: '10px', mb: 1 }} onClose={() => setSubmitError('')}>{submitError}</Alert>
+          )}
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
+            <Button onClick={() => setIsQuoteModalOpen(false)} sx={{ color: COLORS.textSecondary }}>Cancel</Button>
+            <Button variant="contained" onClick={handleApprove} disabled={submitting} startIcon={<MessageSquare size={18} />} sx={{ bgcolor: COLORS.primary, borderRadius: '10px', px: 4, '&:hover': { bgcolor: '#6b1423' } }}>
+              {submitting ? 'Confirming...' : 'Confirm Booking'}
+            </Button>
+          </Box>
         </DialogActions>
       </Dialog>
 
@@ -352,11 +409,16 @@ export default function QuoteInbox() {
             sx={{ mt: 1 }}
           />
         </DialogContent>
-        <DialogActions sx={{ p: 3 }}>
-          <Button onClick={() => setIsDeclineModalOpen(false)} sx={{ color: COLORS.textSecondary }}>Cancel</Button>
-          <Button variant="contained" onClick={handleDecline} disabled={submitting} sx={{ bgcolor: '#d32f2f', borderRadius: '10px', px: 4, '&:hover': { bgcolor: '#b71c1c' } }}>
-            {submitting ? 'Declining...' : 'Decline'}
-          </Button>
+        <DialogActions sx={{ p: 3, flexDirection: 'column', alignItems: 'stretch', gap: 1 }}>
+          {submitError && (
+            <Alert severity="error" sx={{ borderRadius: '10px', mb: 1 }} onClose={() => setSubmitError('')}>{submitError}</Alert>
+          )}
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
+            <Button onClick={() => setIsDeclineModalOpen(false)} sx={{ color: COLORS.textSecondary }}>Cancel</Button>
+            <Button variant="contained" onClick={handleDecline} disabled={submitting} sx={{ bgcolor: '#d32f2f', borderRadius: '10px', px: 4, '&:hover': { bgcolor: '#b71c1c' } }}>
+              {submitting ? 'Declining...' : 'Decline'}
+            </Button>
+          </Box>
         </DialogActions>
       </Dialog>
     </Box>
