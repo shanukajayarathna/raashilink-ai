@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Box, 
   Typography, 
@@ -16,7 +16,9 @@ import {
   DialogActions,
   FormControlLabel,
   Radio,
-  RadioGroup
+  RadioGroup,
+  CircularProgress,
+  Alert,
 } from '@mui/material';
 import { 
   ChevronLeft, 
@@ -44,6 +46,7 @@ import {
   isToday
 } from 'date-fns';
 import { motion, AnimatePresence } from 'motion/react';
+import vendorService from '../../services/vendorService';
 
 const COLORS = {
   primary: '#8B1A2E',
@@ -64,19 +67,59 @@ interface CalendarEvent {
   coupleName?: string;
 }
 
-export default function VendorCalendar() {
+interface VendorCalendarProps {
+  quotes?: any[];
+  availabilityCalendar?: Array<{ date: string; status: 'available' | 'booked' | 'blocked' }>;
+}
+
+export default function VendorCalendar({ quotes = [], availabilityCalendar = [] }: VendorCalendarProps) {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [statusType, setStatusType] = useState<'available' | 'booked' | 'unavailable'>('available');
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
   
-  // Mock events
-  const [events, setEvents] = useState<CalendarEvent[]>([
-    { date: new Date(2025, 11, 15), type: 'booked', title: 'Wedding Photography', coupleName: 'Amila & Dilini' },
-    { date: new Date(2025, 11, 20), type: 'unavailable', title: 'Personal Holiday' },
-    { date: new Date(2025, 11, 25), type: 'available', title: 'Special Offer' },
-    { date: new Date(2026, 0, 10), type: 'booked', title: 'Engagement Shoot', coupleName: 'Saman & Kumari' },
-  ]);
+  const [events, setEvents] = useState<CalendarEvent[]>([]);
+
+  // Initialize events from persisted calendar + accepted quotes
+  useEffect(() => {
+    const persistedEvents: CalendarEvent[] = availabilityCalendar
+      .map((entry) => {
+        const d = new Date(entry.date);
+        if (isNaN(d.getTime())) return null;
+        // Map 'blocked' → 'unavailable' for display
+        const type = entry.status === 'blocked' ? 'unavailable' : (entry.status as 'available' | 'booked');
+        return { date: d, type } as CalendarEvent;
+      })
+      .filter((e): e is CalendarEvent => e !== null);
+
+    const quoteEvents: CalendarEvent[] = quotes
+      .filter((q) => q.status === 'accepted' && (q.response?.scheduledStart || q.weddingDate))
+      .map((q) => {
+        const d = new Date(q.response?.scheduledStart || q.weddingDate);
+        if (isNaN(d.getTime())) return null;
+        return {
+          date: d,
+          type: 'booked' as const,
+          title: 'Wedding Event',
+          coupleName: q.coupleName,
+        };
+      })
+      .filter((e): e is CalendarEvent => e !== null);
+
+    // Merge: quote events take priority over persisted calendar entries for same date
+    const merged = [...persistedEvents];
+    for (const qe of quoteEvents) {
+      const idx = merged.findIndex((e) => isSameDay(e.date, qe.date));
+      if (idx >= 0) {
+        merged[idx] = qe;
+      } else {
+        merged.push(qe);
+      }
+    }
+    setEvents(merged);
+  }, [availabilityCalendar, quotes]);
 
   const nextMonth = () => setCurrentMonth(addMonths(currentMonth, 1));
   const prevMonth = () => setCurrentMonth(subMonths(currentMonth, 1));
@@ -89,17 +132,35 @@ export default function VendorCalendar() {
     } else {
       setStatusType('available');
     }
+    setSaveError('');
     setIsModalOpen(true);
   };
 
-  const handleSaveStatus = () => {
+  const handleSaveStatus = async () => {
     if (!selectedDate) return;
-    
-    setEvents(prev => {
-      const filtered = prev.filter(e => !isSameDay(e.date, selectedDate));
+    setSaving(true);
+    setSaveError('');
+
+    const updatedEvents = (() => {
+      const filtered = events.filter(e => !isSameDay(e.date, selectedDate));
       return [...filtered, { date: selectedDate, type: statusType }];
-    });
-    setIsModalOpen(false);
+    })();
+
+    // Map to the backend format (unavailable → blocked)
+    const calendarPayload = updatedEvents.map((e) => ({
+      date: e.date.toISOString(),
+      status: e.type === 'unavailable' ? 'blocked' : e.type,
+    }));
+
+    try {
+      await vendorService.updateVendorProfile({ availabilityCalendar: calendarPayload });
+      setEvents(updatedEvents);
+      setIsModalOpen(false);
+    } catch (err: any) {
+      setSaveError(err?.response?.data?.message || err?.message || 'Failed to save. Please try again.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const renderHeader = () => (
@@ -409,15 +470,22 @@ export default function VendorCalendar() {
             </Paper>
           </RadioGroup>
         </DialogContent>
-        <DialogActions sx={{ p: 3 }}>
-          <Button onClick={() => setIsModalOpen(false)} sx={{ color: COLORS.textSecondary }}>Cancel</Button>
-          <Button 
-            variant="contained" 
-            onClick={handleSaveStatus}
-            sx={{ bgcolor: COLORS.primary, borderRadius: '10px', px: 4, '&:hover': { bgcolor: '#6b1423' } }}
-          >
-            Save Status
-          </Button>
+        <DialogActions sx={{ p: 3, flexDirection: 'column', alignItems: 'stretch', gap: 1 }}>
+          {saveError && (
+            <Alert severity="error" sx={{ borderRadius: '10px', mb: 1 }}>{saveError}</Alert>
+          )}
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
+            <Button onClick={() => setIsModalOpen(false)} disabled={saving} sx={{ color: COLORS.textSecondary }}>Cancel</Button>
+            <Button 
+              variant="contained" 
+              onClick={handleSaveStatus}
+              disabled={saving}
+              startIcon={saving ? <CircularProgress size={16} color="inherit" /> : undefined}
+              sx={{ bgcolor: COLORS.primary, borderRadius: '10px', px: 4, '&:hover': { bgcolor: '#6b1423' } }}
+            >
+              {saving ? 'Saving...' : 'Save Status'}
+            </Button>
+          </Box>
         </DialogActions>
       </Dialog>
     </Box>
