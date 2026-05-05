@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Box, 
   Container, 
@@ -44,6 +44,8 @@ import { useNavigate } from 'react-router-dom';
 import { RootState } from '@/app/store/store';
 import { logout } from '@/features/auth/store/authSlice';
 import vendorService from '../services/vendorService';
+import { formatDistanceToNow } from 'date-fns';
+import { connectSocket } from '@/shared/hooks/useRealtimeUpdates';
 
 // Sub-components
 import PortfolioUpload from '../components/portal/PortfolioUpload';
@@ -132,40 +134,58 @@ export default function VendorPortal() {
   const navigate = useNavigate();
   const { user, token } = useSelector((state: RootState) => state.auth);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
+  const fetchVendorData = useCallback(async (options?: { showLoader?: boolean }) => {
+    const showLoader = options?.showLoader === true;
+    try {
+      if (showLoader) {
         setLoading(true);
+      }
 
-        const [response, quoteInbox] = await Promise.all([
-          vendorService.searchVendors(),
-          vendorService.getQuoteInbox().catch(() => ({ data: { items: [] } })),
-        ]);
-        const items = Array.isArray(response?.data?.items) ? response.data.items : [];
-        const quoteItems = Array.isArray(quoteInbox?.data?.items) ? quoteInbox.data.items : [];
-        const currentUserId = String(user?.id || user?._id || '');
-        const currentVendor = items.find((entry: any) => String(entry?.userId) === currentUserId);
+      const [profileResponse, quoteInbox] = await Promise.all([
+        vendorService.getVendorProfile(),
+        vendorService.getQuoteInbox().catch(() => ({ data: { items: [] } })),
+      ]);
+      const ownProfile = profileResponse?.data || {};
+      const quoteItems = Array.isArray(quoteInbox?.data?.items) ? quoteInbox.data.items : [];
 
-        setVendorData({
-          businessName: currentVendor?.businessName || user?.vendorProfile?.businessName || user?.name || 'Vendor Account',
-          category: currentVendor?.category || user?.vendorProfile?.businessCategory || 'Vendor',
-          stats: {
-            views: String(currentVendor?.reviews?.length || 0),
-            quotes: String(quoteItems.length || 0),
-            bookings: String(quoteItems.filter((item: any) => item?.status === 'accepted').length),
-            rating: Number(currentVendor?.ratings?.average || user?.vendorProfile?.rating || 0).toFixed(1),
-          },
-          vendorProfile: user?.vendorProfile || null,
-          verification: {
-            ...(user?.verification || {}),
-            vendorVerified: Boolean(currentVendor?.verified),
-          },
-        });
-      } catch (error) {
-        console.error('Error fetching vendor data', error);
-        setVendorData({
+      const activity = quoteItems.map((q: any) => ({
+        type: 'quote',
+        title: q.status === 'new' ? 'New Quote Request' : q.status === 'responded' ? 'Quote Sent' : q.status === 'accepted' ? 'Booking Confirmed' : 'Quote Declined',
+        desc: q.status === 'new'
+          ? `${q.coupleName} requested a quote for ${q.venueName || 'your service'}.`
+          : q.status === 'accepted'
+          ? `Congratulations! ${q.coupleName} confirmed their booking.`
+          : `Update on quote for ${q.coupleName}.`,
+        time: q.createdAt ? formatDistanceToNow(new Date(q.createdAt)) + ' ago' : 'Recently',
+        icon: q.status === 'accepted' ? CheckCircle2 : MessageSquare,
+        color: q.status === 'accepted' ? '#2e7d32' : COLORS.primary,
+        rawDate: q.createdAt ? new Date(q.createdAt) : new Date()
+      })).sort((a: any, b: any) => b.rawDate.getTime() - a.rawDate.getTime()).slice(0, 5);
+
+      setVendorData({
+        businessName: ownProfile.businessName || user?.name || 'Vendor Account',
+        category: ownProfile.category || 'Vendor',
+        accountEmail: user?.email || '',
+        stats: {
+          views: String(ownProfile.reviews?.length || 0),
+          quotes: String(quoteItems.filter((q: any) => q.status === 'new').length),
+          bookings: String(quoteItems.filter((item: any) => item?.status === 'accepted').length),
+          rating: Number(ownProfile.ratings?.average || 0).toFixed(1),
+        },
+        activity,
+        quoteItems,
+        vendorProfile: ownProfile,
+        verification: {
+          ...(user?.verification || {}),
+          vendorVerified: Boolean(ownProfile.verified),
+        },
+      });
+    } catch (error) {
+      console.error('Error fetching vendor data', error);
+      setVendorData((prev: any) => prev || {
           businessName: user?.vendorProfile?.businessName || user?.name || 'Vendor Account',
           category: user?.vendorProfile?.businessCategory || 'Vendor',
+          accountEmail: user?.email || '',
           stats: {
             views: '0',
             quotes: '0',
@@ -175,18 +195,60 @@ export default function VendorPortal() {
           vendorProfile: user?.vendorProfile || null,
           verification: user?.verification || {},
         });
-      } finally {
+    } finally {
+      if (showLoader) {
         setLoading(false);
       }
-    };
+    }
+  }, [user]);
 
+  useEffect(() => {
     if (token) {
-      fetchData();
-      return;
+      fetchVendorData({ showLoader: true });
+
+      const intervalId = window.setInterval(() => {
+        fetchVendorData();
+      }, 15000);
+
+      const handleRefresh = () => {
+        fetchVendorData();
+      };
+
+      window.addEventListener('focus', handleRefresh);
+      window.addEventListener('app:refresh', handleRefresh as EventListener);
+
+      const socket = connectSocket(token);
+      const onVendorQuoteRequest = () => {
+        fetchVendorData();
+      };
+      socket.on('vendor_quote_request', onVendorQuoteRequest);
+
+      return () => {
+        window.clearInterval(intervalId);
+        window.removeEventListener('focus', handleRefresh);
+        window.removeEventListener('app:refresh', handleRefresh as EventListener);
+        socket.off('vendor_quote_request', onVendorQuoteRequest);
+      };
     }
 
     setLoading(false);
-  }, [token, user]);
+  }, [token, fetchVendorData]);
+
+  if (loading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', bgcolor: COLORS.background }}>
+        <Skeleton variant="rectangular" width="100%" height="100%" />
+      </Box>
+    );
+  }
+
+  if (!vendorData) {
+    return (
+      <Box sx={{ p: 4, textAlign: 'center' }}>
+        <Alert severity="error">Failed to load vendor profile. Please try logging in again.</Alert>
+      </Box>
+    );
+  }
 
   const handleLogout = () => {
     dispatch(logout());
@@ -202,13 +264,13 @@ export default function VendorPortal() {
   };
 
   const tabs = [
-    { label: 'Dashboard', icon: <LayoutDashboard size={20} />, component: <DashboardOverview stats={vendorData?.stats} vendorProfile={vendorData?.vendorProfile || user?.vendorProfile} verification={vendorData?.verification || user?.verification} /> },
-    { label: 'Quotes', icon: <MessageSquare size={20} />, component: <QuoteInbox /> },
-    { label: 'Bookings', icon: <CheckCircle2 size={20} />, component: <BookingsManager /> },
-    { label: 'Calendar', icon: <Calendar size={20} />, component: <VendorCalendar /> },
-    { label: 'Portfolio', icon: <ImageIcon size={20} />, component: <PortfolioUpload /> },
-    { label: 'Profile', icon: <User size={20} />, component: <ProfileManagement /> },
-    { label: 'Analytics', icon: <BarChart3 size={20} />, component: <AnalyticsView /> },
+    { label: 'Dashboard', icon: <LayoutDashboard size={20} /> },
+    { label: 'Quotes', icon: <MessageSquare size={20} /> },
+    { label: 'Bookings', icon: <CheckCircle2 size={20} /> },
+    { label: 'Calendar', icon: <Calendar size={20} /> },
+    { label: 'Portfolio', icon: <ImageIcon size={20} /> },
+    { label: 'Profile', icon: <User size={20} /> },
+    { label: 'Analytics', icon: <BarChart3 size={20} /> },
   ];
 
   return (
@@ -386,7 +448,48 @@ export default function VendorPortal() {
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.2 }}
             >
-              {tabs[activeTab].component}
+              {activeTab === 0 && <DashboardOverview stats={vendorData.stats} activity={vendorData.activity} vendorProfile={vendorData.vendorProfile} verification={vendorData.verification} />}
+              {activeTab === 1 && <QuoteInbox />}
+              {activeTab === 2 && <BookingsManager quotes={vendorData.quoteItems || []} />}
+              {activeTab === 3 && (
+                <VendorCalendar
+                  quotes={vendorData.quoteItems || []}
+                  availabilityCalendar={vendorData.vendorProfile?.availabilityCalendar || []}
+                />
+              )}
+              {activeTab === 4 && (
+                <PortfolioUpload
+                  portfolioImages={vendorData.vendorProfile?.portfolioImages || []}
+                  onUpdate={(images) =>
+                    setVendorData((prev: any) => ({
+                      ...prev,
+                      vendorProfile: { ...(prev?.vendorProfile || {}), portfolioImages: images },
+                    }))
+                  }
+                />
+              )}
+              {activeTab === 5 && (
+                <ProfileManagement
+                  vendorData={vendorData}
+                  onSaved={(updated) =>
+                    setVendorData((prev: any) => ({
+                      ...prev,
+                      businessName: updated?.businessName || prev?.businessName,
+                      category: updated?.category || prev?.category,
+                      vendorProfile: {
+                        ...(prev?.vendorProfile || {}),
+                        ...(updated || {}),
+                      },
+                    }))
+                  }
+                />
+              )}
+              {activeTab === 6 && (
+                <AnalyticsView
+                  quoteItems={vendorData.quoteItems || []}
+                  vendorProfile={vendorData.vendorProfile || null}
+                />
+              )}
             </motion.div>
           </AnimatePresence>
         </Container>
@@ -464,7 +567,7 @@ export default function VendorPortal() {
   );
 }
 
-const DashboardOverview = ({ stats, vendorProfile, verification }: any) => {
+export const DashboardOverview = ({ stats, activity, vendorProfile, verification }: any) => {
   if (!stats) return (
     <Grid container spacing={3}>
       {[1, 2, 3, 4].map((i) => (
@@ -476,7 +579,7 @@ const DashboardOverview = ({ stats, vendorProfile, verification }: any) => {
   );
 
   const showVerificationAlert = !verification?.emailVerified || !verification?.phoneVerified;
-  const businessNotVerified = vendorProfile?.verificationStatus === 'pending';
+  const businessNotVerified = !verification?.vendorVerified;
 
   return (
     <Box>
@@ -509,14 +612,13 @@ const DashboardOverview = ({ stats, vendorProfile, verification }: any) => {
           )}
         </Box>
       )}
-      
+
       <Grid container spacing={3}>
         <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
           <StatCard 
             title="Profile Views" 
             value={stats.views} 
             icon={Eye} 
-            trend="+12%" 
             color={COLORS.accent} 
           />
         </Grid>
@@ -525,16 +627,14 @@ const DashboardOverview = ({ stats, vendorProfile, verification }: any) => {
             title="Quote Requests" 
             value={stats.quotes} 
             icon={MessageSquare} 
-            trend="+5%" 
             color={COLORS.primary} 
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
           <StatCard 
-            title="Confirmed Bookings" 
+            title="Bookings" 
             value={stats.bookings} 
-            icon={CheckCircle2} 
-            trend="+2" 
+            icon={Briefcase} 
             color="#2e7d32" 
           />
         </Grid>
@@ -553,11 +653,7 @@ const DashboardOverview = ({ stats, vendorProfile, verification }: any) => {
           <Paper elevation={0} sx={{ p: 3, borderRadius: '16px', border: '1px solid rgba(139,26,46,0.08)', height: '100%' }}>
             <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>Recent Activity</Typography>
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              {[
-                { type: 'quote', title: 'New Quote Request', desc: 'Amila & Dilini requested a quote for Wedding Photography.', time: '2 hours ago', icon: MessageSquare, color: COLORS.primary },
-                { type: 'booking', title: 'Booking Confirmed', desc: 'Saman & Kumari confirmed their booking for Dec 15th.', time: '5 hours ago', icon: CheckCircle2, color: '#2e7d32' },
-                { type: 'review', title: 'New Review', desc: 'Kasun left a 5-star review: "Amazing service!"', time: 'Yesterday', icon: Star, color: COLORS.secondary },
-              ].map((item, i) => (
+              {activity.length > 0 ? activity.map((item: any, i: number) => (
                 <Box key={i} sx={{ display: 'flex', gap: 2, p: 2, borderRadius: '12px', bgcolor: 'rgba(0,0,0,0.02)' }}>
                   <Box sx={{ width: 40, height: 40, borderRadius: '10px', bgcolor: `${item.color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: item.color }}>
                     <item.icon size={20} />
@@ -568,7 +664,11 @@ const DashboardOverview = ({ stats, vendorProfile, verification }: any) => {
                     <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mt: 0.5 }}>{item.time}</Typography>
                   </Box>
                 </Box>
-              ))}
+              )) : (
+                <Typography variant="body2" color="textSecondary" sx={{ textAlign: 'center', py: 4 }}>
+                  No recent activity found.
+                </Typography>
+              )}
             </Box>
           </Paper>
         </Grid>
