@@ -1,28 +1,21 @@
-import React, { useState, useCallback } from 'react';
-import { 
-  Box, 
-  Typography, 
-  Paper, 
-  Grid, 
-  IconButton, 
-  Button, 
-  LinearProgress, 
+import React, { useCallback, useState } from 'react';
+import {
+  Alert,
+  Box,
+  Button,
+  CircularProgress,
+  Grid,
+  IconButton,
+  LinearProgress,
+  Paper,
   Tooltip,
-  useTheme,
-  alpha
+  Typography,
+  alpha,
 } from '@mui/material';
-import { 
-  Upload, 
-  X, 
-  Image as ImageIcon, 
-  FileText, 
-  CheckCircle2, 
-  AlertCircle,
-  Plus,
-  Trash2
-} from 'lucide-react';
+import { Image as ImageIcon, Trash2, Upload, X } from 'lucide-react';
 import { useDropzone } from 'react-dropzone';
-import { motion, AnimatePresence } from 'motion/react';
+import { AnimatePresence, motion } from 'motion/react';
+import vendorService from '../../services/vendorService';
 
 const COLORS = {
   primary: '#8B1A2E',
@@ -32,84 +25,159 @@ const COLORS = {
   textPrimary: '#1C1C1C',
   textSecondary: '#555555',
 };
-const MAX_IMAGE_SIZE_BYTES = (6 * 1024 * 1024) - 1;
 
-interface FileWithPreview extends File {
+const MAX_IMAGE_SIZE_BYTES = 8 * 1024 * 1024;
+
+interface PendingFile {
+  file: File;
   preview: string;
   progress: number;
-  status: 'uploading' | 'completed' | 'error';
+  status: 'pending' | 'uploading' | 'done' | 'error';
+  errorMsg?: string;
 }
 
-export default function PortfolioUpload() {
-  const [files, setFiles] = useState<FileWithPreview[]>([]);
-  const theme = useTheme();
+interface PortfolioUploadProps {
+  portfolioImages?: string[];
+  onUpdate?: (images: string[]) => void;
+}
+
+export default function PortfolioUpload({
+  portfolioImages = [],
+  onUpdate,
+}: PortfolioUploadProps) {
+  const [pending, setPending] = useState<PendingFile[]>([]);
+  const [existingImages, setExistingImages] = useState<string[]>(portfolioImages);
+  const [deletingUrl, setDeletingUrl] = useState<string | null>(null);
+  const [uploadError, setUploadError] = useState('');
+
+  React.useEffect(() => {
+    setExistingImages(portfolioImages);
+  }, [portfolioImages]);
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
-    const newFiles = acceptedFiles.map(file => Object.assign(file, {
+    setUploadError('');
+
+    const newPending: PendingFile[] = acceptedFiles.map((file) => ({
+      file,
       preview: URL.createObjectURL(file),
       progress: 0,
-      status: 'uploading' as const
+      status: 'pending',
     }));
 
-    setFiles(prev => [...prev, ...newFiles]);
-
-    // Simulate upload for each file
-    newFiles.forEach(file => {
-      let progress = 0;
-      const interval = setInterval(() => {
-        progress += Math.random() * 30;
-        if (progress >= 100) {
-          progress = 100;
-          clearInterval(interval);
-          setFiles(prev => prev.map(f => 
-            f.name === file.name ? { ...f, progress: 100, status: 'completed' } : f
-          ));
-        } else {
-          setFiles(prev => prev.map(f => 
-            f.name === file.name ? { ...f, progress } : f
-          ));
-        }
-      }, 500);
-    });
+    setPending((prev) => [...prev, ...newPending]);
   }, []);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    accept: {
-      'image/*': ['.jpeg', '.jpg', '.png', '.webp']
-    },
-    maxSize: MAX_IMAGE_SIZE_BYTES
+    accept: { 'image/*': ['.jpeg', '.jpg', '.png', '.webp'] },
+    maxSize: MAX_IMAGE_SIZE_BYTES,
   });
 
-  const removeFile = (fileName: string) => {
-    setFiles(prev => prev.filter(f => f.name !== fileName));
+  const removePending = (preview: string) => {
+    setPending((prev) => {
+      const item = prev.find((f) => f.preview === preview);
+      if (item) {
+        URL.revokeObjectURL(item.preview);
+      }
+      return prev.filter((f) => f.preview !== preview);
+    });
   };
+
+  const handleUploadAll = async () => {
+    const toUpload = pending.filter((p) => p.status === 'pending' || p.status === 'error');
+    if (toUpload.length === 0) {
+      return;
+    }
+
+    setPending((prev) =>
+      prev.map((p) =>
+        p.status === 'pending' || p.status === 'error'
+          ? { ...p, status: 'uploading', progress: 0 }
+          : p
+      )
+    );
+
+    try {
+      const response = await vendorService.uploadPortfolioImages(
+        toUpload.map((p) => p.file),
+        (percent: number) => {
+          setPending((prev) =>
+            prev.map((p) => (p.status === 'uploading' ? { ...p, progress: percent } : p))
+          );
+        }
+      );
+
+      const newImages: string[] = response?.data?.portfolioImages || [];
+      setExistingImages(newImages);
+      onUpdate?.(newImages);
+
+      setPending((prev) =>
+        prev.map((p) => (p.status === 'uploading' ? { ...p, status: 'done', progress: 100 } : p))
+      );
+
+      setTimeout(() => {
+        setPending((prev) => {
+          prev
+            .filter((p) => p.status === 'done')
+            .forEach((p) => URL.revokeObjectURL(p.preview));
+          return prev.filter((p) => p.status !== 'done');
+        });
+      }, 1500);
+    } catch (err: any) {
+      setUploadError(err?.response?.data?.message || err?.message || 'Upload failed. Please try again.');
+      setPending((prev) =>
+        prev.map((p) => (p.status === 'uploading' ? { ...p, status: 'error', progress: 0 } : p))
+      );
+    }
+  };
+
+  const handleDeleteExisting = async (imageUrl: string) => {
+    setDeletingUrl(imageUrl);
+    try {
+      const response = await vendorService.removePortfolioImage(imageUrl);
+      const newImages: string[] = response?.data?.portfolioImages || [];
+      setExistingImages(newImages);
+      onUpdate?.(newImages);
+    } catch (err: any) {
+      setUploadError(err?.response?.data?.message || err?.message || 'Failed to delete image.');
+    } finally {
+      setDeletingUrl(null);
+    }
+  };
+
+  const hasPending = pending.some((p) => p.status === 'pending' || p.status === 'error');
 
   return (
     <Box>
       <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Box>
-          <Typography variant="h5" sx={{ fontFamily: 'Playfair Display', fontWeight: 700, color: COLORS.primary }}>
+          <Typography
+            variant="h5"
+            sx={{ fontFamily: 'Playfair Display', fontWeight: 700, color: COLORS.primary }}
+          >
             Portfolio Management
           </Typography>
           <Typography variant="body2" color="textSecondary">
             Showcase your best work to potential couples. High-quality images attract more bookings.
           </Typography>
         </Box>
-        <Button
-          variant="contained"
-          startIcon={<Plus size={18} />}
-          sx={{
-            bgcolor: COLORS.primary,
-            borderRadius: '12px',
-            textTransform: 'none',
-            px: 3,
-            '&:hover': { bgcolor: '#6b1423' }
-          }}
-        >
-          Add Album
-        </Button>
+        {hasPending && (
+          <Button
+            variant="contained"
+            startIcon={<Upload size={18} />}
+            onClick={handleUploadAll}
+            sx={{ bgcolor: COLORS.primary, borderRadius: '12px', px: 3, '&:hover': { bgcolor: '#6b1423' } }}
+          >
+            Upload All
+          </Button>
+        )}
       </Box>
+
+      {uploadError && (
+        <Alert severity="error" sx={{ mb: 3, borderRadius: '12px' }} onClose={() => setUploadError('')}>
+          {uploadError}
+        </Alert>
+      )}
 
       <Paper
         {...getRootProps()}
@@ -122,10 +190,7 @@ export default function PortfolioUpload() {
           textAlign: 'center',
           cursor: 'pointer',
           transition: 'all 0.2s ease-in-out',
-          '&:hover': {
-            bgcolor: alpha(COLORS.primary, 0.02),
-            borderColor: COLORS.primary
-          }
+          '&:hover': { bgcolor: alpha(COLORS.primary, 0.02), borderColor: COLORS.primary },
         }}
       >
         <input {...getInputProps()} />
@@ -140,7 +205,7 @@ export default function PortfolioUpload() {
             justifyContent: 'center',
             color: COLORS.primary,
             mx: 'auto',
-            mb: 2
+            mb: 2,
           }}
         >
           <Upload size={32} />
@@ -149,7 +214,7 @@ export default function PortfolioUpload() {
           {isDragActive ? 'Drop the files here' : 'Drag & drop photos here'}
         </Typography>
         <Typography variant="body2" color="textSecondary" sx={{ mb: 3 }}>
-          Support for JPG, PNG, WebP (under 6 MB per file)
+          Support for JPG, PNG, WebP (under 8 MB per file)
         </Typography>
         <Button
           variant="outlined"
@@ -159,25 +224,22 @@ export default function PortfolioUpload() {
             borderRadius: '10px',
             textTransform: 'none',
             px: 4,
-            '&:hover': {
-              borderColor: COLORS.primary,
-              bgcolor: alpha(COLORS.primary, 0.05)
-            }
+            '&:hover': { borderColor: COLORS.primary, bgcolor: alpha(COLORS.primary, 0.05) },
           }}
         >
           Browse Files
         </Button>
       </Paper>
 
-      {files.length > 0 && (
+      {pending.length > 0 && (
         <Box sx={{ mt: 4 }}>
           <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
-            Uploading Files ({files.length})
+            Queued ({pending.length})
           </Typography>
           <Grid container spacing={2}>
             <AnimatePresence>
-              {files.map((file, index) => (
-                <Grid size={{ xs: 12, sm: 6, md: 4, lg: 3 }} key={file.name}>
+              {pending.map((item) => (
+                <Grid size={{ xs: 12, sm: 6, md: 4, lg: 3 }} key={item.preview}>
                   <motion.div
                     initial={{ opacity: 0, scale: 0.9 }}
                     animate={{ opacity: 1, scale: 1 }}
@@ -189,9 +251,9 @@ export default function PortfolioUpload() {
                       sx={{
                         p: 1.5,
                         borderRadius: '16px',
-                        border: '1px solid rgba(0,0,0,0.08)',
+                        border: `1px solid ${item.status === 'error' ? '#d32f2f' : 'rgba(0,0,0,0.08)'}`,
                         position: 'relative',
-                        overflow: 'hidden'
+                        overflow: 'hidden',
                       }}
                     >
                       <Box
@@ -201,58 +263,67 @@ export default function PortfolioUpload() {
                           borderRadius: '12px',
                           overflow: 'hidden',
                           mb: 1.5,
-                          position: 'relative'
+                          position: 'relative',
                         }}
                       >
                         <img
-                          src={file.preview}
-                          alt={file.name}
+                          src={item.preview}
+                          alt={item.file.name}
                           style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                          onLoad={() => URL.revokeObjectURL(file.preview)}
                         />
-                        <IconButton
-                          size="small"
-                          onClick={(e) => { e.stopPropagation(); removeFile(file.name); }}
+                        {(item.status === 'pending' || item.status === 'error') && (
+                          <IconButton
+                            size="small"
+                            onClick={() => removePending(item.preview)}
+                            sx={{
+                              position: 'absolute',
+                              top: 8,
+                              right: 8,
+                              bgcolor: 'rgba(0,0,0,0.5)',
+                              color: 'white',
+                              '&:hover': { bgcolor: 'rgba(0,0,0,0.7)' },
+                            }}
+                          >
+                            <X size={16} />
+                          </IconButton>
+                        )}
+                      </Box>
+                      <Box sx={{ px: 0.5 }}>
+                        <Typography
+                          variant="caption"
                           sx={{
-                            position: 'absolute',
-                            top: 8,
-                            right: 8,
-                            bgcolor: 'rgba(0,0,0,0.5)',
-                            color: 'white',
-                            '&:hover': { bgcolor: 'rgba(0,0,0,0.7)' }
+                            fontWeight: 600,
+                            display: 'block',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            mb: 0.5,
                           }}
                         >
-                          <X size={16} />
-                        </IconButton>
-                      </Box>
-                      
-                      <Box sx={{ px: 0.5 }}>
-                        <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', mb: 0.5 }}>
-                          {file.name}
+                          {item.file.name}
                         </Typography>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <Box sx={{ flexGrow: 1 }}>
-                            <LinearProgress 
-                              variant="determinate" 
-                              value={file.progress} 
-                              sx={{ 
-                                height: 6, 
-                                borderRadius: 3,
-                                bgcolor: 'rgba(0,0,0,0.05)',
-                                '& .MuiLinearProgress-bar': {
-                                  bgcolor: file.status === 'completed' ? '#2e7d32' : COLORS.primary
-                                }
-                              }}
-                            />
-                          </Box>
-                          {file.status === 'completed' ? (
-                            <CheckCircle2 size={16} color="#2e7d32" />
-                          ) : (
-                            <Typography variant="caption" color="textSecondary">
-                              {Math.round(file.progress)}%
-                            </Typography>
-                          )}
-                        </Box>
+                        {item.status === 'uploading' || item.status === 'done' ? (
+                          <LinearProgress
+                            variant="determinate"
+                            value={item.progress}
+                            sx={{
+                              height: 6,
+                              borderRadius: 3,
+                              bgcolor: 'rgba(0,0,0,0.05)',
+                              '& .MuiLinearProgress-bar': {
+                                bgcolor: item.status === 'done' ? '#2e7d32' : COLORS.primary,
+                              },
+                            }}
+                          />
+                        ) : item.status === 'error' ? (
+                          <Typography variant="caption" color="error">
+                            {item.errorMsg || 'Upload failed'}
+                          </Typography>
+                        ) : (
+                          <Typography variant="caption" color="textSecondary">
+                            Ready to upload
+                          </Typography>
+                        )}
                       </Box>
                     </Paper>
                   </motion.div>
@@ -265,61 +336,93 @@ export default function PortfolioUpload() {
 
       <Box sx={{ mt: 6 }}>
         <Typography variant="h6" sx={{ fontWeight: 600, mb: 3 }}>
-          Existing Portfolio
+          Portfolio ({existingImages.length} {existingImages.length === 1 ? 'photo' : 'photos'})
         </Typography>
-        <Grid container spacing={3}>
-          {[1, 2, 3, 4, 5, 6].map((i) => (
-            <Grid size={{ xs: 12, sm: 6, md: 4, lg: 3 }} key={i}>
-              <Paper
-                elevation={0}
-                sx={{
-                  borderRadius: '16px',
-                  overflow: 'hidden',
-                  border: '1px solid rgba(0,0,0,0.05)',
-                  '&:hover .overlay': { opacity: 1 }
-                }}
-              >
-                <Box sx={{ position: 'relative', height: 200 }}>
-                  <img
-                    src={`https://picsum.photos/seed/portfolio${i}/400/300`}
-                    alt={`Portfolio ${i}`}
-                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                  />
-                  <Box
-                    className="overlay"
-                    sx={{
-                      position: 'absolute',
-                      top: 0,
-                      left: 0,
-                      right: 0,
-                      bottom: 0,
-                      bgcolor: 'rgba(0,0,0,0.4)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 1.5,
-                      opacity: 0,
-                      transition: 'opacity 0.2s ease-in-out'
-                    }}
-                  >
-                    <IconButton sx={{ color: 'white', bgcolor: 'rgba(255,255,255,0.2)', '&:hover': { bgcolor: 'rgba(255,255,255,0.3)' } }}>
-                      <ImageIcon size={20} />
-                    </IconButton>
-                    <IconButton sx={{ color: 'white', bgcolor: 'rgba(211, 47, 47, 0.4)', '&:hover': { bgcolor: 'rgba(211, 47, 47, 0.6)' } }}>
-                      <Trash2 size={20} />
-                    </IconButton>
+        {existingImages.length === 0 ? (
+          <Typography variant="body2" color="textSecondary" sx={{ textAlign: 'center', py: 4 }}>
+            No portfolio images yet. Upload photos above to showcase your work.
+          </Typography>
+        ) : (
+          <Grid container spacing={3}>
+            {existingImages.map((url, i) => (
+              <Grid size={{ xs: 12, sm: 6, md: 4, lg: 3 }} key={url}>
+                <Paper
+                  elevation={0}
+                  sx={{
+                    borderRadius: '16px',
+                    overflow: 'hidden',
+                    border: '1px solid rgba(0,0,0,0.05)',
+                    '&:hover .overlay': { opacity: 1 },
+                  }}
+                >
+                  <Box sx={{ position: 'relative', height: 200 }}>
+                    <img
+                      src={url}
+                      alt={`Portfolio ${i + 1}`}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    />
+                    <Box
+                      className="overlay"
+                      sx={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        bgcolor: 'rgba(0,0,0,0.4)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 1.5,
+                        opacity: 0,
+                        transition: 'opacity 0.2s ease-in-out',
+                      }}
+                    >
+                      <Tooltip title="View full size">
+                        <IconButton
+                          component="a"
+                          href={url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          sx={{
+                            color: 'white',
+                            bgcolor: 'rgba(255,255,255,0.2)',
+                            '&:hover': { bgcolor: 'rgba(255,255,255,0.3)' },
+                          }}
+                        >
+                          <ImageIcon size={20} />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Delete image">
+                        <IconButton
+                          onClick={() => handleDeleteExisting(url)}
+                          disabled={deletingUrl === url}
+                          sx={{
+                            color: 'white',
+                            bgcolor: 'rgba(211,47,47,0.4)',
+                            '&:hover': { bgcolor: 'rgba(211,47,47,0.6)' },
+                          }}
+                        >
+                          {deletingUrl === url ? (
+                            <CircularProgress size={20} sx={{ color: 'white' }} />
+                          ) : (
+                            <Trash2 size={20} />
+                          )}
+                        </IconButton>
+                      </Tooltip>
+                    </Box>
                   </Box>
-                </Box>
-                <Box sx={{ p: 2 }}>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>Wedding at Galle Face</Typography>
-                  <Typography variant="caption" color="textSecondary">12 Photos • Oct 2025</Typography>
-                </Box>
-              </Paper>
-            </Grid>
-          ))}
-        </Grid>
+                  <Box sx={{ p: 2 }}>
+                    <Typography variant="caption" color="textSecondary">
+                      Photo {i + 1}
+                    </Typography>
+                  </Box>
+                </Paper>
+              </Grid>
+            ))}
+          </Grid>
+        )}
       </Box>
     </Box>
   );
 }
-
