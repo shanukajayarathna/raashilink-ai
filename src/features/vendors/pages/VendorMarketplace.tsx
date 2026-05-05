@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Box, Container, Typography, Grid, Stack, 
   Tabs, Tab, TextField, InputAdornment, 
@@ -6,7 +6,7 @@ import {
   FormLabel, RadioGroup, FormControlLabel, 
   Radio, Checkbox, Select, MenuItem, 
   InputLabel, Drawer, useTheme, useMediaQuery,
-  Skeleton, Alert, Badge, Divider, Chip
+  Skeleton, Alert, Badge, Divider, Chip, Card, CardContent
 } from '@mui/material';
 import { 
   Search, Filter, X, SlidersHorizontal, 
@@ -18,8 +18,11 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useSelector } from 'react-redux';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { RootState } from '@/app/store/store';
 import vendorService from '../services/vendorService';
+import weddingService from '@/features/wedding/services/weddingService';
+import { connectSocket } from '@/shared/hooks/useRealtimeUpdates';
 
 // Sub-components
 import VendorCard from '../components/VendorCard';
@@ -94,6 +97,94 @@ const CATEGORY_MATCHERS: Record<string, string[]> = {
   entertainment: ['Music', 'Entertainment'],
 };
 
+const CATEGORY_BUDGET_KEYS: Record<string, string[]> = {
+  venue: ['Venue'],
+  photography: ['Photography'],
+  catering: ['Catering'],
+  decoration: ['Decor', 'Decoration'],
+  attire: ['Attire', 'Bridal Wear'],
+  makeup: ['Beauty', 'Makeup'],
+  entertainment: ['Others', 'Entertainment', 'Music'],
+};
+
+const normalizeBudgetCategory = (value: string) => value.trim().toLowerCase();
+
+function buildBudgetSummary(project: any) {
+  const expenses = Array.isArray(project?.expenses) ? project.expenses : [];
+  const byCategory = project?.byCategory && typeof project.byCategory === 'object' ? project.byCategory : {};
+  const allocationCandidates = [
+    project?.budgetAllocations,
+    project?.allocations,
+    project?.categoryAllocations,
+    project?.budget?.allocations,
+    byCategory,
+  ];
+
+  const allocatedByCategory: Record<string, number> = {};
+  const spentByCategory: Record<string, number> = {};
+
+  expenses.forEach((expense: any) => {
+    const key = normalizeBudgetCategory(String(expense?.category || 'Others'));
+    spentByCategory[key] = (spentByCategory[key] || 0) + Number(expense?.amount || 0);
+  });
+
+  if (byCategory && typeof byCategory === 'object') {
+    Object.entries(byCategory).forEach(([category, details]: [string, any]) => {
+      const key = normalizeBudgetCategory(category);
+      const spent = Number(details?.spent ?? 0);
+      const allocated = Number(details?.allocated ?? 0);
+      if (!Number.isNaN(spent) && spent > 0) {
+        spentByCategory[key] = (spentByCategory[key] || 0) + spent;
+      }
+      if (!Number.isNaN(allocated) && allocated > 0) {
+        allocatedByCategory[key] = (allocatedByCategory[key] || 0) + allocated;
+      }
+    });
+  }
+
+  allocationCandidates.forEach((candidate: any) => {
+    if (!candidate) return;
+
+    if (Array.isArray(candidate)) {
+      candidate.forEach((item: any) => {
+        const categoryName = item?.category || item?.name;
+        if (!categoryName) return;
+        const key = normalizeBudgetCategory(String(categoryName));
+        const value = Number(item?.allocated ?? item?.amount ?? item?.budget ?? 0);
+        if (!Number.isNaN(value) && value > 0) {
+          allocatedByCategory[key] = (allocatedByCategory[key] || 0) + value;
+        }
+      });
+      return;
+    }
+
+    if (typeof candidate === 'object') {
+      Object.entries(candidate).forEach(([category, rawValue]: [string, any]) => {
+        const key = normalizeBudgetCategory(category);
+        const value = Number(
+          typeof rawValue === 'number'
+            ? rawValue
+            : rawValue?.allocated ?? rawValue?.amount ?? rawValue?.budget ?? 0
+        );
+        if (!Number.isNaN(value) && value > 0) {
+          allocatedByCategory[key] = (allocatedByCategory[key] || 0) + value;
+        }
+      });
+    }
+  });
+
+  const totalBudget = Number(project?.totalBudget || 0);
+  const totalSpent = Object.values(spentByCategory).reduce((sum, value) => sum + Number(value || 0), 0);
+
+  return {
+    totalBudget,
+    totalSpent,
+    hasExpenseData: expenses.length > 0 || totalSpent > 0,
+    spentByCategory,
+    allocatedByCategory,
+  };
+}
+
 // Normalize date to YYYY-MM-DD format (handles ISO strings and Date objects)
 const normalizeDate = (dateVal: any): string => {
   if (!dateVal) return '';
@@ -103,9 +194,21 @@ const normalizeDate = (dateVal: any): string => {
 };
 
 function mapVendorCard(vendor: any) {
-  const portfolio = Array.isArray(vendor?.portfolioImages) && vendor.portfolioImages.length > 0
-    ? vendor.portfolioImages
-    : [FALLBACK_VENDOR_IMAGE, FALLBACK_VENDOR_IMAGE, FALLBACK_VENDOR_IMAGE];
+  const portfolio = Array.isArray(vendor?.portfolioImages) ? vendor.portfolioImages : [];
+  const packages = Array.isArray(vendor?.packages)
+    ? vendor.packages
+        .filter((item: any) => item && item.name)
+        .map((item: any, index: number) => ({
+          id: String(item.id || item.packageId || `pkg-${index + 1}`),
+          packageId: String(item.packageId || item.id || `pkg-${index + 1}`),
+          name: String(item.name),
+          description: String(item.description || ''),
+          price: Number(item.price || 0),
+          currency: String(item.currency || 'LKR'),
+          durationHours: Number(item.durationHours || 0),
+        }))
+    : [];
+  const packageSummary = Array.isArray(vendor?.packageSummary) ? vendor.packageSummary : [];
   const minPrice = Number(vendor?.pricingRange?.min || 0);
   const maxPrice = Number(vendor?.pricingRange?.max || 0);
   const category = CATEGORY_LABELS[vendor?.category] || vendor?.category || 'Vendor';
@@ -131,8 +234,10 @@ function mapVendorCard(vendor: any) {
     location: vendor?.city || (Array.isArray(vendor?.serviceArea) && vendor.serviceArea.length > 0 ? vendor.serviceArea.join(', ') : 'Sri Lanka'),
     priceRange: `LKR ${minPrice.toLocaleString()} — ${maxPrice.toLocaleString()}`,
     description: vendor?.description || 'Professional wedding services for your celebration.',
-    image: portfolio[0],
+    image: portfolio[0] || FALLBACK_VENDOR_IMAGE,
     portfolio,
+    packages,
+    packageSummary,
     verified: Boolean(vendor?.verified),
     popular: Boolean(vendor?.verified && Number(vendor?.ratings?.count || 0) >= 3),
     isFavorite: false,
@@ -145,6 +250,8 @@ function mapVendorCard(vendor: any) {
 }
 
 export default function VendorMarketplace() {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [activeCategory, setActiveCategory] = useState('all');
@@ -154,12 +261,14 @@ export default function VendorMarketplace() {
   const [vendors, setVendors] = useState<any[]>([]);
   const [selectedVendor, setSelectedVendor] = useState<any>(null);
   const [isQuoteModalOpen, setIsQuoteModalOpen] = useState(false);
+  const [planningAccessGranted, setPlanningAccessGranted] = useState(false);
+  const [planningCheckLoading, setPlanningCheckLoading] = useState(true);
 
   // Filter States
-  const [priceRange, setPriceRange] = useState<number[]>([0, 500000]);
-  const [minRating, setMinRating] = useState('4');
+  const [minRating, setMinRating] = useState('0');
   const [selectedDistricts, setSelectedDistricts] = useState<string[]>([]);
   const [availableOnly, setAvailableOnly] = useState(false);
+  const [rawProject, setRawProject] = useState<any>(null);
 
   const { token, user } = useSelector((state: RootState) => state.auth);
 
@@ -167,14 +276,24 @@ export default function VendorMarketplace() {
     const fetchVendors = async () => {
       setLoading(true);
       try {
-        const response = await vendorService.searchVendors();
+        const [response, projectResponse] = await Promise.all([
+          vendorService.searchVendors(),
+          weddingService.getProject().catch(() => null),
+        ]);
         const items = Array.isArray(response?.data?.items) ? response.data.items : [];
+        const project = projectResponse?.data;
+        setRawProject(project);
+
+        const isCoupled = Array.isArray(project?.coupleUserIds) && project.coupleUserIds.length >= 2;
+        setPlanningAccessGranted(isCoupled);
         setVendors(items.map(mapVendorCard));
       } catch (err) {
         console.error('Failed to load vendors', err);
+        setPlanningAccessGranted(false);
         setVendors([]);
       } finally {
         setLoading(false);
+        setPlanningCheckLoading(false);
       }
     };
 
@@ -184,7 +303,42 @@ export default function VendorMarketplace() {
     }
 
     setVendors([]);
+    setPlanningAccessGranted(false);
+    setPlanningCheckLoading(false);
     setLoading(false);
+  }, [token]);
+
+  useEffect(() => {
+    const search = searchParams.get('search');
+    if (search) {
+      setSearchQuery(search);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    // Ensure scrolling is enabled
+    document.body.style.overflow = 'auto';
+    document.documentElement.style.overflow = 'auto';
+  }, []);
+
+  // Unlock immediately when partner accepts the wedding invite
+  useEffect(() => {
+    if (!token) return;
+    const checkAccess = async () => {
+      try {
+        const projectResponse = await weddingService.getProject();
+        const project = projectResponse?.data;
+        const isCoupled = Array.isArray(project?.coupleUserIds) && project.coupleUserIds.length >= 2;
+        if (isCoupled) setPlanningAccessGranted(true);
+      } catch { /* silent */ }
+    };
+    const socket = connectSocket(token);
+    socket.on('planning_unlocked', checkAccess);
+    window.addEventListener('planning:unlocked', checkAccess);
+    return () => {
+      socket.off('planning_unlocked', checkAccess);
+      window.removeEventListener('planning:unlocked', checkAccess);
+    };
   }, [token]);
 
   const handleCategoryChange = (_: React.SyntheticEvent, newValue: string) => {
@@ -197,8 +351,7 @@ export default function VendorMarketplace() {
   };
 
   const handleResetFilters = () => {
-    setPriceRange([0, 500000]);
-    setMinRating('4');
+    setMinRating('0');
     setSelectedDistricts([]);
     setAvailableOnly(false);
   };
@@ -207,17 +360,58 @@ export default function VendorMarketplace() {
 
   const normalizeDistrict = (value: string) => value.trim().toLowerCase();
 
+  const budgetSummary = useMemo(() => buildBudgetSummary(rawProject), [rawProject]);
+
+  const categoryBudgetGuidance = useMemo(() => {
+    if (activeCategory === 'all') {
+      return {
+        categoryLabel: '',
+        limit: null as number | null,
+        mode: null as 'allocation' | 'total' | null,
+      };
+    }
+
+    const categoryLabels = CATEGORY_BUDGET_KEYS[activeCategory] || [];
+    const normalizedKeys = categoryLabels.map(normalizeBudgetCategory);
+    const allocated = normalizedKeys.reduce((sum, key) => sum + Number(budgetSummary.allocatedByCategory[key] || 0), 0);
+    const spent = normalizedKeys.reduce((sum, key) => sum + Number(budgetSummary.spentByCategory[key] || 0), 0);
+    const totalBudget = Number(budgetSummary.totalBudget || 0);
+
+    if (allocated > 0) {
+      return {
+        categoryLabel: categoryLabels[0] || activeCategory,
+        limit: Math.max(0, allocated - spent),
+        mode: 'allocation' as const,
+      };
+    }
+
+    if (totalBudget > 0) {
+      return {
+        categoryLabel: categoryLabels[0] || activeCategory,
+        limit: totalBudget,
+        mode: 'total' as const,
+      };
+    }
+
+    return {
+      categoryLabel: categoryLabels[0] || activeCategory,
+      limit: null,
+      mode: null,
+    };
+  }, [activeCategory, budgetSummary]);
+
   const filteredVendors = vendors.filter(v => {
     const allowedCategories = CATEGORY_MATCHERS[activeCategory] || [];
     const matchesCategory = activeCategory === 'all' || allowedCategories.includes(v.category);
     const matchesSearch = v.name.toLowerCase().includes(searchQuery.toLowerCase()) || v.description.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesRating = v.rating >= parseFloat(minRating);
 
-    const selectedMin = Number(priceRange[0] || 0);
-    const selectedMax = Number(priceRange[1] || 0);
-    const vendorMin = Number(v.minPrice || 0);
-    const vendorMax = Number(v.maxPrice || 0);
-    const matchesPrice = vendorMax >= selectedMin && vendorMin <= selectedMax;
+    const budgetLimit = categoryBudgetGuidance.limit;
+    const matchesPrice =
+      activeCategory === 'all' ||
+      !budgetLimit ||
+      budgetLimit <= 0 ||
+      Number(v.minPrice || 0) <= budgetLimit;
 
     const vendorDistricts = [v.city, ...(Array.isArray(v.serviceArea) ? v.serviceArea : [])]
       .filter(Boolean)
@@ -243,9 +437,10 @@ export default function VendorMarketplace() {
   });
 
   return (
-    <Box sx={{ bgcolor: COLORS.cream, minHeight: '100vh', pb: 10 }}>
+    <Box sx={{ bgcolor: COLORS.cream, minHeight: '100vh', pb: 10, position: 'relative' }}>
+      <Box>
       {/* Hero Section & Category Tabs */}
-      <Box sx={{ bgcolor: COLORS.white, pt: 12, pb: 2, borderBottom: '1px solid', borderColor: 'divider', position: 'sticky', top: 0, zIndex: 100 }}>
+      <Box sx={{ bgcolor: COLORS.white, pt: 6, pb: 2, borderBottom: '1px solid', borderColor: 'divider', position: 'sticky', top: 0, zIndex: 100 }}>
         <Container maxWidth="xl">
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={3} alignItems="center" sx={{ mb: 4 }}>
             <Box sx={{ flexGrow: 1 }}>
@@ -318,14 +513,26 @@ export default function VendorMarketplace() {
       </Box>
 
       <Container maxWidth="xl" sx={{ mt: 6 }}>
+        {activeCategory !== 'all' && categoryBudgetGuidance.limit && (
+          <Alert 
+            severity="success" 
+            icon={<Sparkles size={18} />}
+            sx={{ mb: 4, borderRadius: 4, border: '1px solid rgba(46, 125, 50, 0.2)' }}
+          >
+            <Typography variant="body2" sx={{ fontWeight: 700 }}>
+              {categoryBudgetGuidance.mode === 'allocation'
+                ? `Showing affordable vendors for ${categoryBudgetGuidance.categoryLabel} based on your remaining allocation: LKR ${categoryBudgetGuidance.limit.toLocaleString()}`
+                : `No category allocation found. Showing ${categoryBudgetGuidance.categoryLabel} vendors compatible with your total budget: LKR ${categoryBudgetGuidance.limit.toLocaleString()}`
+              }
+            </Typography>
+          </Alert>
+        )}
         <Grid container spacing={4}>
           {/* Sidebar Filter (Desktop) */}
           {!isMobile && (
             <Grid size={{ md: 3 }}>
               <Box sx={{ position: 'sticky', top: 180 }}>
                 <FilterSidebar 
-                  priceRange={priceRange} 
-                  setPriceRange={setPriceRange}
                   minRating={minRating}
                   setMinRating={setMinRating}
                   selectedDistricts={selectedDistricts}
@@ -340,6 +547,33 @@ export default function VendorMarketplace() {
 
           {/* Vendor Grid */}
           <Grid size={{ xs: 12, md: 9 }}>
+            {!planningAccessGranted && !planningCheckLoading && (
+              <Alert 
+                severity="info" 
+                icon={<Sparkles size={20} color={COLORS.primary} />}
+                sx={{ 
+                  mb: 4, 
+                  borderRadius: 4, 
+                  bgcolor: '#FFF8E7', 
+                  border: '1px solid #E6C87E',
+                  '& .MuiAlert-message': { width: '100%' }
+                }}
+              >
+                <Typography variant="subtitle2" sx={{ fontWeight: 800, color: COLORS.primary }}>
+                  Explore & Discover Vendors
+                </Typography>
+                <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mb: 1 }}>
+                  You can browse and view portfolios now. The ability to request quotes and book vendors will unlock once both partners accept the wedding invite.
+                </Typography>
+                <Button 
+                  size="small" 
+                  onClick={() => navigate('/messages')}
+                  sx={{ color: COLORS.primary, fontWeight: 700, textTransform: 'none', p: 0 }}
+                >
+                  Go to Messages to invite partner →
+                </Button>
+              </Alert>
+            )}
             {loading ? (
               <Grid container spacing={3}>
                 {[...Array(6)].map((_, i) => (
@@ -352,7 +586,7 @@ export default function VendorMarketplace() {
               <Grid container spacing={3}>
                 {filteredVendors.map((vendor, i) => (
                   <Grid size={{ xs: 12, sm: 6, lg: 4 }} key={vendor.id}>
-                    <VendorCard vendor={vendor} onRequestQuote={handleRequestQuote} />
+                    <VendorCard vendor={vendor} onRequestQuote={handleRequestQuote} disabled={!planningAccessGranted} />
                   </Grid>
                 ))}
               </Grid>
@@ -383,8 +617,6 @@ export default function VendorMarketplace() {
             <IconButton onClick={() => setIsFilterOpen(false)}><X size={24} /></IconButton>
           </Stack>
           <FilterSidebar 
-            priceRange={priceRange} 
-            setPriceRange={setPriceRange}
             minRating={minRating}
             setMinRating={setMinRating}
             selectedDistricts={selectedDistricts}
@@ -409,11 +641,20 @@ export default function VendorMarketplace() {
         open={isQuoteModalOpen} 
         onClose={() => setIsQuoteModalOpen(false)} 
         vendor={selectedVendor}
-        weddingDate={user?.weddingProject?.weddingDate ? new Date(user.weddingProject.weddingDate).toISOString().split('T')[0] : ''}
+        weddingDate={(() => {
+          const dVal = user?.weddingProject?.weddingDate || '';
+          if (!dVal) return '';
+          const d = new Date(dVal);
+          return isNaN(d.getTime()) ? '' : d.toISOString().split('T')[0];
+        })()}
         userPhone={user?.phone || ''}
         userEmail={user?.email || ''}
         userName={user?.name || user?.firstName || ''}
+        remainingBudget={Math.max(0, (budgetSummary.totalBudget || 0) - (budgetSummary.totalSpent || 0))}
       />
+      </Box>
+
+      {/* Full screen lock overlay removed for better exploration experience */}
     </Box>
   );
 }
@@ -421,27 +662,11 @@ export default function VendorMarketplace() {
 // --- Helper Components ---
 
 function FilterSidebar({ 
-  priceRange, setPriceRange, minRating, setMinRating, 
+  minRating, setMinRating, 
   selectedDistricts, setSelectedDistricts, availableOnly, setAvailableOnly, onReset 
 }: any) {
   return (
     <Stack spacing={4}>
-      <Box>
-        <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 2, color: COLORS.textPrimary }}>Price Range (LKR)</Typography>
-        <Slider
-          value={priceRange}
-          onChange={(_, v) => setPriceRange(v as any)}
-          valueLabelDisplay="auto"
-          min={0}
-          max={500000}
-          step={10000}
-          sx={{ color: COLORS.primary }}
-        />
-        <Stack direction="row" justifyContent="space-between">
-          <Typography variant="caption" sx={{ color: 'text.secondary' }}>0</Typography>
-          <Typography variant="caption" sx={{ color: 'text.secondary' }}>500,000+</Typography>
-        </Stack>
-      </Box>
 
       <Divider />
 
