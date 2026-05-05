@@ -13,13 +13,15 @@ import {
   Facebook, Instagram, Globe, Phone,
   Mail, Clock, Briefcase, Users,
   Camera, Play, ArrowRight, Share2,
-  Quote, Info, DollarSign, Package
+  Quote, Info, DollarSign, Package, X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import { RootState } from '@/app/store/store';
 import vendorService from '../services/vendorService';
+import weddingService from '@/features/wedding/services/weddingService';
+import { connectSocket } from '@/shared/hooks/useRealtimeUpdates';
 
 // Sub-components
 import QuoteRequestModal from '../components/QuoteRequestModal';
@@ -40,9 +42,7 @@ const COLORS = {
 const FALLBACK_VENDOR_IMAGE = 'https://picsum.photos/seed/vendor-detail/1920/1080';
 
 function mapVendorDetail(vendor: any, reviewsPayload: any) {
-  const portfolioImages = Array.isArray(vendor?.portfolioImages) && vendor.portfolioImages.length > 0
-    ? vendor.portfolioImages
-    : [FALLBACK_VENDOR_IMAGE, FALLBACK_VENDOR_IMAGE, FALLBACK_VENDOR_IMAGE];
+  const portfolioImages = Array.isArray(vendor?.portfolioImages) ? vendor.portfolioImages : [];
   const reviews = Array.isArray(reviewsPayload?.data?.reviews) ? reviewsPayload.data.reviews : vendor?.reviews || [];
   const ratingValue = Number(reviewsPayload?.data?.ratings?.average || vendor?.ratings?.average || 0);
   const reviewCount = Number(reviewsPayload?.data?.ratings?.count || vendor?.ratings?.count || reviews.length || 0);
@@ -53,6 +53,51 @@ function mapVendorDetail(vendor: any, reviewsPayload: any) {
     ? vendor.featuredServices
     : [vendor?.category, ...serviceArea.slice(0, 2)].filter(Boolean);
 
+  const requestPackages = Array.isArray(vendor?.packages)
+    ? vendor.packages
+        .filter((item: any) => item && item.name)
+        .map((item: any, index: number) => ({
+          id: String(item.id || item.packageId || `pkg-${index + 1}`),
+          packageId: String(item.packageId || item.id || `pkg-${index + 1}`),
+          name: String(item.name),
+          description: String(item.description || ''),
+          price: Number(item.price || 0),
+          currency: String(item.currency || 'LKR'),
+          durationHours: Number(item.durationHours || 0),
+        }))
+    : [];
+
+  const summaryPackages = Array.isArray(vendor?.packageSummary)
+    ? vendor.packageSummary.filter(Boolean).map((item: string, index: number) => ({
+        id: `summary-${index + 1}`,
+        packageId: `summary-${index + 1}`,
+        name: String(item),
+        description: '',
+        price: 0,
+        currency: 'LKR',
+        durationHours: 0,
+      }))
+    : [];
+
+  const quotePackages = requestPackages.length > 0 ? requestPackages : summaryPackages;
+  const pricingPackages = quotePackages.length > 0
+    ? quotePackages.map((item: any) => ({
+        name: item.name,
+        price: item.price > 0 ? `${item.currency || 'LKR'} ${Number(item.price).toLocaleString()}` : 'Custom Quote',
+        includes: [
+          ...(item.description ? [item.description] : []),
+          ...(item.durationHours > 0 ? [`Duration: ${item.durationHours} hrs`] : []),
+          ...(services.slice(0, 2)),
+        ],
+      }))
+    : [
+        {
+          name: 'Custom Package',
+          price: 'Custom Quote',
+          includes: ['Service details on request', 'Planning consultation', 'Event-day coordination'],
+        },
+      ];
+
   return {
     id: String(vendor?.id || vendor?._id || ''),
     name: vendor?.businessName || 'Wedding Vendor',
@@ -62,8 +107,8 @@ function mapVendorDetail(vendor: any, reviewsPayload: any) {
     location: vendor?.city || serviceArea.join(', '),
     priceRange: `LKR ${minPrice.toLocaleString()} — ${maxPrice.toLocaleString()}`,
     description: vendor?.description || 'Professional wedding services tailored for your celebration.',
-    image: portfolioImages[0],
-    logo: portfolioImages[0],
+    image: portfolioImages[0] || FALLBACK_VENDOR_IMAGE,
+    logo: portfolioImages[0] || FALLBACK_VENDOR_IMAGE,
     verified: Boolean(vendor?.verified),
     popular: Boolean(vendor?.verified && reviewCount > 2),
     isFavorite: false,
@@ -78,29 +123,9 @@ function mapVendorDetail(vendor: any, reviewsPayload: any) {
     },
     services: services.length > 0 ? services : ['Wedding Services'],
     portfolio: portfolioImages.map((url: string) => ({ type: 'image', url })),
-    packages: (vendor?.packageSummary || []).length > 0
-      ? vendor.packageSummary.map((item: string, index: number) => ({
-          name: item,
-          price: `LKR ${[minPrice, Math.max(minPrice, Math.round((minPrice + maxPrice) / 2)), maxPrice][Math.min(index, 2)].toLocaleString()}`,
-          includes: [item, ...(vendor?.featuredServices || []).slice(0, 2)],
-        }))
-      : [
-          {
-            name: 'Standard Package',
-            price: `LKR ${minPrice.toLocaleString()}`,
-            includes: ['Core service delivery', 'Planning consultation', 'Event-day coordination'],
-          },
-          {
-            name: 'Premium Package',
-            price: `LKR ${Math.max(minPrice, Math.round((minPrice + maxPrice) / 2)).toLocaleString()}`,
-            includes: ['Extended service coverage', 'Priority scheduling', 'Enhanced customisation'],
-          },
-          {
-            name: 'Signature Package',
-            price: `LKR ${maxPrice.toLocaleString()}`,
-            includes: ['Full-service package', 'Premium support', 'Flexible event-day execution'],
-          },
-        ],
+    packages: quotePackages,
+    packageSummary: (vendor?.packageSummary || []).filter(Boolean),
+    pricingPackages,
     reviews: reviews.map((review: any, index: number) => ({
       id: review?._id || index + 1,
       user: typeof review?.reviewerId === 'string' ? review.reviewerId : `Client ${index + 1}`,
@@ -111,7 +136,11 @@ function mapVendorDetail(vendor: any, reviewsPayload: any) {
     })),
     contactPhone: vendor?.contactPhone || 'Available on request',
     contactEmail: vendor?.contactEmail || vendor?.owner?.email || 'Not listed',
-    website: vendor?.website || 'Available on request',
+    website: vendor?.website || '',
+    city: vendor?.city || '',
+    address: vendor?.address || '',
+    serviceAreaDistricts: serviceArea,
+    priceRange: minPrice > 0 || maxPrice > 0 ? `LKR ${minPrice.toLocaleString()} — LKR ${maxPrice.toLocaleString()}` : 'Custom Quote',
   };
 }
 
@@ -125,7 +154,9 @@ export default function VendorDetailPage() {
   const [vendor, setVendor] = useState<any>(null);
   const [isQuoteModalOpen, setIsQuoteModalOpen] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
-  const { user } = useSelector((state: RootState) => state.auth);
+  const [planningAccessGranted, setPlanningAccessGranted] = useState(false);
+  const [planningCheckLoading, setPlanningCheckLoading] = useState(true);
+  const { user, token } = useSelector((state: RootState) => state.auth);
 
   useEffect(() => {
     const fetchVendorDetail = async () => {
@@ -152,11 +183,62 @@ export default function VendorDetailPage() {
     }
   }, [id]);
 
+  useEffect(() => {
+    const fetchPlanningAccess = async () => {
+      if (!token) {
+        setPlanningAccessGranted(false);
+        setPlanningCheckLoading(false);
+        return;
+      }
+      try {
+        const projectResponse = await weddingService.getProject();
+        const project = projectResponse?.data;
+        const isCoupled = Array.isArray(project?.coupleUserIds) && project.coupleUserIds.length >= 2;
+        setPlanningAccessGranted(isCoupled);
+      } catch {
+        setPlanningAccessGranted(false);
+      } finally {
+        setPlanningCheckLoading(false);
+      }
+    };
+
+    fetchPlanningAccess();
+  }, [token]);
+
+  useEffect(() => {
+    if (planningCheckLoading || planningAccessGranted) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [planningCheckLoading, planningAccessGranted]);
+
+  // Unlock immediately when partner accepts the wedding invite
+  useEffect(() => {
+    if (!token) return;
+    const checkAccess = async () => {
+      try {
+        const projectResponse = await weddingService.getProject();
+        const project = projectResponse?.data;
+        const isCoupled = Array.isArray(project?.coupleUserIds) && project.coupleUserIds.length >= 2;
+        if (isCoupled) setPlanningAccessGranted(true);
+      } catch { /* silent */ }
+    };
+    const socket = connectSocket(token);
+    socket.on('planning_unlocked', checkAccess);
+    window.addEventListener('planning:unlocked', checkAccess);
+    return () => {
+      socket.off('planning_unlocked', checkAccess);
+      window.removeEventListener('planning:unlocked', checkAccess);
+    };
+  }, [token]);
+
   if (loading) return <LoadingState />;
   if (!vendor) return <ErrorState />;
 
   return (
-    <Box sx={{ bgcolor: COLORS.cream, minHeight: '100vh', pb: 10 }}>
+    <Box sx={{ bgcolor: COLORS.cream, minHeight: '100vh', pb: 10, position: 'relative' }}>
       {/* Hero Header */}
       <Box sx={{ position: 'relative', height: { xs: 300, md: 500 }, overflow: 'hidden' }}>
         <Box 
@@ -261,7 +343,7 @@ export default function VendorDetailPage() {
             {activeTab === 0 && <PortfolioTab portfolio={vendor.portfolio} onImageClick={setSelectedImage} />}
             {activeTab === 1 && <AboutTab vendor={vendor} />}
             {activeTab === 2 && <ReviewsTab reviews={vendor.reviews} rating={vendor.rating} count={vendor.reviewCount} />}
-            {activeTab === 3 && <PricingTab packages={vendor.packages} onRequestQuote={() => setIsQuoteModalOpen(true)} />}
+            {activeTab === 3 && <PricingTab packages={vendor.pricingPackages} onRequestQuote={() => setIsQuoteModalOpen(true)} />}
           </motion.div>
         </AnimatePresence>
       </Container>
@@ -303,7 +385,46 @@ export default function VendorDetailPage() {
         userPhone={user?.phone || ''}
         userEmail={user?.email || ''}
         userName={user?.name || user?.firstName || ''}
+        remainingBudget={Number((user as any)?.weddingProject?.totalBudget || 0)}
       />
+
+      {!planningCheckLoading && !planningAccessGranted && (
+        <Box
+          sx={{
+            position: 'fixed',
+            top: '64px',
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 1099,
+            backdropFilter: 'blur(8px)',
+            WebkitBackdropFilter: 'blur(8px)',
+            bgcolor: 'rgba(18, 12, 6, 0.25)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            p: 3,
+          }}
+        >
+          <Card sx={{ maxWidth: 560, borderRadius: 5, border: '1px solid #E6C87E', boxShadow: '0 16px 40px rgba(0,0,0,0.18)' }}>
+            <CardContent sx={{ p: 4, textAlign: 'center' }}>
+              <Typography variant="h5" sx={{ fontWeight: 900, color: COLORS.primary, mb: 1 }}>
+                Vendor details are locked
+              </Typography>
+              <Typography variant="body1" sx={{ color: COLORS.textSecondary }}>
+                This page unlocks after both partners accept wedding planning together.
+              </Typography>
+              <Button
+                variant="contained"
+                onClick={() => navigate('/messages')}
+                sx={{ mt: 3, bgcolor: COLORS.primary, borderRadius: 3, fontWeight: 700, textTransform: 'none' }}
+              >
+                Go to Messages to Send/Accept Invite
+              </Button>
+            </CardContent>
+          </Card>
+        </Box>
+      )}
     </Box>
   );
 }
@@ -311,6 +432,19 @@ export default function VendorDetailPage() {
 // --- Tab Components ---
 
 function PortfolioTab({ portfolio, onImageClick }: any) {
+  if (!Array.isArray(portfolio) || portfolio.length === 0) {
+    return (
+      <Box>
+        <Typography variant="h5" sx={{ fontWeight: 800, fontFamily: 'Playfair Display', mb: 4, color: COLORS.primary }}>
+          Portfolio Gallery
+        </Typography>
+        <Alert severity="info" sx={{ borderRadius: 3 }}>
+          This vendor has not uploaded portfolio images yet.
+        </Alert>
+      </Box>
+    );
+  }
+
   return (
     <Box>
       <Typography variant="h5" sx={{ fontWeight: 800, fontFamily: 'Playfair Display', mb: 4, color: COLORS.primary }}>
@@ -341,6 +475,7 @@ function AboutTab({ vendor }: any) {
   return (
     <Grid container spacing={6}>
       <Grid size={{ xs: 12, md: 8 }}>
+        {/* Description */}
         <Card sx={{ borderRadius: 6, p: 4, mb: 4 }}>
           <Typography variant="h5" sx={{ fontWeight: 800, fontFamily: 'Playfair Display', mb: 3, color: COLORS.primary }}>
             About the Business
@@ -348,7 +483,7 @@ function AboutTab({ vendor }: any) {
           <Typography variant="body1" sx={{ color: 'text.secondary', lineHeight: 1.8, mb: 4 }}>
             {vendor.description}
           </Typography>
-          
+
           <Typography variant="h6" sx={{ fontWeight: 800, mb: 2 }}>Services Offered</Typography>
           <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mb: 4 }}>
             {vendor.services.map((service: string) => (
@@ -358,31 +493,23 @@ function AboutTab({ vendor }: any) {
 
           <Divider sx={{ my: 4 }} />
 
+          {/* Business detail stats row */}
           <Grid container spacing={4}>
             <Grid size={{ xs: 6, sm: 3 }}>
               <Stack spacing={1}>
-                <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>EXPERIENCE</Typography>
+                <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>CATEGORY</Typography>
                 <Stack direction="row" spacing={1} alignItems="center">
                   <Briefcase size={18} color={COLORS.secondary} />
-                  <Typography variant="body2" sx={{ fontWeight: 800 }}>{vendor.experience}</Typography>
+                  <Typography variant="body2" sx={{ fontWeight: 800 }}>{vendor.category}</Typography>
                 </Stack>
               </Stack>
             </Grid>
             <Grid size={{ xs: 6, sm: 3 }}>
               <Stack spacing={1}>
-                <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>TEAM SIZE</Typography>
+                <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>CITY</Typography>
                 <Stack direction="row" spacing={1} alignItems="center">
-                  <Users size={18} color={COLORS.secondary} />
-                  <Typography variant="body2" sx={{ fontWeight: 800 }}>{vendor.teamSize}</Typography>
-                </Stack>
-              </Stack>
-            </Grid>
-            <Grid size={{ xs: 6, sm: 3 }}>
-              <Stack spacing={1}>
-                <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>HOURS</Typography>
-                <Stack direction="row" spacing={1} alignItems="center">
-                  <Clock size={18} color={COLORS.secondary} />
-                  <Typography variant="body2" sx={{ fontWeight: 800 }}>{vendor.hours}</Typography>
+                  <MapPin size={18} color={COLORS.secondary} />
+                  <Typography variant="body2" sx={{ fontWeight: 800 }}>{vendor.city || vendor.location}</Typography>
                 </Stack>
               </Stack>
             </Grid>
@@ -391,53 +518,114 @@ function AboutTab({ vendor }: any) {
                 <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>COVERAGE</Typography>
                 <Stack direction="row" spacing={1} alignItems="center">
                   <MapPin size={18} color={COLORS.secondary} />
-                  <Typography variant="body2" sx={{ fontWeight: 800 }}>{vendor.coverage.length} Districts</Typography>
+                  <Typography variant="body2" sx={{ fontWeight: 800 }}>{vendor.serviceAreaDistricts.length} Districts</Typography>
                 </Stack>
               </Stack>
             </Grid>
           </Grid>
         </Card>
+
+        {/* Location & Address */}
+        {(vendor.address || vendor.city) && (
+          <Card sx={{ borderRadius: 6, p: 4, mb: 4 }}>
+            <Typography variant="h6" sx={{ fontWeight: 800, mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <MapPin size={20} color={COLORS.primary} /> Location
+            </Typography>
+            <Stack spacing={2}>
+              {vendor.city && (
+                <Stack direction="row" spacing={2} alignItems="center">
+                  <Typography variant="body2" sx={{ color: 'text.secondary', minWidth: 60 }}>City:</Typography>
+                  <Typography variant="body2" sx={{ fontWeight: 700 }}>{vendor.city}</Typography>
+                </Stack>
+              )}
+              {vendor.address && (
+                <Stack direction="row" spacing={2} alignItems="flex-start">
+                  <Typography variant="body2" sx={{ color: 'text.secondary', minWidth: 60 }}>Address:</Typography>
+                  <Typography variant="body2" sx={{ fontWeight: 700 }}>{vendor.address}</Typography>
+                </Stack>
+              )}
+            </Stack>
+          </Card>
+        )}
+
+        {/* Service Areas */}
+        {vendor.serviceAreaDistricts.length > 0 && (
+          <Card sx={{ borderRadius: 6, p: 4 }}>
+            <Typography variant="h6" sx={{ fontWeight: 800, mb: 3 }}>Service Areas</Typography>
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+              {vendor.serviceAreaDistricts.map((district: string) => (
+                <Chip
+                  key={district}
+                  label={district}
+                  icon={<MapPin size={14} />}
+                  sx={{ bgcolor: `${COLORS.primary}10`, color: COLORS.primary, fontWeight: 600, borderRadius: 2 }}
+                />
+              ))}
+            </Stack>
+          </Card>
+        )}
       </Grid>
 
       <Grid size={{ xs: 12, md: 4 }}>
         <Card sx={{ borderRadius: 6, p: 4, position: 'sticky', top: 100 }}>
           <Typography variant="h6" sx={{ fontWeight: 800, mb: 3 }}>Contact Information</Typography>
           <Stack spacing={3}>
-            <Stack direction="row" spacing={2} alignItems="center">
-              <Box sx={{ p: 1, bgcolor: `${COLORS.primary}10`, color: COLORS.primary, borderRadius: 2 }}>
-                <Phone size={20} />
-              </Box>
-              <Box>
-                <Typography variant="caption" sx={{ color: 'text.secondary' }}>Phone Number</Typography>
-                <Typography variant="body2" sx={{ fontWeight: 700 }}>{vendor.contactPhone}</Typography>
-              </Box>
-            </Stack>
-            <Stack direction="row" spacing={2} alignItems="center">
-              <Box sx={{ p: 1, bgcolor: `${COLORS.primary}10`, color: COLORS.primary, borderRadius: 2 }}>
-                <Mail size={20} />
-              </Box>
-              <Box>
-                <Typography variant="caption" sx={{ color: 'text.secondary' }}>Email Address</Typography>
-                <Typography variant="body2" sx={{ fontWeight: 700 }}>{vendor.contactEmail}</Typography>
-              </Box>
-            </Stack>
-            <Stack direction="row" spacing={2} alignItems="center">
-              <Box sx={{ p: 1, bgcolor: `${COLORS.primary}10`, color: COLORS.primary, borderRadius: 2 }}>
-                <Globe size={20} />
-              </Box>
-              <Box>
-                <Typography variant="caption" sx={{ color: 'text.secondary' }}>Website</Typography>
-                <Typography variant="body2" sx={{ fontWeight: 700 }}>{vendor.website}</Typography>
-              </Box>
-            </Stack>
-
-            <Divider />
-
-            <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>Social Media</Typography>
-            <Stack direction="row" spacing={2}>
-              <IconButton sx={{ bgcolor: `${COLORS.accent}10`, color: COLORS.accent }}><Facebook size={20} /></IconButton>
-              <IconButton sx={{ bgcolor: `${COLORS.accent}10`, color: COLORS.accent }}><Instagram size={20} /></IconButton>
-            </Stack>
+            {vendor.contactPhone && vendor.contactPhone !== 'Available on request' && (
+              <Stack direction="row" spacing={2} alignItems="center">
+                <Box sx={{ p: 1, bgcolor: `${COLORS.primary}10`, color: COLORS.primary, borderRadius: 2 }}>
+                  <Phone size={20} />
+                </Box>
+                <Box>
+                  <Typography variant="caption" sx={{ color: 'text.secondary' }}>Phone Number</Typography>
+                  <Typography
+                    component="a"
+                    href={`tel:${vendor.contactPhone}`}
+                    variant="body2"
+                    sx={{ fontWeight: 700, color: 'inherit', textDecoration: 'none', display: 'block', '&:hover': { color: COLORS.primary } }}
+                  >
+                    {vendor.contactPhone}
+                  </Typography>
+                </Box>
+              </Stack>
+            )}
+            {vendor.contactEmail && vendor.contactEmail !== 'Not listed' && (
+              <Stack direction="row" spacing={2} alignItems="center">
+                <Box sx={{ p: 1, bgcolor: `${COLORS.primary}10`, color: COLORS.primary, borderRadius: 2 }}>
+                  <Mail size={20} />
+                </Box>
+                <Box>
+                  <Typography variant="caption" sx={{ color: 'text.secondary' }}>Email Address</Typography>
+                  <Typography
+                    component="a"
+                    href={`mailto:${vendor.contactEmail}`}
+                    variant="body2"
+                    sx={{ fontWeight: 700, color: 'inherit', textDecoration: 'none', display: 'block', '&:hover': { color: COLORS.primary } }}
+                  >
+                    {vendor.contactEmail}
+                  </Typography>
+                </Box>
+              </Stack>
+            )}
+            {vendor.website && (
+              <Stack direction="row" spacing={2} alignItems="center">
+                <Box sx={{ p: 1, bgcolor: `${COLORS.primary}10`, color: COLORS.primary, borderRadius: 2 }}>
+                  <Globe size={20} />
+                </Box>
+                <Box>
+                  <Typography variant="caption" sx={{ color: 'text.secondary' }}>Website</Typography>
+                  <Typography
+                    component="a"
+                    href={vendor.website}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    variant="body2"
+                    sx={{ fontWeight: 700, color: COLORS.primary, textDecoration: 'none', display: 'block', '&:hover': { textDecoration: 'underline' } }}
+                  >
+                    {vendor.website.replace(/^https?:\/\//i, '')}
+                  </Typography>
+                </Box>
+              </Stack>
+            )}
           </Stack>
         </Card>
       </Grid>
@@ -620,9 +808,3 @@ function ErrorState() {
     </Container>
   );
 }
-
-const X = ({ size, color }: any) => (
-  <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-    <CheckCircle2 size={size} color={color} style={{ transform: 'rotate(45deg)' }} />
-  </Box>
-);
