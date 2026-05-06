@@ -44,6 +44,10 @@ const COLORS = {
 const MotionBox = motion(Box);
 const MotionPaper = motion(Paper);
 
+const stripInvisibleChars = (value: string) => value.replace(/[\u200B-\u200D\uFEFF]/g, '');
+const normalizeLoginIdentifier = (value: string) => stripInvisibleChars(String(value || '')).replace(/\s+/g, '').trim();
+const normalizeLoginPassword = (value: string) => stripInvisibleChars(String(value || '')).trim();
+
 const LoginPage = () => {
   const navigate = useNavigate();
   const dispatch = useDispatch();
@@ -61,21 +65,23 @@ const LoginPage = () => {
   const [errors, setErrors] = useState({ email: '', password: '' });
 
   const validate = () => {
+    const normalizedIdentifier = normalizeLoginIdentifier(formData.email);
+    const normalizedPassword = normalizeLoginPassword(formData.password);
     let tempErrors = { email: '', password: '' };
     let isValid = true;
 
-    if (!formData.email) {
+    if (!normalizedIdentifier) {
       tempErrors.email = 'Email or Phone is required';
       isValid = false;
-    } else if (!/\S+@\S+\.\S+/.test(formData.email) && !/^\+?[0-9\s-]{9,16}$/.test(formData.email)) {
+    } else if (!/\S+@\S+\.\S+/.test(normalizedIdentifier) && !/^\+?[0-9\s-]{9,16}$/.test(normalizedIdentifier)) {
       tempErrors.email = 'Enter a valid email or phone number';
       isValid = false;
     }
 
-    if (!formData.password) {
+    if (!normalizedPassword) {
       tempErrors.password = 'Password is required';
       isValid = false;
-    } else if (formData.password.length < 8) {
+    } else if (normalizedPassword.length < 8) {
       tempErrors.password = 'Password must be at least 8 characters';
       isValid = false;
     }
@@ -87,6 +93,18 @@ const LoginPage = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    const normalizedCredentials = {
+      email: normalizeLoginIdentifier(formData.email),
+      password: normalizeLoginPassword(formData.password),
+    };
+
+    if (
+      normalizedCredentials.email !== formData.email ||
+      normalizedCredentials.password !== formData.password
+    ) {
+      setFormData(normalizedCredentials);
+    }
     
     if (!validate()) {
       setShake(true);
@@ -97,7 +115,7 @@ const LoginPage = () => {
     setIsLoading(true);
     dispatch(setLoading(true));
     try {
-      const response = await authService.login(formData);
+      const response = await authService.login(normalizedCredentials);
       const role = response.role || response.user?.role || (isVendorUser ? 'vendor' : 'user');
 
       if (role === 'vendor' && !isVendorUser) {
@@ -112,6 +130,7 @@ const LoginPage = () => {
       let targetPath = '/dashboard';
       if (role === 'admin') targetPath = '/admin';
       else if (role === 'vendor') targetPath = '/vendor';
+      else if (response.user?.profileType === 'horoscope_seeker') targetPath = '/horoscope';
       
       setTimeout(() => navigate(targetPath), 600);
     } catch (err: any) {
@@ -410,6 +429,34 @@ const LoginPage = () => {
                           }}
                         >
                           Register Now
+                        </Typography>
+                      </Typography>
+                    </Box>
+
+                    <Box
+                      sx={{
+                        mt: 2,
+                        p: 2,
+                        borderRadius: '14px',
+                        border: `1px solid ${COLORS.secondary}`,
+                        bgcolor: 'rgba(201,168,76,0.12)',
+                        textAlign: 'center',
+                      }}
+                    >
+                      <Typography variant="body2" sx={{ color: COLORS.textPrimary }}>
+                        Want only horoscope insights?{' '}
+                        <Typography
+                          component={Link}
+                          to="/register/horoscope-seeker"
+                          state={{ from: 'login' }}
+                          sx={{
+                            color: COLORS.primary,
+                            fontWeight: 800,
+                            textDecoration: 'none',
+                            '&:hover': { textDecoration: 'underline' }
+                          }}
+                        >
+                          Register to see your horoscope and ask AI about your life
                         </Typography>
                       </Typography>
                     </Box>
