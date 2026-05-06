@@ -3,7 +3,7 @@ import { Link, useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
 import { Avatar, useMediaQuery, useTheme } from '@mui/material';
 import { RootState } from '@/app/store/store';
-import { logout } from '@/features/auth/store/authSlice';
+import { logout, fetchProfile } from '@/features/auth/store/authSlice';
 import { 
   Menu, X, Bell, User, LogOut, 
   Heart, Calendar, Calculator, MessageSquare, 
@@ -157,6 +157,16 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
     } finally {
       if (!silent) setNotifLoading(false);
     }
+  }, [token]);
+
+  // Re-hydrate profile photos from the API on every mount.
+  // Photos are stored as data-URIs in the DB and cannot be persisted to
+  // localStorage, so they must be re-fetched whenever the page loads.
+  useEffect(() => {
+    if (token) {
+      (dispatch as any)(fetchProfile());
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
   useEffect(() => {
