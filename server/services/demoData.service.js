@@ -54,8 +54,8 @@ function mapHoroscopeFields(horoscopeValue) {
 
 const baseUsers = [
   {
-    email: 'admin@raashilink.ai',
-    password: 'password123',
+    email: 'admin@gmail.com',
+    password: '11111111',
     role: 'admin',
     personalInfo: {
       firstName: 'Admin',
