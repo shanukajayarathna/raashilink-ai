@@ -7,8 +7,8 @@ I've implemented a complete vendor registration and approval workflow for Raashi
 
 ## 🔐 Admin Login Credentials
 
-**Email:** `admin@raashilink.ai`  
-**Password:** `Admin@RaashiLink2024`
+**Email:** `admin@gmail.com`  
+**Password:** `11111111`
 
 > ⚠️ **IMPORTANT**: Change this password immediately after first login!
 
@@ -300,7 +300,7 @@ GET    /api/v1/admin/analytics
 
 ### Step 3: Admin Approves
 ```
-1. Log in as admin (admin@raashilink.ai / Admin@RaashiLink2024)
+1. Log in as admin (admin@gmail.com / 11111111)
 2. Go to Admin → Vendors
 3. View pending vendor application
 4. Review documents and details
