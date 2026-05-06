@@ -4,26 +4,14 @@ import {
   Paper,
   Typography,
   Grid,
-  Button,
-  Stack,
-  IconButton,
-  Tooltip,
   CircularProgress,
-  Divider,
+  Alert,
 } from '@mui/material';
 import {
-  Download,
-  Filter,
-  Calendar,
   TrendingUp,
-  Users,
   Heart,
   Store,
   MapPin,
-  PieChart as PieChartIcon,
-  BarChart as BarChartIcon,
-  ArrowUpRight,
-  ArrowDownRight,
 } from 'lucide-react';
 import {
   BarChart,
@@ -36,13 +24,10 @@ import {
   PieChart,
   Pie,
   Cell,
-  LineChart,
-  Line,
-  AreaChart,
-  Area,
   Legend,
 } from 'recharts';
 import { motion } from 'motion/react';
+import adminService from '../services/adminService';
 
 // Design System Constants
 const COLORS = {
@@ -60,47 +45,42 @@ const COLORS = {
 
 const CHART_COLORS = [COLORS.primary, COLORS.secondary, COLORS.accent, '#4A148C', '#004D40', '#BF360C'];
 
-// Mock Data for Analytics
-const CompatibilityData = [
-  { range: '80-100%', count: 120 },
-  { range: '60-79%', count: 450 },
-  { range: '40-59%', count: 320 },
-  { range: '20-39%', count: 150 },
-  { range: '0-19%', count: 45 },
-];
-
-const ProvinceData = [
-  { name: 'Western', value: 4500 },
-  { name: 'Central', value: 2100 },
-  { name: 'Southern', value: 1800 },
-  { name: 'Northern', value: 1200 },
-  { name: 'Eastern', value: 900 },
-  { name: 'Other', value: 1950 },
-];
-
-const VendorCategoryData = [
-  { name: 'Photography', quotes: 850 },
-  { name: 'Catering', quotes: 720 },
-  { name: 'Venues', quotes: 680 },
-  { name: 'Attire', quotes: 450 },
-  { name: 'Jewelry', quotes: 320 },
-  { name: 'Music', quotes: 280 },
-];
-
-const RetentionData = [
-  { step: 'Registered', count: 1000, percentage: 100 },
-  { step: 'Profile Complete', count: 850, percentage: 85 },
-  { step: 'First Match', count: 620, percentage: 62 },
-  { step: 'Mutual Interest', count: 410, percentage: 41 },
-  { step: 'Message Sent', count: 280, percentage: 28 },
-];
-
 const AdminAnalytics: React.FC = () => {
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [analytics, setAnalytics] = useState<any>(null);
 
   useEffect(() => {
-    const timer = setTimeout(() => setLoading(false), 1000);
-    return () => clearTimeout(timer);
+    let mounted = true;
+
+    const loadAnalytics = async () => {
+      try {
+        if (!analytics) {
+          setLoading(true);
+        }
+        setError('');
+        const response = await adminService.getAnalytics();
+        if (mounted) {
+          setAnalytics(response?.data || null);
+        }
+      } catch (err: any) {
+        if (mounted) {
+          setError(err?.response?.data?.message || 'Failed to load analytics');
+        }
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    loadAnalytics();
+    const interval = setInterval(loadAnalytics, 15000);
+
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
   }, []);
 
   if (loading) {
@@ -111,19 +91,59 @@ const AdminAnalytics: React.FC = () => {
     );
   }
 
+  const compatibilityData = analytics?.compatibilityDistribution || [];
+  const provinceData = analytics?.provinceDistribution || [];
+  const vendorCategoryData = analytics?.vendorCategoryDistribution || [];
+  const retentionData = analytics?.retentionFunnel || [];
+
+  const generatedAt = analytics?.generatedAt ? new Date(analytics.generatedAt).toLocaleTimeString() : 'N/A';
+  const growthDelta = analytics?.users?.growthDelta || 0;
+
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
       <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
         <Box>
           <Typography variant="h6" sx={{ fontWeight: 700, fontFamily: 'Playfair Display' }}>Platform Analytics</Typography>
-          <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>Deep dive into user behavior and platform growth</Typography>
+          <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
+            Real-time data refreshes every 15 seconds. Last sync: {generatedAt}
+          </Typography>
         </Box>
-        <Stack direction="row" spacing={2}>
-          <Button variant="outlined" startIcon={<Calendar size={18} />} sx={{ borderRadius: '8px' }}>Last 30 Days</Button>
-          <Button variant="outlined" startIcon={<Filter size={18} />} sx={{ borderRadius: '8px' }}>Filters</Button>
-          <Button variant="contained" startIcon={<Download size={18} />} sx={{ bgcolor: COLORS.primary, borderRadius: '8px' }}>Export PDF</Button>
-        </Stack>
       </Box>
+
+      {error && (
+        <Alert severity="error" sx={{ mb: 3 }}>
+          {error}
+        </Alert>
+      )}
+
+      <Grid container spacing={3} sx={{ mb: 3 }}>
+        <Grid size={{ xs: 12, md: 6, lg: 3 }}>
+          <Paper sx={{ p: 2.5, borderRadius: '12px' }}>
+            <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>Total Users</Typography>
+            <Typography variant="h5" sx={{ fontWeight: 800 }}>{analytics?.users?.total || 0}</Typography>
+          </Paper>
+        </Grid>
+        <Grid size={{ xs: 12, md: 6, lg: 3 }}>
+          <Paper sx={{ p: 2.5, borderRadius: '12px' }}>
+            <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>New Users This Month</Typography>
+            <Typography variant="h5" sx={{ fontWeight: 800 }}>{analytics?.users?.newThisMonth || 0}</Typography>
+          </Paper>
+        </Grid>
+        <Grid size={{ xs: 12, md: 6, lg: 3 }}>
+          <Paper sx={{ p: 2.5, borderRadius: '12px' }}>
+            <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>Growth Delta</Typography>
+            <Typography variant="h5" sx={{ fontWeight: 800, color: growthDelta >= 0 ? COLORS.success : COLORS.error }}>
+              {growthDelta >= 0 ? '+' : ''}{growthDelta}
+            </Typography>
+          </Paper>
+        </Grid>
+        <Grid size={{ xs: 12, md: 6, lg: 3 }}>
+          <Paper sx={{ p: 2.5, borderRadius: '12px' }}>
+            <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>Approved Vendors</Typography>
+            <Typography variant="h5" sx={{ fontWeight: 800 }}>{analytics?.vendors?.approved || 0}</Typography>
+          </Paper>
+        </Grid>
+      </Grid>
 
       <Grid container spacing={3}>
         {/* Compatibility Score Distribution */}
@@ -134,7 +154,7 @@ const AdminAnalytics: React.FC = () => {
             </Typography>
             <Box sx={{ height: 300 }}>
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={CompatibilityData}>
+                <BarChart data={compatibilityData}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
                   <XAxis dataKey="range" axisLine={false} tickLine={false} tick={{ fontSize: 12 }} />
                   <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12 }} />
@@ -156,7 +176,7 @@ const AdminAnalytics: React.FC = () => {
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
-                    data={ProvinceData}
+                    data={provinceData}
                     cx="50%"
                     cy="50%"
                     innerRadius={60}
@@ -164,7 +184,7 @@ const AdminAnalytics: React.FC = () => {
                     paddingAngle={5}
                     dataKey="value"
                   >
-                    {ProvinceData.map((_, index) => (
+                    {provinceData.map((_: any, index: number) => (
                       <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
                     ))}
                   </Pie>
@@ -184,7 +204,7 @@ const AdminAnalytics: React.FC = () => {
             </Typography>
             <Box sx={{ height: 350 }}>
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={VendorCategoryData} layout="vertical">
+                <BarChart data={vendorCategoryData} layout="vertical">
                   <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f0f0f0" />
                   <XAxis type="number" hide />
                   <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} width={100} tick={{ fontSize: 12 }} />
@@ -203,7 +223,7 @@ const AdminAnalytics: React.FC = () => {
               <TrendingUp size={20} color={COLORS.success} /> User Retention Funnel
             </Typography>
             <Box sx={{ mt: 2 }}>
-              {RetentionData.map((item, index) => (
+              {retentionData.map((item: any, index: number) => (
                 <Box key={index} sx={{ mb: 2.5 }}>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
                     <Typography variant="body2" sx={{ fontWeight: 600 }}>{item.step}</Typography>
