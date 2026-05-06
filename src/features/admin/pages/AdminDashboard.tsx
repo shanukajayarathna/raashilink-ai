@@ -21,7 +21,6 @@ import {
   Stack,
   useTheme,
   useMediaQuery,
-  Tooltip,
   Badge,
   CircularProgress,
   Alert,
@@ -30,12 +29,9 @@ import {
   LayoutDashboard,
   Users,
   Store,
-  HeartHandshake,
-  CalendarDays,
   BarChart3,
   Settings,
   Menu,
-  Bell,
   LogOut,
   TrendingUp,
   ArrowUpRight,
@@ -43,6 +39,7 @@ import {
   CheckCircle2,
   XCircle,
   AlertCircle,
+  Star,
 } from 'lucide-react';
 import { motion, AnimatePresence, LayoutGroup } from 'motion/react';
 import { useSelector, useDispatch } from 'react-redux';
@@ -53,6 +50,7 @@ import adminService from '../services/adminService';
 import UsersTable from '../components/UsersTable';
 import VendorVerification from '../components/VendorVerification';
 import AdminAnalytics from '../components/AdminAnalytics';
+import AdminSettings from '../components/AdminSettings';
 import {
   LineChart,
   Line,
@@ -86,56 +84,54 @@ const COLORS = {
 
 const DRAWER_WIDTH = 280;
 
-// Mock Data for Overview
-const KpiData = [
-  { title: 'Total Users', value: '12,450', growth: '+15%', icon: <Users size={24} />, color: COLORS.primary },
-  { title: 'Active Vendors', value: '234', growth: '+8%', icon: <Store size={24} />, color: COLORS.accent },
-  { title: 'Matches This Month', value: '127', growth: '+23%', icon: <HeartHandshake size={24} />, color: COLORS.secondary },
-  { title: 'Revenue (LKR)', value: '450,000', growth: '+12%', icon: <TrendingUp size={24} />, color: COLORS.success },
-];
-
-const UserGrowthData = [
-  { month: 'Oct', registered: 400, active: 240 },
-  { month: 'Nov', registered: 600, active: 380 },
-  { month: 'Dec', registered: 800, active: 520 },
-  { month: 'Jan', registered: 1100, active: 750 },
-  { month: 'Feb', registered: 1400, active: 980 },
-  { month: 'Mar', registered: 1800, active: 1250 },
-];
-
-const RecentActivity = [
-  { id: 1, type: 'user', icon: <Users size={16} />, text: 'New user "Amara Silva" registered', time: '2 mins ago', status: 'success' },
-  { id: 2, type: 'vendor', icon: <Store size={16} />, text: 'Vendor "Golden Weddings" submitted verification', time: '15 mins ago', status: 'warning' },
-  { id: 3, type: 'match', icon: <HeartHandshake size={16} />, text: 'New successful match: Kasun & Dilini', time: '1 hour ago', status: 'success' },
-  { id: 4, type: 'report', icon: <AlertCircle size={16} />, text: 'User report: Inappropriate content', time: '3 hours ago', status: 'error' },
-];
+const resolveAvatarSrc = (...sources: any[]) => {
+  for (const source of sources) {
+    if (!source || typeof source !== 'string') continue;
+    const value = source.trim();
+    if (!value) continue;
+    if (/^(https?:)?\/\//i.test(value) || value.startsWith('data:') || value.startsWith('blob:')) {
+      return value;
+    }
+    return value.startsWith('/') ? value : `/${value}`;
+  }
+  return undefined;
+};
 
 const AdminDashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState('Overview');
   const [mobileOpen, setMobileOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [overviewData, setOverviewData] = useState<any>(null);
+  const [overviewError, setOverviewError] = useState('');
   const theme = useTheme();
   const navigate = useNavigate();
   const dispatch = useDispatch();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const user = useSelector((state: RootState) => state.auth.user);
+  const adminAvatarSrc = resolveAvatarSrc(
+    user?.profilePic,
+    user?.personalInfo?.profilePic,
+    user?.photos?.find?.((photo: any) => photo?.isMain)?.url,
+    user?.photos?.[0]?.url
+  );
+
+  const loadOverview = async () => {
+    try {
+      setLoading(true);
+      setOverviewError('');
+      const response = await adminService.getOverview();
+      setOverviewData(response?.data || null);
+    } catch (error: any) {
+      console.error('Failed to load admin overview', error);
+      setOverviewData(null);
+      setOverviewError(error?.response?.data?.message || 'Failed to load overview');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const loadOverview = async () => {
-      try {
-        setLoading(true);
-        const response = await adminService.getOverview();
-        setOverviewData(response?.data || null);
-      } catch (error) {
-        console.error('Failed to load admin overview', error);
-        setOverviewData(null);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadOverview();
+    void loadOverview();
   }, []);
 
   const handleSignOut = () => {
@@ -147,19 +143,43 @@ const AdminDashboard: React.FC = () => {
     setMobileOpen(!mobileOpen);
   };
 
+  const pendingVendorCount = Number(overviewData?.summary?.pendingVendors || 0);
+
   const navItems = [
     { name: 'Overview', icon: <LayoutDashboard size={20} /> },
     { name: 'Users', icon: <Users size={20} /> },
-    { name: 'Vendors', icon: <Store size={20} /> },
-    { name: 'Matches', icon: <HeartHandshake size={20} /> },
-    { name: 'Wedding Projects', icon: <CalendarDays size={20} /> },
+    { name: 'Vendors', icon: <Store size={20} />, badgeCount: pendingVendorCount },
     { name: 'Analytics', icon: <BarChart3 size={20} /> },
     { name: 'Settings', icon: <Settings size={20} /> },
   ];
 
-  const kpiData = overviewData?.kpis || KpiData;
-  const userGrowthData = overviewData?.growthData || UserGrowthData;
-  const recentActivity = overviewData?.recentActivity || RecentActivity;
+  const kpiIconMap: Record<string, React.ReactNode> = {
+    'Total Users': <Users size={24} />,
+    'Horoscope Seekers': <Star size={24} />,
+    'Active Vendors': <Store size={24} />,
+    'Pending Vendors': <AlertCircle size={24} />,
+    'Matches This Month': <TrendingUp size={24} />,
+    'Total Matches': <TrendingUp size={24} />,
+    'Wedding Projects': <CheckCircle2 size={24} />,
+    'Revenue (LKR)': <TrendingUp size={24} />,
+  };
+
+  const kpiData = (overviewData?.kpis || []).map((kpi: any) => ({
+    ...kpi,
+    icon: kpi.icon || kpiIconMap[kpi.title] || <TrendingUp size={24} />,
+    color: kpi.color || COLORS.primary,
+  }));
+  const userGrowthData = overviewData?.growthData || [];
+  const recentActivity = (overviewData?.recentActivity || []).map((activity: any) => ({
+    ...activity,
+    icon:
+      activity.icon ||
+      (activity.type === 'vendor'
+        ? <Store size={16} />
+        : activity.type === 'match'
+          ? <TrendingUp size={16} />
+          : <Users size={16} />),
+  }));
 
   const drawer = (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: COLORS.primary, color: 'white' }}>
@@ -204,6 +224,13 @@ const AdminDashboard: React.FC = () => {
                   fontSize: '0.95rem',
                 }}
               />
+              {item.badgeCount > 0 && (
+                <Badge
+                  badgeContent={item.badgeCount}
+                  color="warning"
+                  sx={{ mr: 3, '& .MuiBadge-badge': { fontWeight: 700 } }}
+                />
+              )}
               {activeTab === item.name && (
                 <motion.div layoutId="active-pill" style={{ width: 4, height: 20, backgroundColor: COLORS.secondary, borderRadius: 2 }} />
               )}
@@ -213,7 +240,7 @@ const AdminDashboard: React.FC = () => {
       </List>
       <Box sx={{ p: 3, mt: 'auto', bgcolor: 'rgba(0,0,0,0.2)' }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-          <Avatar sx={{ bgcolor: COLORS.secondary, color: COLORS.primary, fontWeight: 700 }}>
+          <Avatar src={adminAvatarSrc} sx={{ bgcolor: COLORS.secondary, color: COLORS.primary, fontWeight: 700 }}>
             {user?.name?.charAt(0) || 'A'}
           </Avatar>
           <Box>
@@ -236,6 +263,11 @@ const AdminDashboard: React.FC = () => {
 
   const renderOverview = () => (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
+        {overviewError && (
+          <Alert severity="error" sx={{ mb: 3 }}>
+            {overviewError}
+          </Alert>
+        )}
         <Grid container spacing={3}>
           {kpiData.map((kpi, index) => (
             <Grid size={{ xs: 12, sm: 6, lg: 3 }} key={index}>
@@ -362,11 +394,16 @@ const AdminDashboard: React.FC = () => {
                   </Box>
                 </ListItem>
               ))}
+              {recentActivity.length === 0 && (
+                <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
+                  No recent activity found.
+                </Typography>
+              )}
             </List>
             <Box sx={{ mt: 2, p: 2, bgcolor: COLORS.background, borderRadius: '12px', display: 'flex', alignItems: 'center', gap: 2 }}>
               <History size={20} color={COLORS.textSecondary} />
               <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
-                Last backup completed 4 hours ago
+                Last sync: {overviewData?.generatedAt ? new Date(overviewData.generatedAt).toLocaleString() : 'N/A'}
               </Typography>
             </Box>
           </Paper>
@@ -390,9 +427,11 @@ const AdminDashboard: React.FC = () => {
       case 'Users':
         return <UsersTable />;
       case 'Vendors':
-        return <VendorVerification />;
+        return <VendorVerification pendingCount={pendingVendorCount} onStatusChange={loadOverview} />;
       case 'Analytics':
         return <AdminAnalytics />;
+      case 'Settings':
+        return <AdminSettings />;
       default:
         return (
           <Box sx={{ p: 4, textAlign: 'center' }}>
@@ -469,20 +508,6 @@ const AdminDashboard: React.FC = () => {
                 Welcome back, Admin. Here's what's happening today.
               </Typography>
             </Box>
-            <Stack direction="row" spacing={1}>
-              <Tooltip title="Notifications">
-                <IconButton sx={{ bgcolor: 'white', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
-                  <Badge variant="dot" color="error">
-                    <Bell size={20} />
-                  </Badge>
-                </IconButton>
-              </Tooltip>
-              <Tooltip title="Settings">
-                <IconButton sx={{ bgcolor: 'white', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
-                  <Settings size={20} />
-                </IconButton>
-              </Tooltip>
-            </Stack>
           </Toolbar>
         </AppBar>
 
