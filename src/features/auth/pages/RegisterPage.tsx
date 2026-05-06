@@ -51,7 +51,8 @@ import {
   MailOutline,
   PhoneIphone,
   PhotoCamera,
-  CloudUpload
+  CloudUpload,
+  AutoAwesome
 } from '@mui/icons-material';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
@@ -125,6 +126,7 @@ const RegisterPage = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const cameFromLogin = location.state?.from === 'login';
+  const isHoroscopeOnlyPath = location.pathname === '/register/horoscope-seeker';
   const backTarget = cameFromLogin ? '/login' : '/';
   const backLabel = cameFromLogin ? 'Back to Login' : 'Back to Home';
   
@@ -140,7 +142,7 @@ const RegisterPage = () => {
     // Form Data
     const [formData, setFormData] = useState({
       // Step 1
-      role: '',
+      role: isHoroscopeOnlyPath ? 'horoscope_seeker' : '',
       // Step 2
       firstName: '',
       lastName: '',
@@ -182,6 +184,12 @@ const RegisterPage = () => {
       terms: false,
       otp: ['', '', '', '', '', '']
     });
+
+  useEffect(() => {
+    if (isHoroscopeOnlyPath) {
+      setFormData((prev) => ({ ...prev, role: 'horoscope_seeker' }));
+    }
+  }, [isHoroscopeOnlyPath]);
 
   const [showPassword, setShowPassword] = useState(false);
   const [selectedProfileImageFile, setSelectedProfileImageFile] = useState<File | null>(null);
@@ -259,6 +267,8 @@ const RegisterPage = () => {
     const baseSteps = ['Account Type', 'Basic Info'];
     if (formData.role === 'partner') {
       return [...baseSteps, 'Birth Details', 'Personality', 'Finalize'];
+    } else if (formData.role === 'horoscope_seeker') {
+      return [...baseSteps, 'Birth Details'];
     } else if (formData.role === 'couple') {
       return [...baseSteps, 'Wedding Details', 'Finalize'];
     } else if (formData.role === 'vendor') {
@@ -531,12 +541,14 @@ const RegisterPage = () => {
       };
 
       // Add role-specific fields
-      if (formData.role === 'partner') {
+      if (formData.role === 'partner' || formData.role === 'horoscope_seeker') {
         cleanedData.dob = formData.dob;
         cleanedData.tob = formData.unknownTime ? '12:00' : formData.tob;
         cleanedData.pob = formData.pob;
         cleanedData.unknownTime = formData.unknownTime;
-        cleanedData.personality = formData.personality;
+        if (formData.role === 'partner') {
+          cleanedData.personality = formData.personality;
+        }
       } else if (formData.role === 'couple') {
         cleanedData.partnerName = formData.partnerName.trim();
         cleanedData.weddingDate = formData.weddingDate;
@@ -608,9 +620,15 @@ const RegisterPage = () => {
         {[
           { id: 'partner', title: 'Looking for a Partner', icon: <Favorite />, benefits: ['AI Matchmaking', 'Horoscope Check', 'Personality Matching'] },
           { id: 'couple', title: 'Engaged Couple', icon: <AccountCircle />, benefits: ['Wedding Planning', 'Budget Management', 'Vendor Search'] },
-          { id: 'vendor', title: 'Wedding Vendor', icon: <Storefront />, benefits: ['Reach Clients', 'Portfolio Showcase', 'Booking Management'] }
+          { id: 'vendor', title: 'Wedding Vendor', icon: <Storefront />, benefits: ['Reach Clients', 'Portfolio Showcase', 'Booking Management'] },
+          {
+            id: 'horoscope_seeker',
+            title: 'Horoscope Seeker',
+            icon: <AutoAwesome />,
+            benefits: ['Personal Horoscope', 'AI Life Guidance', 'Download Insights']
+          }
         ].map((role) => (
-          <Grid size={{ xs: 12, md: 4 }} key={role.id}>
+          <Grid size={{ xs: 12, md: 6, lg: 3 }} key={role.id}>
             <MotionCard
               whileHover={{ y: -10 }}
               onClick={() => setFormData({ ...formData, role: role.id })}
