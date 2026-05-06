@@ -1,6 +1,8 @@
 import React, { useRef } from 'react';
 import { Box, Paper, Typography, Stack, Chip } from '@mui/material';
 import { Sparkles, Flower2 } from 'lucide-react';
+import { useSelector } from 'react-redux';
+import { RootState } from '@/app/store/store';
 import ChatInterface, { type ChatInterfaceHandle } from '../components/ChatInterface';
 
 const COLORS = {
@@ -22,6 +24,11 @@ const STARTER_PROMPTS = [
 
 export default function HoroscopeLifeGuidancePage() {
   const chatRef = useRef<ChatInterfaceHandle | null>(null);
+  const currentUser = useSelector((state: RootState) => state.auth.user as any);
+  const firstName = (currentUser?.firstName || currentUser?.personalInfo?.firstName || '').trim();
+  const introMessage = firstName
+    ? `Ayubowan ${firstName}. I am your horoscope life guide. Ask me anything about your life path, strengths, timing, relationships, or remedies based on your chart.`
+    : 'Ayubowan. I am your horoscope life guide. Ask me anything about your life path, strengths, timing, relationships, or remedies based on your chart.';
 
   return (
     <Box sx={{ 
@@ -90,12 +97,12 @@ export default function HoroscopeLifeGuidancePage() {
         <ChatInterface
           ref={chatRef}
           language="en"
+          firstName={firstName}
           initialMessages={[
             {
               id: 'life-guide-1',
               role: 'bot',
-              content:
-                'Namaste. I am your horoscope life guide. Ask me anything about your life path, strengths, timing, relationships, or remedies based on your chart.',
+              content: introMessage,
               timestamp: new Date().toISOString(),
             },
           ]}
