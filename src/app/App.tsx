@@ -1,5 +1,5 @@
 import React, { Suspense, lazy, useMemo } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Provider, useSelector } from 'react-redux';
 import { Box, CircularProgress, CssBaseline, ThemeProvider } from '@mui/material';
 import { store, RootState } from '@/app/store/store';
@@ -13,6 +13,7 @@ const HoroscopeView = lazy(() => import('@/features/horoscope/pages/HoroscopeVie
 const MatchRecommendations = lazy(() => import('@/features/matchmaking/pages/MatchRecommendations'));
 const WeddingDashboard = lazy(() => import('@/features/wedding/pages/WeddingDashboard'));
 const AIChatbot = lazy(() => import('@/features/chat/pages/AIChatbot'));
+const HoroscopeLifeGuidancePage = lazy(() => import('@/features/chat/pages/HoroscopeLifeGuidancePage'));
 const MessagesPage = lazy(() => import('@/features/chat/pages/MessagesPage'));
 const HoneymoonDestinations = lazy(() => import('@/features/honeymoon/pages/HoneymoonDestinations'));
 const DestinationDetail = lazy(() => import('@/features/honeymoon/pages/DestinationDetailPage'));
@@ -45,6 +46,20 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   return <>{children}</>;
 };
 
+const NonHoroscopeSeekerRoute = ({ children }: { children: React.ReactNode }) => {
+  const { token, user } = useSelector((state: RootState) => state.auth);
+  const location = useLocation();
+
+  if (!token) return <Navigate to="/login" replace />;
+
+  const isHoroscopeSeeker = user?.profileType === 'horoscope_seeker' || user?.userType === 'horoscope_seeker';
+  if (isHoroscopeSeeker) {
+    return <Navigate to="/horoscope" replace state={{ from: location.pathname }} />;
+  }
+
+  return <>{children}</>;
+};
+
 const VendorProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { token, role, user } = useSelector((state: RootState) => state.auth);
   
@@ -65,7 +80,7 @@ const AdminProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   if (!token) return <Navigate to="/login" replace />;
   
   // Allow if role is admin OR if it's the developer's email
-  const isAdmin = role === 'admin' || user?.role === 'admin' || user?.email === 'shanukajayarathna876@gmail.com';
+  const isAdmin = role === 'admin' || user?.role === 'admin' || user?.email === 'admin@gmail.com';
   
   if (!isAdmin) {
     return <Navigate to="/dashboard" replace />;
@@ -88,25 +103,27 @@ function AppShell() {
             <Route path="/" element={<LandingPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
+            <Route path="/register/horoscope-seeker" element={<RegisterPage />} />
             <Route path="/forgot-password" element={<ForgotPasswordPage />} />
             
             {/* User Routes with MainLayout */}
             <Route element={<MainLayout />}>
               <Route path="/dashboard" element={<ProtectedRoute><DashboardRouter /></ProtectedRoute>} />
               <Route path="/horoscope" element={<ProtectedRoute><HoroscopeView /></ProtectedRoute>} />
-              <Route path="/matches" element={<ProtectedRoute><MatchRecommendations /></ProtectedRoute>} />
-              <Route path="/wedding" element={<ProtectedRoute><WeddingDashboard /></ProtectedRoute>} />
-              <Route path="/chat" element={<ProtectedRoute><AIChatbot /></ProtectedRoute>} />
-              <Route path="/messages" element={<ProtectedRoute><MessagesPage /></ProtectedRoute>} />
+              <Route path="/life-guidance" element={<ProtectedRoute><HoroscopeLifeGuidancePage /></ProtectedRoute>} />
+              <Route path="/matches" element={<NonHoroscopeSeekerRoute><MatchRecommendations /></NonHoroscopeSeekerRoute>} />
+              <Route path="/wedding" element={<NonHoroscopeSeekerRoute><WeddingDashboard /></NonHoroscopeSeekerRoute>} />
+              <Route path="/chat" element={<NonHoroscopeSeekerRoute><AIChatbot /></NonHoroscopeSeekerRoute>} />
+              <Route path="/messages" element={<NonHoroscopeSeekerRoute><MessagesPage /></NonHoroscopeSeekerRoute>} />
               <Route path="/budget" element={<Navigate to="/wedding" replace />} />
-              <Route path="/honeymoon" element={<ProtectedRoute><HoneymoonDestinations /></ProtectedRoute>} />
-              <Route path="/honeymoon/:id" element={<ProtectedRoute><DestinationDetail /></ProtectedRoute>} />
+              <Route path="/honeymoon" element={<NonHoroscopeSeekerRoute><HoneymoonDestinations /></NonHoroscopeSeekerRoute>} />
+              <Route path="/honeymoon/:id" element={<NonHoroscopeSeekerRoute><DestinationDetail /></NonHoroscopeSeekerRoute>} />
               <Route path="/profile" element={<ProtectedRoute><UserProfile /></ProtectedRoute>} />
               <Route path="/profile/edit" element={<ProtectedRoute><EditProfile /></ProtectedRoute>} />
               <Route path="/edit-profile" element={<Navigate to="/profile/edit" replace />} />
               <Route path="/settings" element={<Navigate to="/profile" replace />} />
-              <Route path="/vendors" element={<ProtectedRoute><VendorMarketplace /></ProtectedRoute>} />
-              <Route path="/vendors/:id" element={<ProtectedRoute><VendorDetailPage /></ProtectedRoute>} />
+              <Route path="/vendors" element={<NonHoroscopeSeekerRoute><VendorMarketplace /></NonHoroscopeSeekerRoute>} />
+              <Route path="/vendors/:id" element={<NonHoroscopeSeekerRoute><VendorDetailPage /></NonHoroscopeSeekerRoute>} />
             </Route>
             
             {/* Admin Routes */}
