@@ -60,7 +60,12 @@ const COLORS = {
   warning: '#ED6C02',
 };
 
-const VendorVerification: React.FC = () => {
+type VendorVerificationProps = {
+  pendingCount?: number;
+  onStatusChange?: () => void | Promise<void>;
+};
+
+const VendorVerification: React.FC<VendorVerificationProps> = ({ pendingCount = 0, onStatusChange }) => {
   const [activeTab, setActiveTab] = useState(0);
   const [loading, setLoading] = useState(true);
   const [vendors, setVendors] = useState<any[]>([]);
@@ -75,13 +80,16 @@ const VendorVerification: React.FC = () => {
 
   useEffect(() => {
     loadVendors();
-  }, [page]);
+  }, [page, activeTab]);
+
+  const statusByTab = ['pending', 'approved', 'rejected'];
+  const currentStatus = statusByTab[activeTab] || 'pending';
 
   const loadVendors = async () => {
     try {
       setLoading(true);
       setError('');
-      const response = await adminService.getPendingVendors(page, 10);
+      const response = await adminService.getPendingVendors(page, 10, currentStatus);
       setVendors(response.data.items);
       setTotalPages(response.data.pages);
     } catch (err: any) {
@@ -110,9 +118,10 @@ const VendorVerification: React.FC = () => {
     if (!selectedVendor) return;
     try {
       setProcessing(true);
-      await adminService.approveVendor(selectedVendor.id, dialogInput);
+      await adminService.updateVendorStatus(selectedVendor.id, 'approved', dialogInput);
       setDialogOpen(false);
       await loadVendors();
+      await onStatusChange?.();
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to approve vendor');
     } finally {
@@ -127,11 +136,25 @@ const VendorVerification: React.FC = () => {
     }
     try {
       setProcessing(true);
-      await adminService.rejectVendor(selectedVendor.id, dialogInput);
+      await adminService.updateVendorStatus(selectedVendor.id, 'rejected', dialogInput);
       setDialogOpen(false);
       await loadVendors();
+      await onStatusChange?.();
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to reject vendor');
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const handleSetPending = async (vendor: any) => {
+    try {
+      setProcessing(true);
+      await adminService.updateVendorStatus(vendor.id, 'pending', 'Moved back to pending review');
+      await loadVendors();
+      await onStatusChange?.();
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Failed to update vendor status');
     } finally {
       setProcessing(false);
     }
@@ -149,7 +172,7 @@ const VendorVerification: React.FC = () => {
           <Grid size={{ xs: 12 }}>
             <Box sx={{ textAlign: 'center', py: 8 }}>
               <CheckCircle2 size={64} color={COLORS.success} style={{ opacity: 0.5, marginBottom: 16 }} />
-              <Typography variant="h6" color="textSecondary">No pending verification requests</Typography>
+              <Typography variant="h6" color="textSecondary">No {currentStatus} vendors found</Typography>
             </Box>
           </Grid>
         ) : (
@@ -167,6 +190,18 @@ const VendorVerification: React.FC = () => {
                           <Box>
                             <Typography variant="h6" sx={{ fontWeight: 800, color: COLORS.primary }}>{vendor.businessName}</Typography>
                             <Chip label={vendor.category} size="small" sx={{ bgcolor: `${COLORS.accent}15`, color: COLORS.accent, fontWeight: 700, mt: 0.5 }} />
+                              <Chip
+                                label={vendor.approvalStatus}
+                                size="small"
+                                sx={{
+                                  ml: 1,
+                                  bgcolor: vendor.approvalStatus === 'approved' ? `${COLORS.success}15` : vendor.approvalStatus === 'rejected' ? `${COLORS.error}15` : `${COLORS.warning}15`,
+                                  color: vendor.approvalStatus === 'approved' ? COLORS.success : vendor.approvalStatus === 'rejected' ? COLORS.error : COLORS.warning,
+                                  fontWeight: 700,
+                                  mt: 0.5,
+                                  textTransform: 'capitalize',
+                                }}
+                              />
                             <Typography variant="caption" sx={{ color: COLORS.textSecondary, display: 'block', mt: 1 }}>
                               Owner: {vendor.ownerName}
                             </Typography>
@@ -262,10 +297,21 @@ const VendorVerification: React.FC = () => {
                   <CardActions sx={{ p: 3, pt: 0, justifyContent: 'space-between' }}>
                     <Button startIcon={<MessageSquare size={18} />} sx={{ color: COLORS.textSecondary }}>Add Note</Button>
                     <Stack direction="row" spacing={2}>
+                      {vendor.approvalStatus !== 'pending' && (
+                        <Button
+                          variant="outlined"
+                          onClick={() => handleSetPending(vendor)}
+                          disabled={processing}
+                          sx={{ borderRadius: '8px' }}
+                        >
+                          Mark Pending
+                        </Button>
+                      )}
                       <Button
                         variant="outlined"
                         color="error"
                         onClick={() => openRejectDialog(vendor)}
+                        disabled={processing || vendor.approvalStatus === 'rejected'}
                         sx={{ borderRadius: '8px' }}
                       >
                         Reject
@@ -273,6 +319,7 @@ const VendorVerification: React.FC = () => {
                       <Button
                         variant="contained"
                         onClick={() => openApproveDialog(vendor)}
+                        disabled={processing || vendor.approvalStatus === 'approved'}
                         sx={{ bgcolor: COLORS.success, '&:hover': { bgcolor: '#1B5E20' }, borderRadius: '8px' }}
                       >
                         Approve
@@ -311,7 +358,30 @@ const VendorVerification: React.FC = () => {
     <Box>
       <Box sx={{ mb: 4 }}>
         <Typography variant="h6" sx={{ fontWeight: 700, fontFamily: 'Playfair Display', mb: 1 }}>Vendor Verification</Typography>
-        <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>Manage and approve platform vendors</Typography>
+        <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>Manage existing vendors and change approval status</Typography>
+        <Tabs
+          value={activeTab}
+          onChange={(_event, value) => {
+            setActiveTab(value);
+            setPage(1);
+          }}
+          sx={{ 
+            mt: 2,
+            '& .MuiTabs-indicator': { bgcolor: COLORS.secondary, height: 3, borderRadius: '3px 3px 0 0' },
+            '& .MuiTab-root': { 
+              textTransform: 'none', 
+              fontWeight: 700, 
+              minHeight: 48,
+              fontSize: '0.9rem',
+              color: COLORS.textSecondary,
+              '&.Mui-selected': { color: COLORS.primary }
+            }
+          }}
+        >
+          <Tab label={pendingCount > 0 ? `Pending (${pendingCount})` : 'Pending'} />
+          <Tab label="Approved" />
+          <Tab label="Rejected" />
+        </Tabs>
       </Box>
 
       <AnimatePresence mode="wait">
