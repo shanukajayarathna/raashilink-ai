@@ -37,13 +37,36 @@ app.use((req, res, next) => {
     'http://127.0.0.1:3000',
     'http://localhost:3001',
     'http://127.0.0.1:3001',
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
     'http://localhost:4173',
     'http://127.0.0.1:4173',
     process.env.FRONTEND_URL,
   ].filter(Boolean));
 
   const requestOrigin = req.headers.origin;
-  if (requestOrigin && allowedOrigins.has(requestOrigin)) {
+  const isDevOrigin = (() => {
+    if (!requestOrigin || process.env.NODE_ENV === 'production') {
+      return false;
+    }
+
+    try {
+      const parsed = new URL(requestOrigin);
+      const hostname = parsed.hostname.toLowerCase();
+      const isLoopback = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]';
+      const isPrivateIpv4 =
+        /^10\./.test(hostname) ||
+        /^192\.168\./.test(hostname) ||
+        /^172\.(1[6-9]|2\d|3[0-1])\./.test(hostname);
+      const isLocalDomain = hostname.endsWith('.local');
+
+      return isLoopback || isPrivateIpv4 || isLocalDomain;
+    } catch {
+      return false;
+    }
+  })();
+
+  if (requestOrigin && (allowedOrigins.has(requestOrigin) || isDevOrigin)) {
     res.header('Access-Control-Allow-Origin', requestOrigin);
     res.header('Vary', 'Origin');
   }
