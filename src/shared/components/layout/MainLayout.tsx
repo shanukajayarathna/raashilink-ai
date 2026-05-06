@@ -28,6 +28,19 @@ const saveSeenPreviews = (uid: string, map: Record<string, string>) => {
   try { localStorage.setItem(`rl_seen_${uid}`, JSON.stringify(map)); } catch {}
 };
 
+const resolveAvatarSrc = (...sources: any[]) => {
+  for (const source of sources) {
+    if (!source || typeof source !== 'string') continue;
+    const value = source.trim();
+    if (!value) continue;
+    if (/^(https?:)?\/\//i.test(value) || value.startsWith('data:') || value.startsWith('blob:')) {
+      return value;
+    }
+    return value.startsWith('/') ? value : `/${value}`;
+  }
+  return undefined;
+};
+
 export default function MainLayout({ children }: { children?: React.ReactNode }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
@@ -69,7 +82,13 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
   const theme = useTheme();
   const isLargeScreen = useMediaQuery(theme.breakpoints.up('lg'));
   const isCouple = user?.profileType === 'couple';
-  const avatarSrc = user?.profilePic || user?.photos?.find?.((photo: any) => photo?.isMain)?.url || undefined;
+  const isHoroscopeSeeker = user?.profileType === 'horoscope_seeker' || user?.userType === 'horoscope_seeker';
+  const avatarSrc = resolveAvatarSrc(
+    user?.profilePic,
+    user?.personalInfo?.profilePic,
+    user?.photos?.find?.((photo: any) => photo?.isMain)?.url,
+    user?.photos?.[0]?.url
+  );
 
   const fetchPendingMatchCount = useCallback(async () => {
     if (!token) return;
@@ -478,7 +497,15 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
     { name: 'Vendors', path: '/vendors', icon: Search },
     { name: 'Honeymoon', path: '/honeymoon', icon: MapPin },
   ];
-  const navItems = isCouple ? coupleNavItems : partnerNavItems;
+  const horoscopeSeekerNavItems = [
+    { name: 'Dashboard', path: '/horoscope', icon: Star },
+    { name: 'Life AI', path: '/life-guidance', icon: MessageSquare },
+  ];
+  const navItems = isHoroscopeSeeker
+    ? horoscopeSeekerNavItems
+    : isCouple
+      ? coupleNavItems
+      : partnerNavItems;
 
   const handleLogout = () => {
     // Save all current previews as seen before logging out so they don't re-fire on next login
