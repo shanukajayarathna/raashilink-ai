@@ -6,9 +6,9 @@ const adminService = {
     return response.data;
   },
   
-  getPendingVendors: async (page = 1, limit = 10) => {
+  getPendingVendors: async (page = 1, limit = 10, status = 'pending') => {
     const response = await axiosInstance.get('/admin/vendors/pending', {
-      params: { page, limit, status: 'pending' },
+      params: { page, limit, status },
     });
     return response.data;
   },
@@ -28,10 +28,31 @@ const adminService = {
     return response.data;
   },
 
-  getUsers: async (page = 1, limit = 10, role = 'user', search = '') => {
+  updateVendorStatus: async (id: string, status: 'pending' | 'approved' | 'rejected', reason = '') => {
+    const response = await axiosInstance.patch(`/admin/vendors/${id}/status`, { status, reason });
+    return response.data;
+  },
+
+  getUsers: async (page = 1, limit = 10, role = 'all', status = 'all', search = '') => {
     const response = await axiosInstance.get('/admin/users', {
-      params: { page, limit, role, search },
+      params: { page, limit, role, status, search },
     });
+    return response.data;
+  },
+
+  createAdminUser: async (payload: {
+    email: string;
+    password: string;
+    firstName: string;
+    lastName: string;
+    phone: string;
+  }) => {
+    const response = await axiosInstance.post('/admin/users/admin', payload);
+    return response.data;
+  },
+
+  deleteUser: async (id: string) => {
+    const response = await axiosInstance.delete(`/admin/users/${id}`);
     return response.data;
   },
 
@@ -51,6 +72,42 @@ const adminService = {
 
   getAnalytics: async () => {
     const response = await axiosInstance.get('/admin/analytics');
+    return response.data;
+  },
+
+  getAdminProfile: async () => {
+    const response = await axiosInstance.get('/users/profile', {
+      params: { includeMedia: true },
+    });
+    return response.data;
+  },
+
+  updateAdminProfileName: async (name: string) => {
+    const response = await axiosInstance.put('/users/profile', { name });
+    return response.data;
+  },
+
+  updateAdminEmail: async (currentPassword: string, newEmail: string) => {
+    const response = await axiosInstance.put('/users/contact/email', { currentPassword, newEmail });
+    return response.data;
+  },
+
+  updateAdminPassword: async (currentPassword: string, newPassword: string) => {
+    const response = await axiosInstance.put('/users/password', { currentPassword, newPassword });
+    return response.data;
+  },
+
+  uploadAdminPhoto: async (photo: File) => {
+    const formData = new FormData();
+    formData.append('photo', photo);
+    const response = await axiosInstance.post('/users/profile/photo', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data;
+  },
+
+  removeAdminPhoto: async () => {
+    const response = await axiosInstance.delete('/users/profile/photo');
     return response.data;
   },
 };
