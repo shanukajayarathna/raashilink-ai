@@ -4,6 +4,20 @@ const LOGIN_STARTUP_RETRY_LIMIT = 4;
 const LOGIN_STARTUP_RETRY_DELAY_MS = 800;
 const LOGIN_STARTUP_RETRYABLE_STATUSES = new Set([502, 503, 504]);
 
+function normalizeLoginIdentifier(value: unknown) {
+  return String(value ?? '')
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .replace(/\s+/g, '')
+    .trim();
+}
+
+function normalizeLoginPassword(value: unknown) {
+  // Remove zero-width characters and surrounding spaces commonly introduced by copy/paste.
+  return String(value ?? '')
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .trim();
+}
+
 function isStartupRetryableError(error: any) {
   return (
     error?.code === 'ERR_NETWORK' ||
@@ -52,8 +66,8 @@ const authService = {
    */
   login: async (credentials: any) => {
     const payload = {
-      identifier: credentials.identifier || credentials.email,
-      password: credentials.password,
+      identifier: normalizeLoginIdentifier(credentials.identifier || credentials.email),
+      password: normalizeLoginPassword(credentials.password),
     };
 
     let lastError: any;
