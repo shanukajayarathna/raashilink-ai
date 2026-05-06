@@ -1,3 +1,4 @@
+import bcrypt from 'bcrypt';
 import User from '../models/User.js';
 import Vendor from '../models/Vendor.js';
 import Match from '../models/Match.js';
@@ -16,19 +17,55 @@ function formatMonthLabel(date) {
   return new Intl.DateTimeFormat('en-US', { month: 'short' }).format(date);
 }
 
+function getDisplayName(user) {
+  return [user?.personalInfo?.firstName, user?.personalInfo?.lastName].filter(Boolean).join(' ').trim() || 'N/A';
+}
+
+function getUserStatus(user) {
+  return user?.verification?.emailVerified ? 'active' : 'unverified';
+}
+
+function normalizeAdminEmail(value = '') {
+  return String(value || '').trim().toLowerCase();
+}
+
+function normalizeAdminPhone(value = '') {
+  return String(value || '').replace(/\D/g, '').replace(/^94/, '0').replace(/^0?/, '0');
+}
+
 export const getOverview = asyncHandler(async (req, res) => {
   requireAdmin(req);
 
   const now = new Date();
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const startOfPreviousMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
 
-  const [userCount, vendorCount, matchCount, projects, pendingVendors] = await Promise.all([
+  const [
+    userCount,
+    vendorCount,
+    matchCountThisMonth,
+    totalMatches,
+    projects,
+    totalProjects,
+    pendingVendors,
+    horoscopeSeekerTotal,
+    horoscopeSeekersThisMonth,
+    horoscopeSeekersLastMonth,
+  ] = await Promise.all([
     User.countDocuments({ role: 'user' }),
     Vendor.countDocuments({ approvalStatus: 'approved' }),
     Match.countDocuments({ createdAt: { $gte: startOfMonth } }),
+    Match.countDocuments({}),
     WeddingProject.find({}).select('totalBudget').lean(),
+    WeddingProject.countDocuments({}),
     Vendor.countDocuments({ approvalStatus: 'pending' }),
+    User.countDocuments({ role: 'user', userType: 'horoscope_seeker' }),
+    User.countDocuments({ role: 'user', userType: 'horoscope_seeker', createdAt: { $gte: startOfMonth } }),
+    User.countDocuments({ role: 'user', userType: 'horoscope_seeker', createdAt: { $gte: startOfPreviousMonth, $lt: startOfMonth } }),
   ]);
+
+  const horoscopeSeekerGrowthDelta = horoscopeSeekersThisMonth - horoscopeSeekersLastMonth;
+  const horoscopeSeekerGrowthLabel = `${horoscopeSeekerGrowthDelta >= 0 ? '+' : ''}${horoscopeSeekerGrowthDelta} this month`;
 
   const revenueValue = projects.reduce((sum, project) => sum + Number(project?.totalBudget || 0), 0);
 
@@ -112,16 +149,145 @@ export const getOverview = asyncHandler(async (req, res) => {
   res.status(200).json({
     success: true,
     data: {
+      generatedAt: now.toISOString(),
+      summary: {
+        totalUsers: userCount,
+        activeVendors: vendorCount,
+        pendingVendors,
+        horoscopeSeekerTotal,
+        horoscopeSeekerGrowthDelta,
+        matchesThisMonth: matchCountThisMonth,
+        totalMatches,
+        totalProjects,
+        revenueValue,
+      },
       kpis: [
         { title: 'Total Users', value: userCount.toLocaleString('en-US'), growth: 'Live', color: '#8B1A2E' },
+        {
+          title: 'Horoscope Seekers',
+          value: horoscopeSeekerTotal.toLocaleString('en-US'),
+          growth: horoscopeSeekerGrowthLabel,
+          color: '#A16207',
+        },
         { title: 'Active Vendors', value: vendorCount.toLocaleString('en-US'), growth: 'Live', color: '#1A6B72' },
         { title: 'Pending Vendors', value: pendingVendors.toLocaleString('en-US'), growth: 'Live', color: '#ED6C02' },
-        { title: 'Matches This Month', value: matchCount.toLocaleString('en-US'), growth: 'Live', color: '#C9A84C' },
+        { title: 'Matches This Month', value: matchCountThisMonth.toLocaleString('en-US'), growth: 'Live', color: '#C9A84C' },
+        { title: 'Total Matches', value: totalMatches.toLocaleString('en-US'), growth: 'Live', color: '#6A1B9A' },
+        { title: 'Wedding Projects', value: totalProjects.toLocaleString('en-US'), growth: 'Live', color: '#1565C0' },
         { title: 'Revenue (LKR)', value: revenueValue.toLocaleString('en-US'), growth: 'Live', color: '#2E7D32' },
       ],
       growthData,
       recentActivity,
     },
+  });
+});
+
+export const createAdminUser = asyncHandler(async (req, res) => {
+  requireAdmin(req);
+
+  const {
+    email,
+    password,
+    firstName,
+    lastName,
+    phone,
+  } = req.body ?? {};
+
+  const normalizedEmail = normalizeAdminEmail(email);
+  const normalizedPhone = normalizeAdminPhone(phone);
+
+  if (!normalizedEmail || !password || !firstName?.trim() || !lastName?.trim() || !normalizedPhone) {
+    throw new ApiError(400, 'Email, password, first name, last name, and phone are required');
+  }
+
+  if (String(password).trim().length < 8) {
+    throw new ApiError(400, 'Password must be at least 8 characters long');
+  }
+
+  if (!/^\S+@\S+\.\S+$/.test(normalizedEmail)) {
+    throw new ApiError(400, 'Enter a valid email address');
+  }
+
+  if (!/^07\d{8}$/.test(normalizedPhone)) {
+    throw new ApiError(400, 'Enter a valid Sri Lankan mobile number');
+  }
+
+  const existingUser = await User.findOne({
+    $or: [
+      { email: normalizedEmail },
+      { 'personalInfo.phone': `+94${normalizedPhone.slice(1)}` },
+    ],
+  }).lean();
+
+  if (existingUser) {
+    throw new ApiError(409, 'A user with this email or phone already exists');
+  }
+
+  const passwordHash = await bcrypt.hash(String(password), 10);
+  const adminUser = await User.create({
+    email: normalizedEmail,
+    passwordHash,
+    role: 'admin',
+    personalInfo: {
+      firstName: String(firstName).trim(),
+      lastName: String(lastName).trim(),
+      phone: `+94${normalizedPhone.slice(1)}`,
+      location: 'Sri Lanka',
+    },
+    verification: {
+      emailVerified: true,
+      phoneVerified: true,
+      emailVerifiedAt: new Date(),
+      phoneVerifiedAt: new Date(),
+    },
+  });
+
+  res.status(201).json({
+    success: true,
+    message: 'Admin user created successfully',
+    data: {
+      id: String(adminUser._id),
+      email: adminUser.email,
+      role: adminUser.role,
+      name: getDisplayName(adminUser),
+      status: getUserStatus(adminUser),
+      registeredAt: adminUser.createdAt,
+    },
+  });
+});
+
+export const deleteUser = asyncHandler(async (req, res) => {
+  requireAdmin(req);
+
+  const { id } = req.params;
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    throw new ApiError(400, 'Invalid user ID');
+  }
+
+  if (String(req.user?._id) === id) {
+    throw new ApiError(400, 'You cannot delete your own admin account');
+  }
+
+  const user = await User.findById(id).select('role');
+  if (!user) {
+    throw new ApiError(404, 'User not found');
+  }
+
+  if (user.role === 'admin') {
+    const adminCount = await User.countDocuments({ role: 'admin' });
+    if (adminCount <= 1) {
+      throw new ApiError(400, 'At least one admin account must remain');
+    }
+  }
+
+  await Promise.all([
+    User.deleteOne({ _id: id }),
+    Vendor.deleteMany({ userId: id }),
+  ]);
+
+  res.status(200).json({
+    success: true,
+    message: 'User removed successfully',
   });
 });
 
@@ -157,8 +323,9 @@ export const getPendingVendors = asyncHandler(async (req, res) => {
         socialLinks: vendor.socialLinks || {},
         documents: vendor.documents || [],
         approvalStatus: vendor.approvalStatus,
+        verified: vendor.verified,
         adminNotes: vendor.adminNotes || '',
-        ownerName: [vendor.userId?.personalInfo?.firstName, vendor.userId?.personalInfo?.lastName].filter(Boolean).join(' ') || 'N/A',
+        ownerName: getDisplayName(vendor.userId),
         ownerEmail: vendor.userId?.email || '',
         ownerPhone: vendor.userId?.personalInfo?.phone || '',
         createdAt: vendor.createdAt,
@@ -280,10 +447,27 @@ export const rejectVendor = asyncHandler(async (req, res) => {
 export const getUsers = asyncHandler(async (req, res) => {
   requireAdmin(req);
 
-  const { page = 1, limit = 10, role = 'user', search = '' } = req.query;
+  const { page = 1, limit = 10, role = 'all', status = 'all', search = '' } = req.query;
   const skip = (Number(page) - 1) * Number(limit);
 
-  const query = { role: role || 'user' };
+  const query = {};
+  if (role && role !== 'all') {
+    if (role === 'horoscope_seeker') {
+      query.role = 'user';
+      query.userType = 'horoscope_seeker';
+    } else {
+      query.role = role;
+    }
+  }
+
+  if (status === 'active') {
+    query['verification.emailVerified'] = true;
+  }
+
+  if (status === 'unverified') {
+    query['verification.emailVerified'] = false;
+  }
+
   if (search?.trim()) {
     query.$or = [
       { email: { $regex: search, $options: 'i' } },
@@ -294,7 +478,7 @@ export const getUsers = asyncHandler(async (req, res) => {
 
   const [users, total] = await Promise.all([
     User.find(query)
-      .select('email personalInfo verification createdAt')
+      .select('email personalInfo verification role userType createdAt updatedAt')
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(Number(limit))
@@ -308,10 +492,15 @@ export const getUsers = asyncHandler(async (req, res) => {
       items: users.map((user) => ({
         id: String(user._id),
         email: user.email,
-        name: [user.personalInfo?.firstName, user.personalInfo?.lastName].filter(Boolean).join(' ') || 'N/A',
+        name: getDisplayName(user),
+        role: user.role,
+        userType: user.userType || 'partner',
+        status: getUserStatus(user),
+        profilePic: user.personalInfo?.profilePic || '',
         emailVerified: user.verification?.emailVerified || false,
         phoneVerified: user.verification?.phoneVerified || false,
         registeredAt: user.createdAt,
+        lastActiveAt: user.updatedAt || user.createdAt,
       })),
       total,
       page: Number(page),
@@ -390,11 +579,13 @@ export const getAnalytics = asyncHandler(async (req, res) => {
   requireAdmin(req);
 
   const now = new Date();
-  const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const previousMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
 
   const [
     totalUsers,
     newUsersThisMonth,
+    newUsersLastMonth,
     totalVendors,
     pendingVendors,
     approvedVendors,
@@ -402,7 +593,8 @@ export const getAnalytics = asyncHandler(async (req, res) => {
     totalProjects,
   ] = await Promise.all([
     User.countDocuments({ role: 'user' }),
-    User.countDocuments({ role: 'user', createdAt: { $gte: new Date(now.getFullYear(), now.getMonth(), 1) } }),
+    User.countDocuments({ role: 'user', createdAt: { $gte: currentMonthStart } }),
+    User.countDocuments({ role: 'user', createdAt: { $gte: previousMonthStart, $lt: currentMonthStart } }),
     Vendor.countDocuments({}),
     Vendor.countDocuments({ approvalStatus: 'pending' }),
     Vendor.countDocuments({ approvalStatus: 'approved' }),
@@ -410,12 +602,115 @@ export const getAnalytics = asyncHandler(async (req, res) => {
     WeddingProject.countDocuments({}),
   ]);
 
+  const [
+    allMatches,
+    allUsers,
+    vendorCategoryCounts,
+  ] = await Promise.all([
+    Match.find({}).select('compatibilityScore').lean(),
+    User.find({ role: 'user' }).select('personalInfo.location createdAt verification').lean(),
+    Vendor.aggregate([
+      { $group: { _id: '$category', quotes: { $sum: 1 } } },
+      { $project: { _id: 0, name: '$_id', quotes: 1 } },
+      { $sort: { quotes: -1 } },
+    ]),
+  ]);
+
+  const compatibilityDistribution = [
+    { range: '80-100%', count: 0 },
+    { range: '60-79%', count: 0 },
+    { range: '40-59%', count: 0 },
+    { range: '20-39%', count: 0 },
+    { range: '0-19%', count: 0 },
+  ];
+
+  allMatches.forEach((match) => {
+    const score = Number(match.compatibilityScore || 0);
+    if (score >= 80) compatibilityDistribution[0].count += 1;
+    else if (score >= 60) compatibilityDistribution[1].count += 1;
+    else if (score >= 40) compatibilityDistribution[2].count += 1;
+    else if (score >= 20) compatibilityDistribution[3].count += 1;
+    else compatibilityDistribution[4].count += 1;
+  });
+
+  const provinceBuckets = {
+    Western: 0,
+    Central: 0,
+    Southern: 0,
+    Northern: 0,
+    Eastern: 0,
+    Other: 0,
+  };
+
+  allUsers.forEach((user) => {
+    const location = String(user?.personalInfo?.location || '').toLowerCase();
+    if (location.includes('western') || location.includes('colombo') || location.includes('gampaha') || location.includes('kalutara')) {
+      provinceBuckets.Western += 1;
+    } else if (location.includes('central') || location.includes('kandy') || location.includes('matale') || location.includes('nuwara')) {
+      provinceBuckets.Central += 1;
+    } else if (location.includes('southern') || location.includes('galle') || location.includes('matara') || location.includes('hambantota')) {
+      provinceBuckets.Southern += 1;
+    } else if (location.includes('northern') || location.includes('jaffna') || location.includes('kilinochchi') || location.includes('mannar')) {
+      provinceBuckets.Northern += 1;
+    } else if (location.includes('eastern') || location.includes('trincomalee') || location.includes('ampara') || location.includes('batticaloa')) {
+      provinceBuckets.Eastern += 1;
+    } else {
+      provinceBuckets.Other += 1;
+    }
+  });
+
+  const provinceDistribution = Object.entries(provinceBuckets).map(([name, value]) => ({ name, value }));
+
+  const profileCompleteCount = allUsers.filter((user) => {
+    const hasLocation = Boolean(user?.personalInfo?.location);
+    return hasLocation;
+  }).length;
+
+  const firstMatchCount = await Match.aggregate([
+    {
+      $project: {
+        participants: ['$userAId', '$userBId'],
+      },
+    },
+    { $unwind: '$participants' },
+    { $group: { _id: '$participants' } },
+    { $count: 'count' },
+  ]);
+
+  const mutualInterestCount = await Match.countDocuments({ mutualInterest: true });
+  const messageSentCount = mutualInterestCount;
+
+  const retentionFunnel = [
+    { step: 'Registered', count: totalUsers, percentage: totalUsers ? 100 : 0 },
+    { step: 'Profile Complete', count: profileCompleteCount, percentage: totalUsers ? Math.round((profileCompleteCount / totalUsers) * 100) : 0 },
+    {
+      step: 'First Match',
+      count: firstMatchCount?.[0]?.count || 0,
+      percentage: totalUsers ? Math.round(((firstMatchCount?.[0]?.count || 0) / totalUsers) * 100) : 0,
+    },
+    {
+      step: 'Mutual Interest',
+      count: mutualInterestCount,
+      percentage: totalUsers ? Math.round((mutualInterestCount / totalUsers) * 100) : 0,
+    },
+    {
+      step: 'Message Sent',
+      count: messageSentCount,
+      percentage: totalUsers ? Math.round((messageSentCount / totalUsers) * 100) : 0,
+    },
+  ];
+
+  const growthDelta = newUsersThisMonth - newUsersLastMonth;
+
   res.status(200).json({
     success: true,
     data: {
+      generatedAt: now.toISOString(),
       users: {
         total: totalUsers,
         newThisMonth: newUsersThisMonth,
+        newLastMonth: newUsersLastMonth,
+        growthDelta,
       },
       vendors: {
         total: totalVendors,
@@ -424,17 +719,70 @@ export const getAnalytics = asyncHandler(async (req, res) => {
       },
       matches: totalMatches,
       projects: totalProjects,
+      compatibilityDistribution,
+      provinceDistribution,
+      vendorCategoryDistribution: vendorCategoryCounts,
+      retentionFunnel,
+    },
+  });
+});
+
+export const updateVendorStatus = asyncHandler(async (req, res) => {
+  requireAdmin(req);
+
+  const { id } = req.params;
+  const { status, reason = '' } = req.body ?? {};
+
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    throw new ApiError(400, 'Invalid vendor ID');
+  }
+
+  if (!['pending', 'approved', 'rejected'].includes(status)) {
+    throw new ApiError(400, 'Status must be pending, approved, or rejected');
+  }
+
+  const vendor = await Vendor.findById(id);
+  if (!vendor) {
+    throw new ApiError(404, 'Vendor not found');
+  }
+
+  vendor.approvalStatus = status;
+  vendor.verified = status === 'approved';
+  vendor.adminNotes = reason?.trim() || vendor.adminNotes || '';
+  vendor.verificationDate = status === 'approved' ? new Date() : vendor.verificationDate;
+
+  vendor.approvalHistory = vendor.approvalHistory || [];
+  vendor.approvalHistory.push({
+    status,
+    changedBy: req.user._id,
+    changedAt: new Date(),
+    reason: reason?.trim() || `Vendor moved to ${status}`,
+  });
+
+  await vendor.save();
+
+  res.status(200).json({
+    success: true,
+    message: 'Vendor status updated successfully',
+    data: {
+      id: String(vendor._id),
+      approvalStatus: vendor.approvalStatus,
+      verified: vendor.verified,
+      adminNotes: vendor.adminNotes || '',
     },
   });
 });
 
 export default {
   getOverview,
+  createAdminUser,
   getPendingVendors,
   getVendorDetail,
   approveVendor,
   rejectVendor,
+  updateVendorStatus,
   getUsers,
+  deleteUser,
   getMatches,
   getWeddingProjects,
   getAnalytics,
