@@ -17,9 +17,20 @@ const envApiHost =
   '';
 
 function resolveApiBaseUrl() {
+  if (import.meta.env.DEV) {
+    return '/api/v1';
+  }
+
   if (typeof window !== 'undefined') {
-    const isLocalFrontend = ['localhost', '127.0.0.1'].includes(window.location.hostname);
-    if (isLocalFrontend) {
+    const hostname = window.location.hostname.toLowerCase();
+    const isLocalhost = ['localhost', '127.0.0.1', '[::1]'].includes(hostname);
+    const isPrivateIpv4 =
+      /^10\./.test(hostname) ||
+      /^192\.168\./.test(hostname) ||
+      /^172\.(1[6-9]|2\d|3[0-1])\./.test(hostname);
+    const isDevLanHost = import.meta.env.DEV && (isLocalhost || isPrivateIpv4 || hostname.endsWith('.local'));
+
+    if (isLocalhost || isDevLanHost) {
       return '/api/v1';
     }
   }
