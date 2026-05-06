@@ -1,0 +1,571 @@
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  Alert,
+  alpha,
+  Avatar,
+  Box,
+  Button,
+  Chip,
+  Grid,
+  Paper,
+  Stack,
+  Typography,
+} from '@mui/material';
+import {
+  AccessTime,
+  AutoAwesome,
+  CalendarMonth,
+  CheckCircle,
+  EditOutlined,
+  Print,
+  Refresh,
+  TrendingUp,
+  WarningAmber,
+} from '@mui/icons-material';
+import BirthChartWheel from './BirthChartWheel';
+import {
+  LANGUAGE_FONT_FAMILY,
+  type HoroscopeLanguage,
+  translateHoroscopeValue,
+  translatePlanetName,
+} from '../utils/horoscopeLocalization';
+
+const COLORS = {
+  primary: '#8B1A2E',
+  secondary: '#C9A84C',
+  accent: '#1A6B72',
+  background: '#FAF7F2',
+  textSecondary: '#555555',
+};
+
+const LUCKY_COLOR_HEX: Record<string, string> = {
+  red: '#E53935',
+  maroon: '#8B1A2E',
+  pink: '#EC407A',
+  orange: '#FB8C00',
+  yellow: '#FDD835',
+  gold: '#C9A84C',
+  green: '#43A047',
+  mint: '#66BB6A',
+  teal: '#26A69A',
+  blue: '#1E88E5',
+  'light blue': '#42A5F5',
+  indigo: '#5C6BC0',
+  purple: '#8E24AA',
+  violet: '#AB47BC',
+  brown: '#8D6E63',
+  black: '#1C1C1C',
+  white: '#FFFFFF',
+  gray: '#9E9E9E',
+};
+
+type Props = {
+  user: any;
+  language: HoroscopeLanguage;
+  texts: any;
+  chartSummary: any;
+  chartPlanets: any[];
+  chartPositions: any[];
+  readingHighlights: any[];
+  profileHighlights: any;
+  chartMeta: any;
+  storedBirthDate: string;
+  storedBirthTime: string;
+  storedBirthPlace: string;
+  storedKnownBirthTime: boolean;
+  accuracyNotice: string | null;
+  hasCriticalBirthDetailsMissing: boolean;
+  error: string | null;
+  birthFeedback: { type: 'success' | 'warning'; message: string } | null;
+  onRefresh: () => void;
+  onOpenEditor: () => void;
+  onPrint: () => void;
+};
+
+type TrendCard = {
+  title: string;
+  value: string;
+  tone: string;
+  series: number[];
+};
+
+const resolveAvatarSrc = (...sources: any[]) => {
+  for (const source of sources) {
+    if (!source || typeof source !== 'string') continue;
+    const value = source.trim();
+    if (!value) continue;
+    if (/^(https?:)?\/\//i.test(value) || value.startsWith('data:') || value.startsWith('blob:')) {
+      return value;
+    }
+    return value.startsWith('/') ? value : `/${value}`;
+  }
+  return undefined;
+};
+
+const getColorHex = (value: string) => {
+  const cleaned = String(value || '').trim();
+  if (!cleaned) return '#D9D9D9';
+  if (/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(cleaned)) return cleaned;
+  return LUCKY_COLOR_HEX[cleaned.toLowerCase()] || '#D9D9D9';
+};
+
+export default function HoroscopeSeekerDashboard({
+  user,
+  language,
+  texts,
+  chartSummary,
+  chartPlanets,
+  chartPositions,
+  readingHighlights,
+  profileHighlights,
+  chartMeta,
+  storedBirthDate,
+  storedBirthTime,
+  storedBirthPlace,
+  storedKnownBirthTime,
+  accuracyNotice,
+  hasCriticalBirthDetailsMissing,
+  error,
+  birthFeedback,
+  onRefresh,
+  onOpenEditor,
+  onPrint,
+}: Props) {
+  const [liveTime, setLiveTime] = useState(() => new Date());
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setLiveTime(new Date()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const greeting = useMemo(() => {
+    const hour = liveTime.getHours();
+    if (hour >= 5 && hour < 12) return 'Good morning';
+    if (hour >= 12 && hour < 17) return 'Good afternoon';
+    if (hour >= 17 && hour < 21) return 'Good evening';
+    return 'Good night';
+  }, [liveTime]);
+
+  const headerDate = liveTime.toLocaleDateString('en-US', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+
+  const headerTime = liveTime.toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true,
+  });
+
+  const avatarSrc = resolveAvatarSrc(
+    user?.profilePic,
+    user?.personalInfo?.profilePic,
+    user?.photos?.find?.((photo: any) => photo?.isMain)?.url,
+    user?.photos?.[0]?.url
+  );
+
+  const insightItems = (readingHighlights || []).slice(0, 6);
+  const luckyColors = profileHighlights?.luckyColors || [];
+  const auspiciousDays = profileHighlights?.auspiciousDays || [];
+  const favorablePartners = profileHighlights?.favorablePartners || [];
+  const profileFacts = profileHighlights?.profileFacts || [];
+  const chartGrade = chartSummary?.chartGrade;
+  const chartGradeGood = chartGrade?.grade === 'Excellent' || chartGrade?.grade === 'Good';
+  const chartGradeColor = chartGradeGood ? COLORS.accent : '#C62828';
+  const trendCards: TrendCard[] = [
+    {
+      title: 'Planetary Balance',
+      value: chartGrade?.grade || 'Pending',
+      tone: COLORS.accent,
+      series: [42, 48, 55, 53, 60, 66, 70],
+    },
+    {
+      title: 'Emotional Rhythm',
+      value: translateHoroscopeValue(chartSummary?.moonSign || texts.pending, language),
+      tone: '#1565C0',
+      series: [35, 40, 37, 50, 52, 57, 61],
+    },
+    {
+      title: 'Focus Strength',
+      value: chartSummary?.auspiciousTime || texts.pending,
+      tone: '#7A6020',
+      series: [28, 33, 47, 45, 56, 61, 64],
+    },
+  ];
+
+  const scrollToSection = (id: string) => {
+    const section = document.getElementById(id);
+    if (section) {
+      section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
+  const buildSparkPath = (series: number[]) => {
+    const width = 220;
+    const height = 54;
+    const max = Math.max(...series);
+    const min = Math.min(...series);
+    const range = max - min || 1;
+
+    return series
+      .map((point, index) => {
+        const x = (index / (series.length - 1)) * width;
+        const y = height - ((point - min) / range) * height;
+        return `${index === 0 ? 'M' : 'L'}${x.toFixed(2)},${y.toFixed(2)}`;
+      })
+      .join(' ');
+  };
+
+  return (
+    <Box sx={{ p: { xs: 2, md: 4 }, maxWidth: 1360, mx: 'auto', minHeight: '100vh', bgcolor: alpha(COLORS.background, 0.85), position: 'relative' }}>
+      <Paper
+        sx={{
+          p: { xs: 2, md: 3 },
+          mb: 3,
+          borderRadius: '24px',
+          background: 'linear-gradient(135deg, rgba(139,26,46,0.08) 0%, rgba(201,168,76,0.18) 100%)',
+          border: '1px solid rgba(139,26,46,0.14)',
+          boxShadow: '0 12px 30px rgba(139,26,46,0.08)',
+        }}
+      >
+        <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2} alignItems={{ xs: 'flex-start', lg: 'center' }} justifyContent="space-between">
+          <Stack direction="row" spacing={2} alignItems="center" sx={{ minWidth: 0 }}>
+            <Avatar
+              src={avatarSrc}
+              alt={user?.name || 'Seeker'}
+              sx={{
+                width: 68,
+                height: 68,
+                border: `3px solid ${alpha(COLORS.secondary, 0.55)}`,
+                bgcolor: alpha(COLORS.secondary, 0.2),
+                color: COLORS.primary,
+                fontWeight: 800,
+                boxShadow: '0 8px 24px rgba(139,26,46,0.14)',
+              }}
+            >
+              {(user?.name || 'S').charAt(0).toUpperCase()}
+            </Avatar>
+            <Box sx={{ minWidth: 0 }}>
+              <Typography variant="h4" sx={{ fontFamily: 'Playfair Display', fontWeight: 800, color: COLORS.primary, lineHeight: 1.15 }}>
+                {greeting}, {user?.name || 'Seeker'}
+              </Typography>
+              <Typography variant="body2" sx={{ color: COLORS.textSecondary, mt: 0.5 }}>
+                Your Horoscope Dashboard
+              </Typography>
+              <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" sx={{ mt: 1.25 }}>
+                <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.75, px: 1.25, py: 0.6, borderRadius: '999px', bgcolor: alpha(COLORS.accent, 0.1), border: `1px solid ${alpha(COLORS.accent, 0.24)}` }}>
+                  <CalendarMonth sx={{ fontSize: 16, color: COLORS.accent }} />
+                  <Typography variant="body2" sx={{ color: COLORS.accent, fontWeight: 700 }}>{headerDate}</Typography>
+                  <Box component="span" sx={{ color: COLORS.accent, fontWeight: 800, fontFamily: 'monospace', fontVariantNumeric: 'tabular-nums', minWidth: '11ch', display: 'inline-block' }}>
+                    {headerTime}
+                  </Box>
+                </Box>
+                <Chip label={`Gana: ${translateHoroscopeValue(chartSummary?.gana || texts.pending, language)}`} sx={{ bgcolor: alpha(COLORS.accent, 0.12), color: COLORS.accent, fontWeight: 800 }} />
+                <Chip label={`Today's Focus: ${chartSummary?.auspiciousTime || texts.pending}`} sx={{ bgcolor: alpha(COLORS.secondary, 0.22), color: COLORS.primary, fontWeight: 800 }} />
+              </Stack>
+            </Box>
+          </Stack>
+
+          <Stack direction={{ xs: 'row', md: 'row' }} spacing={1} sx={{ width: { xs: '100%', lg: 'auto' }, justifyContent: { xs: 'space-between', lg: 'flex-end' } }}>
+            <Button variant="outlined" startIcon={<Refresh />} onClick={onRefresh} sx={{ borderRadius: '12px', borderColor: COLORS.secondary, color: COLORS.secondary }}>
+              Refresh
+            </Button>
+            <Button variant="outlined" startIcon={<EditOutlined />} onClick={onOpenEditor} sx={{ borderRadius: '12px', borderColor: COLORS.primary, color: COLORS.primary }}>
+              Birth Details
+            </Button>
+            <Button variant="outlined" startIcon={<Print />} onClick={onPrint} sx={{ borderRadius: '12px' }}>
+              Print
+            </Button>
+          </Stack>
+        </Stack>
+      </Paper>
+
+      {error && <Alert severity="error" sx={{ mb: 2, borderRadius: '12px' }}>{error}</Alert>}
+      {birthFeedback && <Alert severity={birthFeedback.type} sx={{ mb: 2, borderRadius: '12px' }}>{birthFeedback.message}</Alert>}
+      {accuracyNotice && (
+        <Alert severity={hasCriticalBirthDetailsMissing ? 'info' : 'warning'} sx={{ mb: 2, borderRadius: '12px' }}>
+          {accuracyNotice}
+        </Alert>
+      )}
+
+      <Grid container spacing={3} alignItems="flex-start">
+        <Grid size={{ xs: 12, xl: 2 }} sx={{ display: { xs: 'none', xl: 'block' } }}>
+          <Paper sx={{ p: 2, borderRadius: '18px', border: '1px solid', borderColor: alpha(COLORS.primary, 0.12), position: 'sticky', top: 92 }}>
+            <Typography variant="caption" sx={{ display: 'block', color: COLORS.textSecondary, fontWeight: 800, letterSpacing: 0.8, mb: 1 }}>
+              QUICK NAV
+            </Typography>
+            <Stack spacing={0.75}>
+              {[
+                { id: 'seeker-chart', label: 'Birth Chart' },
+                { id: 'seeker-trends', label: 'Trends' },
+                { id: 'seeker-snapshot', label: 'Birth Snapshot' },
+                { id: 'seeker-highlights', label: 'Highlights' },
+                { id: 'seeker-planets', label: 'Planets' },
+                { id: 'seeker-insights', label: 'Insights' },
+              ].map((item) => (
+                <Button
+                  key={item.id}
+                  variant="text"
+                  onClick={() => scrollToSection(item.id)}
+                  sx={{
+                    justifyContent: 'flex-start',
+                    color: COLORS.primary,
+                    fontWeight: 700,
+                    borderRadius: '10px',
+                    px: 1.25,
+                    textTransform: 'none',
+                    '&:hover': { bgcolor: alpha(COLORS.primary, 0.07) },
+                  }}
+                >
+                  {item.label}
+                </Button>
+              ))}
+            </Stack>
+          </Paper>
+        </Grid>
+
+        <Grid size={{ xs: 12, xl: 10 }}>
+          <Grid container spacing={2} sx={{ mb: 2.5 }}>
+            <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
+              <Paper
+                sx={{
+                  p: 2,
+                  borderRadius: '16px',
+                  border: `1px solid ${alpha(chartGradeColor, 0.25)}`,
+                  bgcolor: alpha(chartGradeColor, 0.06),
+                  height: '100%',
+                }}
+              >
+                <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.75 }}>
+                  {chartGradeGood ? <CheckCircle sx={{ fontSize: 18, color: chartGradeColor }} /> : <WarningAmber sx={{ fontSize: 18, color: chartGradeColor }} />}
+                  <Typography variant="caption" sx={{ fontWeight: 800, color: chartGradeColor, letterSpacing: 0.7 }}>
+                    CHART QUALITY
+                  </Typography>
+                </Stack>
+                <Typography variant="h6" sx={{ fontWeight: 900, color: chartGradeColor, lineHeight: 1.1 }}>
+                  {chartGrade?.grade || 'Pending'}
+                </Typography>
+                <Typography variant="caption" sx={{ color: COLORS.textSecondary }}>
+                  {chartGrade?.summary || 'Quality details will appear after chart refresh.'}
+                </Typography>
+              </Paper>
+            </Grid>
+
+            <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
+              <Paper sx={{ p: 2, borderRadius: '16px', border: `1px solid ${alpha(COLORS.primary, 0.14)}`, height: '100%' }}>
+                <Typography variant="caption" sx={{ fontWeight: 800, color: COLORS.textSecondary, letterSpacing: 0.7 }}>
+                  ASCENDANT
+                </Typography>
+                <Typography variant="h6" sx={{ fontWeight: 900, color: COLORS.primary, mt: 0.4 }}>
+                  {translateHoroscopeValue(chartSummary?.ascendant || texts.pending, language)}
+                </Typography>
+              </Paper>
+            </Grid>
+
+            <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
+              <Paper sx={{ p: 2, borderRadius: '16px', border: `1px solid ${alpha(COLORS.secondary, 0.2)}`, bgcolor: alpha(COLORS.secondary, 0.08), height: '100%' }}>
+                <Typography variant="caption" sx={{ fontWeight: 800, color: '#7A6020', letterSpacing: 0.7 }}>
+                  NAKSHATRA
+                </Typography>
+                <Typography variant="h6" sx={{ fontWeight: 900, color: COLORS.primary, mt: 0.4 }}>
+                  {translateHoroscopeValue(chartSummary?.nakshatra || texts.pending, language)}
+                </Typography>
+              </Paper>
+            </Grid>
+
+            <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
+              <Paper sx={{ p: 2, borderRadius: '16px', border: `1px solid ${alpha(COLORS.accent, 0.2)}`, bgcolor: alpha(COLORS.accent, 0.06), height: '100%' }}>
+                <Typography variant="caption" sx={{ fontWeight: 800, color: COLORS.accent, letterSpacing: 0.7 }}>
+                  TODAYS FOCUS
+                </Typography>
+                <Typography variant="h6" sx={{ fontWeight: 900, color: COLORS.accent, mt: 0.4 }}>
+                  {chartSummary?.auspiciousTime || texts.pending}
+                </Typography>
+              </Paper>
+            </Grid>
+          </Grid>
+
+          <Grid container spacing={3}>
+            <Grid size={{ xs: 12, xl: 8 }}>
+              <Paper id="seeker-chart" sx={{ p: { xs: 2, md: 3 }, borderRadius: '24px', border: '1px solid', borderColor: COLORS.background, boxShadow: '0 8px 28px rgba(139,26,46,0.05)' }}>
+                <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }}>
+                  <AutoAwesome sx={{ fontSize: 18, color: COLORS.primary }} />
+                  <Typography variant="h6" sx={{ fontWeight: 800, color: COLORS.primary, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>
+                    Birth Chart Overview
+                  </Typography>
+                </Stack>
+                <BirthChartWheel planets={chartPlanets} ascendant={chartSummary?.ascendant || texts.pending} language={language} />
+
+                <Grid container spacing={1.5} sx={{ mt: 2 }}>
+                  {[
+                    { label: 'Moon Sign', value: translateHoroscopeValue(chartSummary?.moonSign || texts.pending, language) },
+                    { label: 'Nakshatra', value: translateHoroscopeValue(chartSummary?.nakshatra || texts.pending, language) },
+                    { label: 'Ascendant', value: translateHoroscopeValue(chartSummary?.ascendant || texts.pending, language) },
+                    { label: 'Sun Sign', value: translateHoroscopeValue(chartSummary?.sunSign || texts.pending, language) },
+                  ].map((item) => (
+                    <Grid size={{ xs: 12, sm: 6 }} key={item.label}>
+                      <Box sx={{ p: 1.5, borderRadius: '14px', bgcolor: COLORS.background }}>
+                        <Typography variant="caption" sx={{ display: 'block', color: COLORS.textSecondary, fontWeight: 700 }}>{item.label}</Typography>
+                        <Typography variant="body1" sx={{ color: COLORS.primary, fontWeight: 800 }}>{item.value}</Typography>
+                      </Box>
+                    </Grid>
+                  ))}
+                </Grid>
+              </Paper>
+            </Grid>
+
+            <Grid size={{ xs: 12, xl: 4 }}>
+              <Paper id="seeker-trends" sx={{ p: 2.5, borderRadius: '20px', border: '1px solid', borderColor: COLORS.background, height: '100%' }}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 800, color: COLORS.primary, mb: 1.5 }}>
+                  Trend Signals
+                </Typography>
+                <Stack spacing={1.5}>
+                  {trendCards.map((card) => (
+                    <Box key={card.title} sx={{ p: 1.25, borderRadius: '12px', bgcolor: alpha(card.tone, 0.05), border: `1px solid ${alpha(card.tone, 0.24)}` }}>
+                      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 0.75 }}>
+                        <Typography variant="caption" sx={{ color: COLORS.textSecondary, fontWeight: 700 }}>{card.title}</Typography>
+                        <Typography variant="caption" sx={{ color: card.tone, fontWeight: 800 }}>{card.value}</Typography>
+                      </Stack>
+                      <svg viewBox="0 0 220 54" width="100%" height="54" preserveAspectRatio="none" aria-hidden>
+                        <path d={buildSparkPath(card.series)} fill="none" stroke={card.tone} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </Box>
+                  ))}
+                </Stack>
+              </Paper>
+            </Grid>
+
+            <Grid size={{ xs: 12, lg: 7 }} sx={{ order: { xs: 3, lg: 1 } }}>
+              <Paper id="seeker-planets" sx={{ p: 2.5, borderRadius: '20px', border: '1px solid', borderColor: COLORS.background }}>
+                <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.5 }}>
+                  <TrendingUp sx={{ fontSize: 18, color: COLORS.accent }} />
+                  <Typography variant="subtitle1" sx={{ fontWeight: 800, color: COLORS.primary }}>Planetary Positions</Typography>
+                </Stack>
+                <Stack spacing={1}>
+                  {chartPositions.slice(0, 10).map((position: any) => (
+                    <Box key={`${position.planet}-${position.house}-${position.sign}`} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: 1, borderBottom: `1px solid ${alpha(COLORS.primary, 0.08)}` }}>
+                      <Typography variant="body2" sx={{ fontWeight: 700 }}>{translatePlanetName(position.planet, language)}</Typography>
+                      <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
+                        {translateHoroscopeValue(position.sign, language)} | H{position.house} | {position.degree}
+                      </Typography>
+                    </Box>
+                  ))}
+                </Stack>
+              </Paper>
+            </Grid>
+
+            <Grid size={{ xs: 12, lg: 5 }} sx={{ order: { xs: 2, lg: 2 } }}>
+              <Stack spacing={2}>
+                <Paper id="seeker-snapshot" sx={{ p: 2.5, borderRadius: '20px', border: '1px solid', borderColor: COLORS.background }}>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 800, color: COLORS.primary, mb: 1 }}>Birth Snapshot</Typography>
+                  <Stack spacing={1}>
+                    <Chip label={`Date: ${storedBirthDate || texts.birthDateNeeded}`} variant="outlined" />
+                    <Chip label={`Time: ${storedKnownBirthTime ? (storedBirthTime || texts.birthTimeNeeded) : 'Approximate (12:00 used)'}`} variant="outlined" />
+                    <Chip label={`Place: ${storedBirthPlace || texts.birthPlaceNeeded}`} variant="outlined" />
+                    <Chip label={`Last refreshed: ${chartMeta?.generatedAt ? new Date(chartMeta.generatedAt).toLocaleDateString('en-LK') : 'recently'}`} icon={<AutoAwesome />} sx={{ bgcolor: alpha(COLORS.secondary, 0.16), color: COLORS.primary, fontWeight: 700 }} />
+                  </Stack>
+                </Paper>
+
+                <Paper id="seeker-highlights" sx={{ p: 2.5, borderRadius: '20px', border: '1px solid', borderColor: COLORS.background }}>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 800, color: COLORS.primary, mb: 1 }}>Profile Highlights</Typography>
+                  <Stack spacing={1.5}>
+                    <Box>
+                      <Typography variant="caption" sx={{ display: 'block', color: COLORS.textSecondary, fontWeight: 800, letterSpacing: 0.5, mb: 0.5 }}>
+                        Lucky Colors
+                      </Typography>
+                      <Typography variant="caption" sx={{ display: 'block', color: COLORS.textSecondary, mb: 0.8 }}>
+                        Colors considered supportive for your daily choices and personal energy.
+                      </Typography>
+                      <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                        {(luckyColors.length ? luckyColors : ['Not available']).map((value: string) => (
+                          <Chip
+                            key={`color-${value}`}
+                            label={value}
+                            size="small"
+                            avatar={
+                              <Avatar
+                                sx={{
+                                  width: 18,
+                                  height: 18,
+                                  bgcolor: getColorHex(value),
+                                  border: '1px solid rgba(0,0,0,0.16)',
+                                }}
+                              />
+                            }
+                            sx={{ bgcolor: alpha(COLORS.accent, 0.1), color: COLORS.accent, fontWeight: 700 }}
+                          />
+                        ))}
+                      </Stack>
+                    </Box>
+
+                    <Box>
+                      <Typography variant="caption" sx={{ display: 'block', color: COLORS.textSecondary, fontWeight: 800, letterSpacing: 0.5, mb: 0.5 }}>
+                        Auspicious Days
+                      </Typography>
+                      <Typography variant="caption" sx={{ display: 'block', color: COLORS.textSecondary, mb: 0.8 }}>
+                        Days that are generally better aligned for important activities.
+                      </Typography>
+                      <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                        {(auspiciousDays.length ? auspiciousDays : ['Not available']).map((value: string) => (
+                          <Chip key={`day-${value}`} label={value} size="small" sx={{ bgcolor: alpha(COLORS.secondary, 0.2), color: COLORS.primary, fontWeight: 700 }} />
+                        ))}
+                      </Stack>
+                    </Box>
+
+                    <Box>
+                      <Typography variant="caption" sx={{ display: 'block', color: COLORS.textSecondary, fontWeight: 800, letterSpacing: 0.5, mb: 0.5 }}>
+                        Favorable Partner Signs
+                      </Typography>
+                      <Typography variant="caption" sx={{ display: 'block', color: COLORS.textSecondary, mb: 0.8 }}>
+                        Signs that may naturally align better with your chart tendencies.
+                      </Typography>
+                      <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                        {(favorablePartners.length ? favorablePartners : ['Not available']).map((value: string) => (
+                          <Chip key={`partner-${value}`} label={value} size="small" sx={{ bgcolor: alpha(COLORS.primary, 0.1), color: COLORS.primary, fontWeight: 700 }} />
+                        ))}
+                      </Stack>
+                    </Box>
+
+                    <Box>
+                      <Typography variant="caption" sx={{ display: 'block', color: COLORS.textSecondary, fontWeight: 800, letterSpacing: 0.5, mb: 0.5 }}>
+                        Personal Notes
+                      </Typography>
+                      <Typography variant="caption" sx={{ display: 'block', color: COLORS.textSecondary, mb: 0.8 }}>
+                        Quick horoscope-based notes generated from your profile.
+                      </Typography>
+                      <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                        {(profileFacts.length ? profileFacts : ['Not available']).map((value: string) => (
+                          <Chip key={`fact-${value}`} label={value} size="small" sx={{ bgcolor: alpha('#1565C0', 0.12), color: '#1565C0', fontWeight: 700 }} />
+                        ))}
+                      </Stack>
+                    </Box>
+                  </Stack>
+                </Paper>
+              </Stack>
+            </Grid>
+
+            <Grid size={{ xs: 12 }} sx={{ order: 4 }}>
+              <Paper id="seeker-insights" sx={{ p: 2.5, borderRadius: '20px', border: '1px solid', borderColor: COLORS.background }}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 800, color: COLORS.primary, mb: 1.5 }}>Today's Insights</Typography>
+                <Grid container spacing={1.25}>
+                  {(insightItems.length ? insightItems : ['Your chart is loading personalized insights.']).map((insight: any, idx: number) => (
+                    <Grid size={{ xs: 12, md: 6 }} key={typeof insight === 'string' ? insight : `insight-${idx}`}>
+                      <Box sx={{ p: 1.5, borderRadius: '12px', bgcolor: alpha(COLORS.primary, 0.04), border: `1px solid ${alpha(COLORS.primary, 0.12)}` }}>
+                        <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
+                          {typeof insight === 'string' ? insight : insight?.text || insight?.title || 'Insight available in your chart.'}
+                        </Typography>
+                      </Box>
+                    </Grid>
+                  ))}
+                </Grid>
+              </Paper>
+            </Grid>
+          </Grid>
+        </Grid>
+      </Grid>
+    </Box>
+  );
+}

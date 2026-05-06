@@ -57,6 +57,7 @@ import { fetchMyChart, calculateCompatibility, clearCompatibility } from '../sto
 import { fetchProfile, updateUser } from '@/features/auth/store/authSlice';
 import { setLanguage } from '@/app/store/uiSlice';
 import BirthChartWheel from '../components/BirthChartWheel';
+import HoroscopeSeekerDashboard from '../components/HoroscopeSeekerDashboard';
 import CompatibilityScores from '../components/CompatibilityScores';
 import matchService from '@/features/matchmaking/services/matchService';
 import userService from '@/features/profile/services/userService';
@@ -158,9 +159,24 @@ const formatSafeDisplayDate = (value: unknown, locale = 'en-LK') => {
   return Number.isNaN(parsed.getTime()) ? null : parsed.toLocaleDateString(locale);
 };
 
+const resolveAvatarSrc = (...sources: any[]) => {
+  for (const source of sources) {
+    if (!source || typeof source !== 'string') continue;
+    const value = source.trim();
+    if (!value) continue;
+    if (/^(https?:)?\/\//i.test(value) || value.startsWith('data:') || value.startsWith('blob:')) {
+      return value;
+    }
+    return value.startsWith('/') ? value : `/${value}`;
+  }
+  return undefined;
+};
+
 const HoroscopeView = () => {
   const dispatch = useDispatch<AppDispatch>();
   const { user } = useSelector((state: RootState) => state.auth);
+  const isHoroscopeSeeker = user?.profileType === 'horoscope_seeker' || user?.userType === 'horoscope_seeker';
+  const [liveTime, setLiveTime] = useState(() => new Date());
   const language = useSelector((state: RootState) => state.ui.language);
   const texts = HOROSCOPE_TEXT[language];
   const { myChart, compatibility, isLoading, isCalculating, error } = useSelector((state: RootState) => state.horoscope);
@@ -195,6 +211,12 @@ const HoroscopeView = () => {
   const favorablePartners = profileHighlights?.favorablePartners ?? [];
   const profileFacts = profileHighlights?.profileFacts ?? [];
   const chartMeta = myChart?.meta;
+  const seekerAvatarSrc = resolveAvatarSrc(
+    user?.profilePic,
+    user?.personalInfo?.profilePic,
+    user?.photos?.find?.((photo: any) => photo?.isMain)?.url,
+    user?.photos?.[0]?.url
+  );
 
   const storedBirthDate =
     chartMeta?.generatedFrom?.birthDate ||
@@ -227,6 +249,14 @@ const HoroscopeView = () => {
   const generatedFrom = chartMeta?.generatedFrom;
   const normalizedStoredBirthPlace = String(storedBirthPlace || '').trim().toLowerCase();
   const normalizedGeneratedBirthPlace = String(generatedFrom?.birthPlace || '').trim().toLowerCase();
+  const hasRightColumnContent = Boolean(
+    chartDetails?.dasaInfo?.current ||
+    (chartSummary?.marriageWindow?.length || 0) > 0 ||
+    chartSummary?.seventhHouseAnalysis ||
+    chartSummary?.venusSummary ||
+    chartSummary?.jupiterSummary ||
+    !isHoroscopeSeeker
+  );
   const chartProfileSignature = [
     String(user?._id || ''),
     String(storedBirthDate || ''),
@@ -234,6 +264,33 @@ const HoroscopeView = () => {
     storedKnownBirthTime ? 'known' : 'unknown',
     storedKnownBirthTime ? String(storedBirthTime || '') : '',
   ].join('|');
+
+  const getGreeting = () => {
+    const hour = liveTime.getHours();
+    if (hour >= 5 && hour < 12) return 'Good morning';
+    if (hour >= 12 && hour < 17) return 'Good afternoon';
+    if (hour >= 17 && hour < 21) return 'Good evening';
+    return 'Good night';
+  };
+
+  const getGregorianDate = () => {
+    const options: Intl.DateTimeFormatOptions = {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    };
+    return liveTime.toLocaleDateString('en-US', options);
+  };
+
+  const getLiveTimeString = () => {
+    return liveTime.toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true,
+    });
+  };
   const chartNeedsRefresh = Boolean(
     myChart && (
       !generatedFrom ||
@@ -249,6 +306,11 @@ const HoroscopeView = () => {
     waitingForStructuredBirthData ||
     (!hasCriticalBirthDetailsMissing && !myChart && !error)
   );
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setLiveTime(new Date()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     if (needsProfileRefresh) {
@@ -314,6 +376,12 @@ const HoroscopeView = () => {
   }, [birthForm.birthPlace, editorOpen]);
 
   useEffect(() => {
+    if (isHoroscopeSeeker) {
+      setMatches([]);
+      setLoadingMatches(false);
+      return;
+    }
+
     const fetchMatches = async () => {
       setLoadingMatches(true);
       try {
@@ -335,7 +403,7 @@ const HoroscopeView = () => {
     };
 
     fetchMatches();
-  }, []);
+  }, [isHoroscopeSeeker]);
 
   const handleCalculate = async () => {
     if (!selectedMatch || !user) return;
@@ -423,12 +491,164 @@ const HoroscopeView = () => {
     );
   }
 
+  if (isHoroscopeSeeker) {
+    return (
+      <>
+        <HoroscopeSeekerDashboard
+          user={user}
+          language={language}
+          texts={texts}
+          chartSummary={chartSummary}
+          chartPlanets={chartPlanets}
+          chartPositions={chartPositions}
+          readingHighlights={readingHighlights}
+          profileHighlights={profileHighlights}
+          chartMeta={chartMeta}
+          storedBirthDate={storedBirthDate}
+          storedBirthTime={storedBirthTime}
+          storedBirthPlace={storedBirthPlace}
+          storedKnownBirthTime={storedKnownBirthTime}
+          accuracyNotice={accuracyNotice}
+          hasCriticalBirthDetailsMissing={hasCriticalBirthDetailsMissing}
+          error={error}
+          birthFeedback={birthFeedback}
+          onRefresh={() => dispatch(fetchMyChart({ force: true }))}
+          onOpenEditor={openEditor}
+          onPrint={() => window.print()}
+        />
+
+        <Dialog open={editorOpen} onClose={() => !isSavingBirthDetails && setEditorOpen(false)} fullWidth maxWidth="sm">
+          <DialogTitle sx={{ pb: 1 }}>
+            <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={2}>
+              <Box>
+                <Typography variant="overline" sx={{ fontWeight: 800, letterSpacing: 1.5, color: COLORS.accent, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>
+                  {texts.horoscopeUpdate}
+                </Typography>
+                <Typography variant="h5" sx={{ fontWeight: 800, color: COLORS.primary, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>
+                  {texts.editBirthDetails}
+                </Typography>
+              </Box>
+              <IconButton onClick={() => setEditorOpen(false)} disabled={isSavingBirthDetails}>
+                <Close />
+              </IconButton>
+            </Stack>
+          </DialogTitle>
+
+          <DialogContent sx={{ pb: 3 }}>
+            <Paper
+              sx={{
+                p: 2,
+                mb: 3,
+                borderRadius: '18px',
+                background: 'linear-gradient(135deg, rgba(26,107,114,0.08) 0%, rgba(201,168,76,0.18) 100%)',
+              }}
+            >
+              <Typography variant="body2" sx={{ color: 'text.primary', fontWeight: 600, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>
+                {texts.dialogDescription}
+              </Typography>
+              <Typography variant="caption" sx={{ display: 'block', mt: 0.75, color: COLORS.textSecondary, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>
+                {texts.enterBirthTimeHelp}
+              </Typography>
+            </Paper>
+
+            {birthFormError && (
+              <Alert severity="error" sx={{ mb: 2, borderRadius: '12px' }}>
+                {birthFormError}
+              </Alert>
+            )}
+
+            <Stack spacing={2.5}>
+              <TextField
+                label={texts.birthDate}
+                type="date"
+                value={birthForm.birthDate}
+                onChange={(event) => setBirthForm((current) => ({ ...current, birthDate: event.target.value }))}
+                InputLabelProps={{ shrink: true }}
+                fullWidth
+              />
+
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={!birthForm.knowsBirthTime}
+                    onChange={(event) =>
+                      setBirthForm((current) => ({
+                        ...current,
+                        knowsBirthTime: !event.target.checked,
+                        birthTime: event.target.checked ? '' : current.birthTime,
+                      }))
+                    }
+                    sx={{ color: COLORS.primary }}
+                  />
+                }
+                label={texts.unknownBirthTime}
+              />
+
+              <TextField
+                label={texts.birthTime}
+                type="time"
+                value={birthForm.birthTime}
+                onChange={(event) => setBirthForm((current) => ({ ...current, birthTime: event.target.value }))}
+                InputLabelProps={{ shrink: true }}
+                disabled={!birthForm.knowsBirthTime}
+                helperText={
+                  birthForm.knowsBirthTime
+                    ? texts.enterBirthTimeHelp
+                    : texts.approximateTimeHelp
+                }
+                fullWidth
+              />
+
+              <Autocomplete
+                freeSolo
+                options={birthPlaceOptions}
+                inputValue={birthForm.birthPlace}
+                onInputChange={(_, newValue) => setBirthForm((current) => ({ ...current, birthPlace: newValue }))}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label={texts.birthPlace}
+                    placeholder={texts.birthPlace}
+                    helperText={texts.birthPlaceHelp}
+                    InputProps={{
+                      ...params.InputProps,
+                      endAdornment: (
+                        <>
+                          {birthPlaceLoading ? <CircularProgress size={18} sx={{ mr: 1 }} /> : null}
+                          {params.InputProps.endAdornment}
+                        </>
+                      ),
+                    }}
+                  />
+                )}
+              />
+
+              <Stack direction={{ xs: 'column-reverse', sm: 'row' }} spacing={1.5} justifyContent="flex-end">
+                <Button variant="text" onClick={() => setEditorOpen(false)} disabled={isSavingBirthDetails} sx={{ fontFamily: LANGUAGE_FONT_FAMILY[language] }}>
+                  {texts.cancel}
+                </Button>
+                <Button
+                  variant="contained"
+                  onClick={handleSaveBirthDetails}
+                  disabled={isSavingBirthDetails}
+                  sx={{ borderRadius: '12px', bgcolor: COLORS.primary, fontFamily: LANGUAGE_FONT_FAMILY[language] }}
+                >
+                  {isSavingBirthDetails ? <CircularProgress size={22} color="inherit" /> : texts.saveReload}
+                </Button>
+              </Stack>
+            </Stack>
+          </DialogContent>
+        </Dialog>
+      </>
+    );
+  }
+
   return (
     <Box sx={{ p: { xs: 2, md: 4 }, maxWidth: '1200px', mx: 'auto' }}>
       <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 2 }}>
         <Box sx={{ flex: '1 1 420px', minWidth: 0, minHeight: { xs: 'auto', md: 88 } }}>
           <Typography variant="h3" sx={{ fontFamily: 'Playfair Display', fontWeight: 800, color: COLORS.primary, mb: 1 }}>
-            {texts.birthChartTitle}
+            {isHoroscopeSeeker ? 'Horoscope Dashboard' : texts.birthChartTitle}
           </Typography>
           <Typography variant="body1" sx={{ color: COLORS.textSecondary, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>
             {texts.calculatedFromProfile}
@@ -524,6 +744,94 @@ const HoroscopeView = () => {
         <Alert severity="error" sx={{ mb: 3, borderRadius: '12px' }}>
           {error}
         </Alert>
+      )}
+
+      {isHoroscopeSeeker && (
+        <Paper
+          sx={{
+            p: { xs: 2, md: 2.5 },
+            mb: 3,
+            borderRadius: '22px',
+            background: 'linear-gradient(135deg, rgba(139,26,46,0.06) 0%, rgba(201,168,76,0.14) 100%)',
+            border: '1px solid rgba(139,26,46,0.14)',
+            boxShadow: '0 10px 28px rgba(139,26,46,0.08)',
+          }}
+        >
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ xs: 'flex-start', md: 'center' }}>
+            <Avatar
+              src={seekerAvatarSrc}
+              alt={user?.name || 'Seeker'}
+              sx={{
+                width: 64,
+                height: 64,
+                border: `3px solid ${alpha(COLORS.secondary, 0.5)}`,
+                boxShadow: '0 8px 24px rgba(139,26,46,0.12)',
+                bgcolor: alpha(COLORS.secondary, 0.16),
+                color: COLORS.primary,
+                fontWeight: 700,
+                flexShrink: 0,
+              }}
+            >
+              {(user?.name || 'S').charAt(0).toUpperCase()}
+            </Avatar>
+
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <Typography variant="h5" sx={{ fontFamily: 'Playfair Display', fontWeight: 800, color: COLORS.primary, mb: 1 }}>
+                {getGreeting()}, {user?.name || 'Seeker'}
+              </Typography>
+              <Stack direction="row" spacing={1} alignItems="center" useFlexGap flexWrap="wrap">
+                <Box
+                  sx={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 0.75,
+                    px: 1.5,
+                    py: 0.7,
+                    borderRadius: '999px',
+                    bgcolor: alpha(COLORS.accent, 0.1),
+                    border: `1px solid ${alpha(COLORS.accent, 0.22)}`,
+                  }}
+                >
+                  <Typography variant="body2" sx={{ color: COLORS.accent, fontWeight: 700 }}>
+                    {getGregorianDate()} ·
+                  </Typography>
+                  <Box
+                    component="span"
+                    sx={{
+                      color: COLORS.accent,
+                      fontWeight: 800,
+                      fontFamily: 'monospace',
+                      fontVariantNumeric: 'tabular-nums',
+                      display: 'inline-block',
+                      minWidth: '11ch',
+                      textAlign: 'left',
+                    }}
+                  >
+                    {getLiveTimeString()}
+                  </Box>
+                </Box>
+                <Chip
+                  label={`Nakshatra: ${translateHoroscopeValue(chartSummary?.nakshatra || texts.pending, language)}`}
+                  sx={{ bgcolor: alpha(COLORS.secondary, 0.2), color: COLORS.primary, fontWeight: 700 }}
+                />
+                <Chip
+                  label={`Gana: ${translateHoroscopeValue(chartSummary?.gana || texts.pending, language)}`}
+                  sx={{ bgcolor: alpha(COLORS.accent, 0.12), color: COLORS.accent, fontWeight: 800 }}
+                />
+                <Chip
+                  label={`Ascendant: ${translateHoroscopeValue(chartSummary?.ascendant || texts.pending, language)}`}
+                  sx={{ bgcolor: alpha(COLORS.primary, 0.08), color: COLORS.primary, fontWeight: 800 }}
+                />
+                <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 1, px: 1.5, py: 0.7, borderRadius: '999px', bgcolor: alpha(COLORS.accent, 0.06), border: `1px solid ${alpha(COLORS.accent, 0.2)}` }}>
+                  <AccessTime sx={{ fontSize: 16, color: COLORS.accent }} />
+                  <Typography variant="body2" sx={{ color: COLORS.accent, fontWeight: 700 }}>
+                    Today's Focus: {chartSummary?.auspiciousTime || texts.pending}
+                  </Typography>
+                </Box>
+              </Stack>
+            </Box>
+          </Stack>
+        </Paper>
       )}
 
       {birthFeedback && (
@@ -661,7 +969,7 @@ const HoroscopeView = () => {
 
       {chartSummary && (
         <Grid container spacing={6} alignItems="flex-start">
-          <Grid size={{ xs: 12, lg: 6 }}>
+          <Grid size={{ xs: 12, lg: hasRightColumnContent ? 6 : 12 }}>
             <Paper
               sx={{
                 p: 4,
@@ -927,6 +1235,7 @@ const HoroscopeView = () => {
             </Paper>
           </Grid>
 
+          {hasRightColumnContent && (
           <Grid size={{ xs: 12, lg: 6 }}>
             <Stack spacing={3}>
 
@@ -1140,122 +1449,125 @@ const HoroscopeView = () => {
               </Paper>
             )}
 
-            <Paper
-              sx={{
-                p: 3,
-                borderRadius: '40px',
-                bgcolor: 'white',
-                boxShadow: '0 10px 40px rgba(139,26,46,0.05)',
-                border: '1px solid',
-                borderColor: COLORS.background,
-              }}
-            >
-              <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
-                <Typography variant="h5" sx={{ fontFamily: LANGUAGE_FONT_FAMILY[language], fontWeight: 700, color: COLORS.primary }}>
-                  {texts.checkCompatibilityWith}
-                </Typography>
-              </Stack>
-
-              <Stack spacing={2}>
-                <Box>
-                  <Typography variant="body2" sx={{ fontWeight: 700, mb: 1, color: COLORS.textSecondary, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>
-                    {texts.selectFromMatches}
+            {!isHoroscopeSeeker && (
+              <Paper
+                sx={{
+                  p: 3,
+                  borderRadius: '40px',
+                  bgcolor: 'white',
+                  boxShadow: '0 10px 40px rgba(139,26,46,0.05)',
+                  border: '1px solid',
+                  borderColor: COLORS.background,
+                }}
+              >
+                <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
+                  <Typography variant="h5" sx={{ fontFamily: LANGUAGE_FONT_FAMILY[language], fontWeight: 700, color: COLORS.primary }}>
+                    {texts.checkCompatibilityWith}
                   </Typography>
-                  <Autocomplete
-                    options={matches}
-                    loading={loadingMatches}
-                    value={selectedMatch}
-                    getOptionLabel={(option) => option.name}
-                    onChange={(_, newValue) => { setSelectedMatch(newValue); setCompatibilityError(null); dispatch(clearCompatibility()); }}
-                    renderOption={(props, option) => (
-                      <Box component="li" {...props} sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 1.5, py: 1 }}>
-                        <Avatar
-                          src={option.photo || undefined}
-                          alt={option.name}
-                          sx={{
-                            width: 44, height: 44, flexShrink: 0,
-                            bgcolor: alpha(COLORS.primary, 0.15),
-                            color: COLORS.primary,
-                            fontWeight: 800, fontSize: '0.85rem',
-                            border: `2px solid ${alpha(COLORS.secondary, 0.5)}`,
-                          }}
-                        >
-                          {option.initials}
-                        </Avatar>
-                        <Box sx={{ minWidth: 0 }}>
-                          <Stack direction="row" alignItems="center" spacing={0.75}>
-                            <Typography variant="body2" sx={{ fontWeight: 700 }} noWrap>{option.name}</Typography>
-                            <Chip
-                              label="Mutual"
-                              size="small"
-                              sx={{ height: 16, fontSize: '0.6rem', fontWeight: 800,
-                                bgcolor: alpha(COLORS.accent, 0.12), color: COLORS.accent,
-                                borderRadius: '5px', px: 0.5 }}
-                            />
-                          </Stack>
-                          <Typography variant="caption" sx={{ color: COLORS.textSecondary, fontFamily: LANGUAGE_FONT_FAMILY[language] }} noWrap>
-                            {translateHoroscopeValue(option.sign, language)} · {texts.moonSign}
-                          </Typography>
+                </Stack>
+
+                <Stack spacing={2}>
+                  <Box>
+                    <Typography variant="body2" sx={{ fontWeight: 700, mb: 1, color: COLORS.textSecondary, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>
+                      {texts.selectFromMatches}
+                    </Typography>
+                    <Autocomplete
+                      options={matches}
+                      loading={loadingMatches}
+                      value={selectedMatch}
+                      getOptionLabel={(option) => option.name}
+                      onChange={(_, newValue) => { setSelectedMatch(newValue); setCompatibilityError(null); dispatch(clearCompatibility()); }}
+                      renderOption={(props, option) => (
+                        <Box component="li" {...props} sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 1.5, py: 1 }}>
+                          <Avatar
+                            src={option.photo || undefined}
+                            alt={option.name}
+                            sx={{
+                              width: 44, height: 44, flexShrink: 0,
+                              bgcolor: alpha(COLORS.primary, 0.15),
+                              color: COLORS.primary,
+                              fontWeight: 800, fontSize: '0.85rem',
+                              border: `2px solid ${alpha(COLORS.secondary, 0.5)}`,
+                            }}
+                          >
+                            {option.initials}
+                          </Avatar>
+                          <Box sx={{ minWidth: 0 }}>
+                            <Stack direction="row" alignItems="center" spacing={0.75}>
+                              <Typography variant="body2" sx={{ fontWeight: 700 }} noWrap>{option.name}</Typography>
+                              <Chip
+                                label="Mutual"
+                                size="small"
+                                sx={{ height: 16, fontSize: '0.6rem', fontWeight: 800,
+                                  bgcolor: alpha(COLORS.accent, 0.12), color: COLORS.accent,
+                                  borderRadius: '5px', px: 0.5 }}
+                              />
+                            </Stack>
+                            <Typography variant="caption" sx={{ color: COLORS.textSecondary, fontFamily: LANGUAGE_FONT_FAMILY[language] }} noWrap>
+                              {translateHoroscopeValue(option.sign, language)} · {texts.moonSign}
+                            </Typography>
+                          </Box>
                         </Box>
-                      </Box>
-                    )}
-                    renderInput={(params) => (
-                      <TextField
-                        {...params}
-                        placeholder={texts.searchPartnerName}
-                        InputProps={{
-                          ...params.InputProps,
-                          startAdornment: (
-                            <InputAdornment position="start">
-                              <Search sx={{ color: COLORS.textSecondary }} />
-                            </InputAdornment>
-                          ),
-                          endAdornment: (
-                            <>
-                              {loadingMatches ? <CircularProgress size={18} sx={{ mr: 1 }} /> : null}
-                              {params.InputProps.endAdornment}
-                            </>
-                          ),
-                          sx: { borderRadius: '16px' },
-                        }}
-                      />
-                    )}
-                  />
-                </Box>
+                      )}
+                      renderInput={(params) => (
+                        <TextField
+                          {...params}
+                          placeholder={texts.searchPartnerName}
+                          InputProps={{
+                            ...params.InputProps,
+                            startAdornment: (
+                              <InputAdornment position="start">
+                                <Search sx={{ color: COLORS.textSecondary }} />
+                              </InputAdornment>
+                            ),
+                            endAdornment: (
+                              <>
+                                {loadingMatches ? <CircularProgress size={18} sx={{ mr: 1 }} /> : null}
+                                {params.InputProps.endAdornment}
+                              </>
+                            ),
+                            sx: { borderRadius: '16px' },
+                          }}
+                        />
+                      )}
+                    />
+                  </Box>
 
-                <Divider />
+                  <Divider />
 
-                <Button
-                  fullWidth
-                  variant="contained"
-                  size="large"
-                  onClick={handleCalculate}
-                  disabled={!selectedMatch || isCalculating}
-                  sx={{
-                    py: 2,
-                    borderRadius: '16px',
-                    bgcolor: COLORS.secondary,
-                    color: COLORS.primary,
-                    fontWeight: 800,
-                    '&:hover': { bgcolor: '#B89740' },
-                    boxShadow: '0 8px 24px rgba(201,168,76,0.3)',
-                  }}
-                >
-                  {isCalculating ? <CircularProgress size={24} color="inherit" /> : texts.calculateCompatibility}
-                </Button>
+                  <Button
+                    fullWidth
+                    variant="contained"
+                    size="large"
+                    onClick={handleCalculate}
+                    disabled={!selectedMatch || isCalculating}
+                    sx={{
+                      py: 2,
+                      borderRadius: '16px',
+                      bgcolor: COLORS.secondary,
+                      color: COLORS.primary,
+                      fontWeight: 800,
+                      '&:hover': { bgcolor: '#B89740' },
+                      boxShadow: '0 8px 24px rgba(201,168,76,0.3)',
+                    }}
+                  >
+                    {isCalculating ? <CircularProgress size={24} color="inherit" /> : texts.calculateCompatibility}
+                  </Button>
 
-                {compatibilityError && (
-                  <Alert severity="error" sx={{ borderRadius: '12px' }}>
-                    {compatibilityError}
-                  </Alert>
-                )}
-              </Stack>
-            </Paper>
+                  {compatibilityError && (
+                    <Alert severity="error" sx={{ borderRadius: '12px' }}>
+                      {compatibilityError}
+                    </Alert>
+                  )}
+                </Stack>
+              </Paper>
+            )}
             </Stack>{/* end right-column Stack */}
           </Grid>
+          )}
 
           <AnimatePresence>
-            {compatibility?.dimensions?.length > 0 && (
+            {!isHoroscopeSeeker && compatibility?.dimensions?.length > 0 && (
               <Grid size={{ xs: 12 }}>
                 <motion.div
                   ref={compatibilityResultsRef}
