@@ -80,6 +80,7 @@ const SRI_LANKAN_ETHNICITIES = [
 export default function EditProfile() {
   const navigate = useNavigate();
   const { user, token } = useSelector((state: RootState) => state.auth);
+  const isHoroscopeSeeker = user?.profileType === 'horoscope_seeker' || user?.userType === 'horoscope_seeker';
   const dispatch = useDispatch();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -307,7 +308,16 @@ export default function EditProfile() {
     setSaving(true);
     setError(null);
     try {
-      const response = await userService.updateProfile(buildProfileUpdatePayload(formData));
+      const fullPayload = buildProfileUpdatePayload(formData);
+      const seekerPayload = {
+        name: fullPayload.name,
+        birthDate: fullPayload.birthDate,
+        birthTime: fullPayload.birthTime,
+        birthPlace: fullPayload.birthPlace,
+        knownBirthTime: fullPayload.knownBirthTime,
+      };
+
+      const response = await userService.updateProfile(isHoroscopeSeeker ? seekerPayload : fullPayload);
       setFormData((prev) => ({
         ...prev,
         ...buildEditProfileFormData(response),
@@ -366,64 +376,80 @@ export default function EditProfile() {
           <ChevronLeft />
         </IconButton>
         <Typography variant="h4" sx={{ fontFamily: 'Playfair Display', fontWeight: 800, color: COLORS.primary }}>
-          Edit Profile
+          {isHoroscopeSeeker ? 'Edit Horoscope Profile' : 'Edit Profile'}
         </Typography>
       </Box>
+
+      {isHoroscopeSeeker && (
+        <Alert
+          severity="info"
+          sx={{
+            mb: 3,
+            borderRadius: 3,
+            backgroundColor: alpha(COLORS.secondary, 0.12),
+            color: COLORS.textPrimary,
+          }}
+        >
+          These settings are tailored for horoscope seekers. Only registration details are editable here.
+        </Alert>
+      )}
 
       <Grid container spacing={4}>
         {/* Basic Info Section */}
         <Grid size={{ xs: 12, md: 8 }}>
           <Stack spacing={4}>
-            <MotionPaper
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              sx={{ p: 4, borderRadius: '24px', boxShadow: '0 2px 16px rgba(139,26,46,0.05)' }}
-            >
-              <Typography variant="h6" sx={{ mb: 3, fontWeight: 800, color: COLORS.primary, display: 'flex', alignItems: 'center', gap: 1 }}>
-                <User size={20} /> Basic Information
-              </Typography>
-              <Grid container spacing={3}>
-                <Grid size={{ xs: 12, sm: 6 }}>
-                  <TextField
-                    fullWidth
-                    label="Full Name"
-                    value={formData.name}
-                    onChange={(e) => handleChange('name', e.target.value)}
-                    variant="outlined"
-                  />
+            {!isHoroscopeSeeker && (
+              <MotionPaper
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                sx={{ p: 4, borderRadius: '24px', boxShadow: '0 2px 16px rgba(139,26,46,0.05)' }}
+              >
+                <Typography variant="h6" sx={{ mb: 3, fontWeight: 800, color: COLORS.primary, display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <User size={20} /> Basic Information
+                </Typography>
+                <Grid container spacing={3}>
+                  <Grid size={{ xs: 12, sm: 6 }}>
+                    <TextField
+                      fullWidth
+                      label="Full Name"
+                      value={formData.name}
+                      onChange={(e) => handleChange('name', e.target.value)}
+                      variant="outlined"
+                    />
+                  </Grid>
+                  <Grid size={{ xs: 12, sm: 6 }}>
+                    <TextField
+                      fullWidth
+                      label="Tagline"
+                      placeholder="Short bio for your profile"
+                      value={formData.tagline}
+                      onChange={(e) => handleChange('tagline', e.target.value)}
+                      variant="outlined"
+                    />
+                  </Grid>
+                  <Grid size={{ xs: 12 }}>
+                    <TextField
+                      fullWidth
+                      label="About Me"
+                      multiline
+                      rows={4}
+                      value={formData.bio}
+                      onChange={(e) => handleChange('bio', e.target.value)}
+                      variant="outlined"
+                    />
+                  </Grid>
+                  <Grid size={{ xs: 12, sm: 6 }}>
+                    <TextField
+                      fullWidth
+                      label="Location"
+                      value={formData.location}
+                      onChange={(e) => handleChange('location', e.target.value)}
+                      InputProps={{ startAdornment: <MapPin size={18} style={{ marginRight: 8, color: COLORS.textSecondary }} /> }}
+                    />
+                  </Grid>
                 </Grid>
-                <Grid size={{ xs: 12, sm: 6 }}>
-                  <TextField
-                    fullWidth
-                    label="Tagline"
-                    placeholder="Short bio for your profile"
-                    value={formData.tagline}
-                    onChange={(e) => handleChange('tagline', e.target.value)}
-                    variant="outlined"
-                  />
-                </Grid>
-                <Grid size={{ xs: 12 }}>
-                  <TextField
-                    fullWidth
-                    label="About Me"
-                    multiline
-                    rows={4}
-                    value={formData.bio}
-                    onChange={(e) => handleChange('bio', e.target.value)}
-                    variant="outlined"
-                  />
-                </Grid>
-                <Grid size={{ xs: 12, sm: 6 }}>
-                  <TextField
-                    fullWidth
-                    label="Location"
-                    value={formData.location}
-                    onChange={(e) => handleChange('location', e.target.value)}
-                    InputProps={{ startAdornment: <MapPin size={18} style={{ marginRight: 8, color: COLORS.textSecondary }} /> }}
-                  />
-                </Grid>
-              </Grid>
-            </MotionPaper>
+              </MotionPaper>
+            )}
 
             {/* Birth Details Section */}
             <MotionPaper
@@ -433,7 +459,7 @@ export default function EditProfile() {
               sx={{ p: 4, borderRadius: '24px', boxShadow: '0 2px 16px rgba(139,26,46,0.05)' }}
             >
               <Typography variant="h6" sx={{ mb: 3, fontWeight: 800, color: COLORS.primary, display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Calendar size={20} /> Birth Details (for Horoscope)
+                <Calendar size={20} /> Registration Birth Details
               </Typography>
               <Grid container spacing={3}>
                 <Grid size={{ xs: 12, sm: 4 }}>
@@ -489,116 +515,120 @@ export default function EditProfile() {
               </Grid>
             </MotionPaper>
 
-            {/* Professional & Education Section */}
-            <MotionPaper
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.2 }}
-              sx={{ p: 4, borderRadius: '24px', boxShadow: '0 2px 16px rgba(139,26,46,0.05)' }}
-            >
-              <Typography variant="h6" sx={{ mb: 3, fontWeight: 800, color: COLORS.primary, display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Briefcase size={20} /> Education & Career
-              </Typography>
-              <Grid container spacing={3}>
-                <Grid size={{ xs: 12, sm: 6 }}>
-                  <TextField
-                    fullWidth
-                    label="Education"
-                    value={formData.education}
-                    onChange={(e) => handleChange('education', e.target.value)}
-                    InputProps={{ startAdornment: <GraduationCap size={18} style={{ marginRight: 8, color: COLORS.textSecondary }} /> }}
-                  />
-                </Grid>
-                <Grid size={{ xs: 12, sm: 6 }}>
-                  <TextField
-                    fullWidth
-                    label="Occupation"
-                    value={formData.occupation}
-                    onChange={(e) => handleChange('occupation', e.target.value)}
-                    InputProps={{ startAdornment: <Briefcase size={18} style={{ marginRight: 8, color: COLORS.textSecondary }} /> }}
-                  />
-                </Grid>
-              </Grid>
-            </MotionPaper>
+            {!isHoroscopeSeeker && (
+              <>
+                {/* Professional & Education Section */}
+                <MotionPaper
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.2 }}
+                  sx={{ p: 4, borderRadius: '24px', boxShadow: '0 2px 16px rgba(139,26,46,0.05)' }}
+                >
+                  <Typography variant="h6" sx={{ mb: 3, fontWeight: 800, color: COLORS.primary, display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Briefcase size={20} /> Education & Career
+                  </Typography>
+                  <Grid container spacing={3}>
+                    <Grid size={{ xs: 12, sm: 6 }}>
+                      <TextField
+                        fullWidth
+                        label="Education"
+                        value={formData.education}
+                        onChange={(e) => handleChange('education', e.target.value)}
+                        InputProps={{ startAdornment: <GraduationCap size={18} style={{ marginRight: 8, color: COLORS.textSecondary }} /> }}
+                      />
+                    </Grid>
+                    <Grid size={{ xs: 12, sm: 6 }}>
+                      <TextField
+                        fullWidth
+                        label="Occupation"
+                        value={formData.occupation}
+                        onChange={(e) => handleChange('occupation', e.target.value)}
+                        InputProps={{ startAdornment: <Briefcase size={18} style={{ marginRight: 8, color: COLORS.textSecondary }} /> }}
+                      />
+                    </Grid>
+                  </Grid>
+                </MotionPaper>
 
-            {/* Lifestyle Section */}
-            <MotionPaper
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.3 }}
-              sx={{ p: 4, borderRadius: '24px', boxShadow: '0 2px 16px rgba(139,26,46,0.05)' }}
-            >
-              <Typography variant="h6" sx={{ mb: 3, fontWeight: 800, color: COLORS.primary, display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Heart size={20} /> Lifestyle Preferences
-              </Typography>
-              <Grid container spacing={3}>
-                <Grid size={{ xs: 12, sm: 6 }}>
-                  <TextField
-                    fullWidth
-                    select
-                    label="Diet Preference"
-                    value={formData.diet}
-                    onChange={(e) => handleChange('diet', e.target.value)}
-                  >
-                    <MenuItem value="Vegetarian">Vegetarian</MenuItem>
-                    <MenuItem value="Non-veg">Non-veg</MenuItem>
-                    <MenuItem value="Vegan">Vegan</MenuItem>
-                  </TextField>
-                </Grid>
-                <Grid size={{ xs: 12, sm: 6 }}>
-                  <TextField
-                    fullWidth
-                    select
-                    label="Exercise"
-                    value={formData.exercise}
-                    onChange={(e) => handleChange('exercise', e.target.value)}
-                  >
-                    <MenuItem value="Daily">Daily</MenuItem>
-                    <MenuItem value="Regularly">Regularly</MenuItem>
-                    <MenuItem value="Occasionally">Occasionally</MenuItem>
-                    <MenuItem value="Never">Never</MenuItem>
-                  </TextField>
-                </Grid>
-                <Grid size={{ xs: 12, sm: 6 }}>
-                  <TextField
-                    fullWidth
-                    select
-                    label="Smoking"
-                    value={formData.smoking}
-                    onChange={(e) => handleChange('smoking', e.target.value)}
-                  >
-                    <MenuItem value="Never">Never</MenuItem>
-                    <MenuItem value="Occasionally">Occasionally</MenuItem>
-                    <MenuItem value="Regularly">Regularly</MenuItem>
-                  </TextField>
-                </Grid>
-                <Grid size={{ xs: 12, sm: 6 }}>
-                  <TextField
-                    fullWidth
-                    select
-                    label="Drinking"
-                    value={formData.drinking}
-                    onChange={(e) => handleChange('drinking', e.target.value)}
-                  >
-                    <MenuItem value="Never">Never</MenuItem>
-                    <MenuItem value="Occasionally">Occasionally</MenuItem>
-                    <MenuItem value="Regularly">Regularly</MenuItem>
-                  </TextField>
-                </Grid>
-                <Grid size={{ xs: 12 }}>
-                  <Typography variant="subtitle2" sx={{ mb: 1, color: COLORS.textSecondary }}>Social Preference (Introvert vs Extrovert)</Typography>
-                  <Slider
-                    value={formData.socialPreference}
-                    onChange={(_, val) => handleChange('socialPreference', val)}
-                    sx={{ color: COLORS.accent }}
-                  />
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <Typography variant="caption">Introvert</Typography>
-                    <Typography variant="caption">Extrovert</Typography>
-                  </Box>
-                </Grid>
-              </Grid>
-            </MotionPaper>
+                {/* Lifestyle Section */}
+                <MotionPaper
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.3 }}
+                  sx={{ p: 4, borderRadius: '24px', boxShadow: '0 2px 16px rgba(139,26,46,0.05)' }}
+                >
+                  <Typography variant="h6" sx={{ mb: 3, fontWeight: 800, color: COLORS.primary, display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Heart size={20} /> Lifestyle Preferences
+                  </Typography>
+                  <Grid container spacing={3}>
+                    <Grid size={{ xs: 12, sm: 6 }}>
+                      <TextField
+                        fullWidth
+                        select
+                        label="Diet Preference"
+                        value={formData.diet}
+                        onChange={(e) => handleChange('diet', e.target.value)}
+                      >
+                        <MenuItem value="Vegetarian">Vegetarian</MenuItem>
+                        <MenuItem value="Non-veg">Non-veg</MenuItem>
+                        <MenuItem value="Vegan">Vegan</MenuItem>
+                      </TextField>
+                    </Grid>
+                    <Grid size={{ xs: 12, sm: 6 }}>
+                      <TextField
+                        fullWidth
+                        select
+                        label="Exercise"
+                        value={formData.exercise}
+                        onChange={(e) => handleChange('exercise', e.target.value)}
+                      >
+                        <MenuItem value="Daily">Daily</MenuItem>
+                        <MenuItem value="Regularly">Regularly</MenuItem>
+                        <MenuItem value="Occasionally">Occasionally</MenuItem>
+                        <MenuItem value="Never">Never</MenuItem>
+                      </TextField>
+                    </Grid>
+                    <Grid size={{ xs: 12, sm: 6 }}>
+                      <TextField
+                        fullWidth
+                        select
+                        label="Smoking"
+                        value={formData.smoking}
+                        onChange={(e) => handleChange('smoking', e.target.value)}
+                      >
+                        <MenuItem value="Never">Never</MenuItem>
+                        <MenuItem value="Occasionally">Occasionally</MenuItem>
+                        <MenuItem value="Regularly">Regularly</MenuItem>
+                      </TextField>
+                    </Grid>
+                    <Grid size={{ xs: 12, sm: 6 }}>
+                      <TextField
+                        fullWidth
+                        select
+                        label="Drinking"
+                        value={formData.drinking}
+                        onChange={(e) => handleChange('drinking', e.target.value)}
+                      >
+                        <MenuItem value="Never">Never</MenuItem>
+                        <MenuItem value="Occasionally">Occasionally</MenuItem>
+                        <MenuItem value="Regularly">Regularly</MenuItem>
+                      </TextField>
+                    </Grid>
+                    <Grid size={{ xs: 12 }}>
+                      <Typography variant="subtitle2" sx={{ mb: 1, color: COLORS.textSecondary }}>Social Preference (Introvert vs Extrovert)</Typography>
+                      <Slider
+                        value={formData.socialPreference}
+                        onChange={(_, val) => handleChange('socialPreference', val)}
+                        sx={{ color: COLORS.accent }}
+                      />
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <Typography variant="caption">Introvert</Typography>
+                        <Typography variant="caption">Extrovert</Typography>
+                      </Box>
+                    </Grid>
+                  </Grid>
+                </MotionPaper>
+              </>
+            )}
           </Stack>
         </Grid>
 
@@ -653,68 +683,71 @@ export default function EditProfile() {
               </Stack>
             </MotionPaper>
 
-            <MotionPaper
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              sx={{ p: 4, borderRadius: '24px', boxShadow: '0 2px 16px rgba(139,26,46,0.05)' }}
-            >
-              <Typography variant="h6" sx={{ mb: 3, fontWeight: 800, color: COLORS.primary, display: 'flex', alignItems: 'center', gap: 1 }}>
-                <User size={20} /> Identity & Verification
-              </Typography>
-              <Stack spacing={2}>
-                <TextField
-                  fullWidth
-                  select
-                  label="I am looking for"
-                  value={formData.seekingGender}
-                  onChange={(e) => handleChange('seekingGender', e.target.value)}
-                  helperText="Controls which gender appears in your matches and top match."
-                >
-                  <MenuItem value="">No preference (show all)</MenuItem>
-                  <MenuItem value="female">Women</MenuItem>
-                  <MenuItem value="male">Men</MenuItem>
-                  <MenuItem value="non-binary">Non-binary</MenuItem>
-                  <MenuItem value="any">Any gender</MenuItem>
-                </TextField>
+            {!isHoroscopeSeeker && (
+              <MotionPaper
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                sx={{ p: 4, borderRadius: '24px', boxShadow: '0 2px 16px rgba(139,26,46,0.05)' }}
+              >
+                <Typography variant="h6" sx={{ mb: 3, fontWeight: 800, color: COLORS.primary, display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <User size={20} /> Identity & Verification
+                </Typography>
+                <Stack spacing={2}>
+                  <TextField
+                    fullWidth
+                    select
+                    label="I am looking for"
+                    value={formData.seekingGender}
+                    onChange={(e) => handleChange('seekingGender', e.target.value)}
+                    helperText="Controls which gender appears in your matches and top match."
+                  >
+                    <MenuItem value="">No preference (show all)</MenuItem>
+                    <MenuItem value="female">Women</MenuItem>
+                    <MenuItem value="male">Men</MenuItem>
+                    <MenuItem value="non-binary">Non-binary</MenuItem>
+                    <MenuItem value="any">Any gender</MenuItem>
+                  </TextField>
 
-                <TextField
-                  fullWidth
-                  select
-                  label="Religion"
-                  value={formData.religion}
-                  onChange={(e) => handleChange('religion', e.target.value)}
-                  helperText="Saved under your user profile for matching and profile display."
-                >
-                  {SRI_LANKAN_RELIGIONS.map((option) => (
-                    <MenuItem key={option} value={option}>{option}</MenuItem>
-                  ))}
-                </TextField>
+                  <TextField
+                    fullWidth
+                    select
+                    label="Religion"
+                    value={formData.religion}
+                    onChange={(e) => handleChange('religion', e.target.value)}
+                    helperText="Saved under your user profile for matching and profile display."
+                  >
+                    {SRI_LANKAN_RELIGIONS.map((option) => (
+                      <MenuItem key={option} value={option}>{option}</MenuItem>
+                    ))}
+                  </TextField>
 
-                <TextField
-                  fullWidth
-                  select
-                  label="Ethnicity"
-                  value={formData.ethnicity}
-                  onChange={(e) => handleChange('ethnicity', e.target.value)}
-                  helperText="Choose the option that best matches your Sri Lankan background, or select Other."
-                >
-                  {SRI_LANKAN_ETHNICITIES.map((option) => (
-                    <MenuItem key={option} value={option}>{option}</MenuItem>
-                  ))}
-                </TextField>
-              </Stack>
-            </MotionPaper>
+                  <TextField
+                    fullWidth
+                    select
+                    label="Ethnicity"
+                    value={formData.ethnicity}
+                    onChange={(e) => handleChange('ethnicity', e.target.value)}
+                    helperText="Choose the option that best matches your Sri Lankan background, or select Other."
+                  >
+                    {SRI_LANKAN_ETHNICITIES.map((option) => (
+                      <MenuItem key={option} value={option}>{option}</MenuItem>
+                    ))}
+                  </TextField>
+                </Stack>
+              </MotionPaper>
+            )}
 
             {/* Privacy Section */}
-            <MotionPaper
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              sx={{ p: 4, borderRadius: '24px', boxShadow: '0 2px 16px rgba(139,26,46,0.05)' }}
-            >
-              <Typography variant="h6" sx={{ mb: 3, fontWeight: 800, color: COLORS.primary, display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Shield size={20} /> Privacy Settings
-              </Typography>
-              <Stack spacing={2}>
+            {!isHoroscopeSeeker && (
+              <MotionPaper
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                sx={{ p: 4, borderRadius: '24px', boxShadow: '0 2px 16px rgba(139,26,46,0.05)' }}
+              >
+                <Typography variant="h6" sx={{ mb: 3, fontWeight: 800, color: COLORS.primary, display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Shield size={20} /> Privacy Settings
+                </Typography>
+                <Stack spacing={2}>
                 <FormControlLabel
                   control={
                     <Switch
@@ -778,8 +811,9 @@ export default function EditProfile() {
                   <MenuItem value="Matches Only">Matches Only</MenuItem>
                   <MenuItem value="Profile Viewers">Profile Viewers</MenuItem>
                 </TextField>
-              </Stack>
-            </MotionPaper>
+                </Stack>
+              </MotionPaper>
+            )}
 
             {/* Account Actions */}
             <MotionPaper

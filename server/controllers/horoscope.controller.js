@@ -369,6 +369,80 @@ function getBirthAccuracyMeta(user) {
   };
 }
 
+function deriveFallbackChartGrade(horoscopeData = {}, accuracyMeta = {}) {
+  const hasCore = Boolean(horoscopeData?.ascendant && horoscopeData?.moonSign && horoscopeData?.nakshatra);
+  if (!hasCore) {
+    return {
+      grade: 'Pending',
+      summary: 'Core chart details are still loading.',
+      strengths: [],
+      issues: ['Incomplete chart data'],
+    };
+  }
+
+  let score = 72;
+  const strengths = [];
+  const issues = [];
+
+  if (horoscopeData?.seventhHouseAnalysis?.lordDignity === 'Exalted') {
+    score += 8;
+    strengths.push('Strong 7th lord');
+  }
+
+  if (horoscopeData?.venusSummary?.dignity === 'Exalted') {
+    score += 6;
+    strengths.push('Strong Venus');
+  }
+
+  if (horoscopeData?.jupiterSummary?.dignity === 'Exalted') {
+    score += 5;
+    strengths.push('Strong Jupiter');
+  }
+
+  const manglikSeverity = horoscopeData?.manglik?.severity;
+  if (manglikSeverity === 'Full') {
+    score -= 12;
+    issues.push('High Manglik intensity');
+  } else if (manglikSeverity === 'High') {
+    score -= 8;
+    issues.push('Manglik caution');
+  }
+
+  if (horoscopeData?.kalaSarpaDosha?.present) {
+    score -= 6;
+    issues.push('Kala Sarpa influence');
+  }
+
+  if (horoscopeData?.sadeSati?.present || horoscopeData?.sadeSati?.ashtamaShani) {
+    score -= 5;
+    issues.push('Saturn transit caution');
+  }
+
+  if (accuracyMeta?.usesApproximateBirthTime) {
+    score -= 6;
+    issues.push('Approximate birth time');
+  }
+
+  score = Math.max(40, Math.min(96, Math.round(score)));
+
+  const grade = score >= 85 ? 'Excellent' : score >= 72 ? 'Good' : score >= 58 ? 'Moderate' : 'Needs Care';
+  const summary =
+    grade === 'Excellent'
+      ? 'Strong overall marriage-supportive combinations.'
+      : grade === 'Good'
+        ? 'Balanced chart with generally supportive combinations.'
+        : grade === 'Moderate'
+          ? 'Mixed combinations; timing and matching matter.'
+          : 'More caution advised; seek detailed astrologer guidance.';
+
+  return {
+    grade,
+    summary,
+    strengths: strengths.slice(0, 3),
+    issues: issues.slice(0, 3),
+  };
+}
+
 function buildChartData(user) {
   const horoscopeData = user.horoscopeData || {};
   const accuracyMeta = getBirthAccuracyMeta(user);
@@ -383,6 +457,7 @@ function buildChartData(user) {
   const sunPosition = positionsSource.find((position) => position.planet === 'Sun');
 
   const auspiciousTime = calculateAuspiciousTime(horoscopeData, user);
+  const chartGrade = horoscopeData.chartGrade || deriveFallbackChartGrade(horoscopeData, accuracyMeta);
 
   // Manglik label — prefer stored value, fall back to live derivation
   const manglikStored = horoscopeData.manglik;
@@ -416,6 +491,7 @@ function buildChartData(user) {
       yoni: horoscopeData.yoni || null,
       rasiLord: horoscopeData.rasiLord || null,
       chartGrade: horoscopeData.chartGrade || null,
+      chartGrade,
       marriageWindow: horoscopeData.marriageWindow || [],
     },
     details: {
@@ -660,6 +736,8 @@ export async function generateAndPersistHoroscope(user, { force = false } = {}) 
   });
 
   const profileDetails = deriveProfileAstrologyDetails(result);
+  const accuracyMeta = getBirthAccuracyMeta(user);
+  const fallbackChartGrade = deriveFallbackChartGrade(result, accuracyMeta);
 
   const horoscopeData = {
     zodiacSign: result.zodiacSign,
@@ -698,7 +776,7 @@ export async function generateAndPersistHoroscope(user, { force = false } = {}) 
     rasiLord: result.rasiLord || null,
     antardasha: result.antardasha || null,
     marriageWindow: result.marriageWindow || [],
-    chartGrade: result.chartGrade || null,
+    chartGrade: result.chartGrade || fallbackChartGrade,
     generatedFrom: {
       birthDate: payload.birthDate,
       birthTime: payload.birthTime,
@@ -863,6 +941,29 @@ async function syncHoroscopeDocument(user) {
                 },
               ],
         gunaScore: user.horoscopeData?.gunaScore || 0,
+        luckyColors: user.horoscopeData?.luckyColors || [],
+        auspiciousDays: user.horoscopeData?.auspiciousDays || [],
+        favorablePartners: user.horoscopeData?.favorablePartners || [],
+        profileFacts: user.horoscopeData?.profileFacts || [],
+        dasaInfo: user.horoscopeData?.dasaInfo || null,
+        antardasha: user.horoscopeData?.antardasha || null,
+        kalaSarpaDosha: user.horoscopeData?.kalaSarpaDosha || null,
+        manglik: user.horoscopeData?.manglik || null,
+        seventhHouseAnalysis: user.horoscopeData?.seventhHouseAnalysis || null,
+        sadeSati: user.horoscopeData?.sadeSati || null,
+        venusSummary: user.horoscopeData?.venusSummary || null,
+        jupiterSummary: user.horoscopeData?.jupiterSummary || null,
+        ascendantNavamsha: user.horoscopeData?.ascendantNavamsha || null,
+        rajju: user.horoscopeData?.rajju || null,
+        nadi: user.horoscopeData?.nadi || null,
+        yoni: user.horoscopeData?.yoni || null,
+        rasiLord: user.horoscopeData?.rasiLord || null,
+        marriageWindow: user.horoscopeData?.marriageWindow || [],
+        chartGrade: user.horoscopeData?.chartGrade || null,
+        generatedFrom: user.horoscopeData?.generatedFrom || null,
+        generatedAt: user.horoscopeData?.generatedAt || null,
+        timezone: user.horoscopeData?.timezone || user?.birthData?.placeOfBirth?.timezone || 'Asia/Colombo',
+        calculationVersion: Number(user.horoscopeData?.calculationVersion || 1),
       },
     },
     { upsert: true, new: true }

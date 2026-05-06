@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useImperativeHandle, forwardRef } from 'react';
 import {
   Box,
   Container,
@@ -6,31 +6,19 @@ import {
   Stack,
   TextField,
   IconButton,
-  Button,
   Avatar,
   Paper,
   InputAdornment,
-  Tooltip,
   useTheme,
   useMediaQuery,
-  Menu,
-  MenuItem,
-  ListItemIcon,
-  ListItemText,
 } from '@mui/material';
 import {
   Send,
   Mic,
-  Paperclip,
-  Smile,
-  Plus,
-  Trash2,
-  Languages,
   Flower2,
   Heart,
   Calendar,
   Wallet,
-  MoreVertical,
   X,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -49,6 +37,14 @@ const COLORS = {
   success: '#2E7D32',
 };
 
+const BG_ANIM = {
+  '@keyframes raashiFloat': {
+    '0%': { transform: 'translate3d(0,0,0) scale(1)' },
+    '50%': { transform: 'translate3d(-1.5%, -1%, 0) scale(1.03)' },
+    '100%': { transform: 'translate3d(0,0,0) scale(1)' },
+  },
+};
+
 const WELCOME_TOPICS = [
   { id: 'matchmaking', title: 'Matchmaking', icon: <Heart size={24} />, color: COLORS.primary, desc: 'Find your perfect life partner' },
   { id: 'horoscope', title: 'Horoscope', icon: <Flower2 size={24} />, color: COLORS.secondary, desc: 'Compatibility & predictions' },
@@ -63,7 +59,14 @@ interface ChatInterfaceProps {
   language?: 'en' | 'si' | 'ta';
 }
 
-export default function ChatInterface({ isCompact, onClose, initialMessages = [], language = 'en' }: ChatInterfaceProps) {
+export type ChatInterfaceHandle = {
+  sendMessage: (text: string) => void;
+};
+
+const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>(function ChatInterface(
+  { isCompact, onClose, initialMessages = [], language = 'en' },
+  ref
+) {
   const [messages, setMessages] = useState<any[]>(initialMessages);
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -146,6 +149,12 @@ export default function ChatInterface({ isCompact, onClose, initialMessages = []
     }
   };
 
+  useImperativeHandle(ref, () => ({
+    sendMessage: (text: string) => {
+      handleSendMessage(text);
+    },
+  }));
+
   const handleVoiceInput = () => {
     if (!('webkitSpeechRecognition' in window)) return;
     // @ts-ignore
@@ -156,7 +165,44 @@ export default function ChatInterface({ isCompact, onClose, initialMessages = []
   };
 
   return (
-    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: COLORS.cream, overflow: 'hidden', position: 'relative' }}>
+    <Box
+      sx={{
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        bgcolor: COLORS.cream,
+        overflow: 'hidden',
+        position: 'relative',
+        ...BG_ANIM,
+      }}
+    >
+      {/* Animated background artwork */}
+      <Box
+        aria-hidden
+        sx={{
+          position: 'absolute',
+          inset: 0,
+          backgroundImage: `url(/raashibot-bg.svg)`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          opacity: 0.9,
+          filter: 'saturate(1.05)',
+          animation: 'raashiFloat 14s ease-in-out infinite',
+          transformOrigin: 'center',
+          zIndex: 0,
+        }}
+      />
+      {/* Contrast veil */}
+      <Box
+        aria-hidden
+        sx={{
+          position: 'absolute',
+          inset: 0,
+          background:
+            'linear-gradient(180deg, rgba(250,247,242,0.75) 0%, rgba(250,247,242,0.55) 40%, rgba(250,247,242,0.82) 100%)',
+          zIndex: 0,
+        }}
+      />
       {/* Optional Header for Compact Mode */}
       {isCompact && (
         <Paper elevation={0} sx={{ p: 1.5, borderBottom: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'center', justifyContent: 'space-between', bgcolor: COLORS.primary, color: 'white' }}>
@@ -174,7 +220,18 @@ export default function ChatInterface({ isCompact, onClose, initialMessages = []
       )}
 
       {/* Messages Area */}
-      <Box sx={{ flex: 1, overflowY: 'auto', p: isCompact ? 2 : 4, display: 'flex', flexDirection: 'column', gap: 2, backgroundImage: 'radial-gradient(#8B1A2E05 2px, transparent 2px)', backgroundSize: '30px 30px' }}>
+      <Box
+        sx={{
+          flex: 1,
+          overflowY: 'auto',
+          p: isCompact ? 2 : 4,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 2,
+          position: 'relative',
+          zIndex: 1,
+        }}
+      >
         <AnimatePresence>
           {isWelcomeState && (
             <WelcomeScreen isCompact={isCompact} onTopicClick={(topic) => handleSendMessage(topic)} />
@@ -197,15 +254,19 @@ export default function ChatInterface({ isCompact, onClose, initialMessages = []
       </Box>
 
       {/* Input Area */}
-      <Box sx={{ p: isCompact ? 1 : 1.5, bgcolor: 'white', borderTop: '1px solid', borderColor: 'divider' }}>
+      <Box
+        sx={{
+          p: isCompact ? 1 : 1.5,
+          bgcolor: 'rgba(255,255,255,0.9)',
+          backdropFilter: 'blur(10px)',
+          borderTop: '1px solid',
+          borderColor: 'divider',
+          position: 'relative',
+          zIndex: 2,
+        }}
+      >
         <Container maxWidth={isCompact ? false : "md"} disableGutters={isCompact}>
           <Stack direction="row" spacing={1} alignItems="flex-end">
-            {!isCompact && (
-              <>
-                <IconButton size="small" sx={{ mb: 0.5 }}><Paperclip size={20} /></IconButton>
-                <IconButton size="small" sx={{ mb: 0.5 }}><Smile size={20} /></IconButton>
-              </>
-            )}
             <TextField
               fullWidth
               multiline
@@ -220,7 +281,14 @@ export default function ChatInterface({ isCompact, onClose, initialMessages = []
                 }
               }}
               InputProps={{
-                sx: { borderRadius: 4, bgcolor: COLORS.cream, '& fieldset': { border: 'none' }, px: 2, py: 1, fontSize: isCompact ? '0.85rem' : '0.95rem' },
+                sx: {
+                  borderRadius: 4,
+                  bgcolor: 'rgba(250,247,242,0.9)',
+                  '& fieldset': { border: 'none' },
+                  px: 2,
+                  py: 1,
+                  fontSize: isCompact ? '0.85rem' : '0.95rem',
+                },
                 endAdornment: !isCompact && (
                   <InputAdornment position="end">
                     <Typography variant="caption" sx={{ color: 'text.secondary', mr: 1 }}>{inputText.length}/500</Typography>
@@ -237,7 +305,9 @@ export default function ChatInterface({ isCompact, onClose, initialMessages = []
       </Box>
     </Box>
   );
-}
+});
+
+export default ChatInterface;
 
 function WelcomeScreen({ onTopicClick, isCompact }: { onTopicClick: (topic: string) => void; isCompact?: boolean }) {
   return (
@@ -245,7 +315,7 @@ function WelcomeScreen({ onTopicClick, isCompact }: { onTopicClick: (topic: stri
       <motion.div animate={{ rotate: 360 }} transition={{ duration: 20, repeat: Infinity, ease: "linear" }} style={{ marginBottom: isCompact ? '12px' : '24px' }}>
         <Flower2 size={isCompact ? 48 : 80} color={COLORS.primary} strokeWidth={1} />
       </motion.div>
-      <Typography variant={isCompact ? "h6" : "h4"} sx={{ fontWeight: 800, fontFamily: 'Playfair Display', color: COLORS.primary, mb: 1 }}>Namaste! I'm RaashiBot 🌺</Typography>
+      <Typography variant={isCompact ? "h6" : "h4"} sx={{ fontWeight: 800, fontFamily: 'Playfair Display', color: COLORS.primary, mb: 1 }}>Namaste! I'm RaashiBot</Typography>
       {!isCompact && <Typography variant="body1" sx={{ color: COLORS.textSecondary, maxWidth: 500, mb: 6 }}>I can help you find your perfect match, understand your horoscope, and plan your wedding.</Typography>}
       <Stack direction={isCompact ? "column" : "row"} spacing={isCompact ? 1 : 2} sx={{ width: '100%', maxWidth: 800 }}>
         {WELCOME_TOPICS.map((topic, i) => (
@@ -261,4 +331,3 @@ function WelcomeScreen({ onTopicClick, isCompact }: { onTopicClick: (topic: stri
     </motion.div>
   );
 }
-

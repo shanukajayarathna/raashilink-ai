@@ -8,6 +8,7 @@ import { emitToUser } from '../lib/socket.js';
 import assistantService from '../services/assistant.service.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import ApiError from '../utils/ApiError.js';
+import { detectChatLanguage } from '../utils/languageDetect.js';
 
 function ensureObjectId(id, field) {
   if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -140,7 +141,7 @@ export const sendMessage = asyncHandler(async (req, res) => {
 });
 
 export const sendAssistantMessage = asyncHandler(async (req, res) => {
-  const { message, language = 'en' } = req.body ?? {};
+  const { message, language } = req.body ?? {};
 
   if (!message || !String(message).trim()) {
     throw new ApiError(400, 'Message content is required');
@@ -151,10 +152,12 @@ export const sendAssistantMessage = asyncHandler(async (req, res) => {
     throw new ApiError(404, 'Authenticated user not found');
   }
 
+  const resolvedLanguage = detectChatLanguage({ message, requestedLanguage: language });
+
   const reply = await assistantService.generateAssistantReply({
     user,
     message: String(message).trim(),
-    language,
+    language: resolvedLanguage,
   });
 
   res.status(200).json({
@@ -166,7 +169,7 @@ export const sendAssistantMessage = asyncHandler(async (req, res) => {
 });
 
 export const streamMessage = asyncHandler(async (req, res) => {
-  const { message, language = 'en', history = [] } = req.body ?? {};
+  const { message, language, history = [] } = req.body ?? {};
 
   // Validate input
   if (!message || String(message).trim().length === 0) {
@@ -196,7 +199,14 @@ export const streamMessage = asyncHandler(async (req, res) => {
 
   // Call streaming chat
   try {
-    await assistantService.streamChat(history, String(message).trim(), language, res);
+    const resolvedLanguage = detectChatLanguage({ message, requestedLanguage: language });
+    await assistantService.streamChat({
+      user,
+      history,
+      userMessage: String(message).trim(),
+      language: resolvedLanguage,
+      res,
+    });
   } catch (error) {
     if (!res.headersSent) {
       return res.status(500).json({

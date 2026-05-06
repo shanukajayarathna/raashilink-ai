@@ -94,7 +94,8 @@ export default function ChatMessage({ message, isCompact }: ChatMessageProps) {
             sx={{
               p: isCompact ? 1.5 : 2,
               borderRadius: isBot ? '0 16px 16px 16px' : '16px 0 16px 16px',
-              bgcolor: isBot ? 'white' : `linear-gradient(135deg, ${COLORS.secondary} 0%, ${COLORS.primary} 100%)`,
+              bgcolor: isBot ? 'white' : COLORS.primary,
+              background: isBot ? 'white' : `linear-gradient(135deg, ${COLORS.secondary} 0%, ${COLORS.primary} 100%)`,
               color: isBot ? COLORS.textPrimary : 'white',
               boxShadow: isBot ? '0 2px 16px rgba(139,26,46,0.05)' : '0 4px 16px rgba(139,26,46,0.15)',
               position: 'relative',
@@ -268,4 +269,3 @@ function Checklist({ data, isCompact }: { data: any; isCompact?: boolean }) {
 }
 
 const COLORS_SUCCESS = '#2E7D32';
-

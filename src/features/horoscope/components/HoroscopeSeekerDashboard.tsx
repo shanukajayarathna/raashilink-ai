@@ -59,11 +59,40 @@ const LUCKY_COLOR_HEX: Record<string, string> = {
   gray: '#9E9E9E',
 };
 
+const HEX_TO_COLOR_NAME: Record<string, string> = {
+  '#E53935': 'Red',
+  '#FF7043': 'Deep Orange',
+  '#43A047': 'Green',
+  '#8D6E63': 'Brown',
+  '#FDD835': 'Yellow',
+  '#29B6F6': 'Sky Blue',
+  '#90CAF9': 'Pale Blue',
+  '#F8BBD0': 'Blush Pink',
+  '#FB8C00': 'Orange',
+  '#66BB6A': 'Mint',
+  '#26A69A': 'Teal',
+  '#EC407A': 'Pink',
+  '#AB47BC': 'Violet',
+  '#8E24AA': 'Purple',
+  '#D32F2F': 'Crimson',
+  '#1E88E5': 'Blue',
+  '#FFA726': 'Amber',
+  '#546E7A': 'Slate',
+  '#26C6DA': 'Cyan',
+  '#5C6BC0': 'Indigo',
+  '#42A5F5': 'Light Blue',
+  '#7E57C2': 'Lavender',
+  '#8B1A2E': 'Maroon',
+  '#C9A84C': 'Gold',
+};
+
 type Props = {
   user: any;
   language: HoroscopeLanguage;
   texts: any;
   chartSummary: any;
+  chartDetails: any;
+  chartHouses: any[];
   chartPlanets: any[];
   chartPositions: any[];
   readingHighlights: any[];
@@ -109,11 +138,22 @@ const getColorHex = (value: string) => {
   return LUCKY_COLOR_HEX[cleaned.toLowerCase()] || '#D9D9D9';
 };
 
+const toColorName = (value: string) => {
+  const cleaned = String(value || '').trim();
+  if (!cleaned) return 'Not available';
+  if (/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(cleaned)) {
+    return HEX_TO_COLOR_NAME[cleaned.toUpperCase()] || 'Custom Color';
+  }
+  return cleaned;
+};
+
 export default function HoroscopeSeekerDashboard({
   user,
   language,
   texts,
   chartSummary,
+  chartDetails,
+  chartHouses,
   chartPlanets,
   chartPositions,
   readingHighlights,
@@ -292,42 +332,7 @@ export default function HoroscopeSeekerDashboard({
       )}
 
       <Grid container spacing={3} alignItems="flex-start">
-        <Grid size={{ xs: 12, xl: 2 }} sx={{ display: { xs: 'none', xl: 'block' } }}>
-          <Paper sx={{ p: 2, borderRadius: '18px', border: '1px solid', borderColor: alpha(COLORS.primary, 0.12), position: 'sticky', top: 92 }}>
-            <Typography variant="caption" sx={{ display: 'block', color: COLORS.textSecondary, fontWeight: 800, letterSpacing: 0.8, mb: 1 }}>
-              QUICK NAV
-            </Typography>
-            <Stack spacing={0.75}>
-              {[
-                { id: 'seeker-chart', label: 'Birth Chart' },
-                { id: 'seeker-trends', label: 'Trends' },
-                { id: 'seeker-snapshot', label: 'Birth Snapshot' },
-                { id: 'seeker-highlights', label: 'Highlights' },
-                { id: 'seeker-planets', label: 'Planets' },
-                { id: 'seeker-insights', label: 'Insights' },
-              ].map((item) => (
-                <Button
-                  key={item.id}
-                  variant="text"
-                  onClick={() => scrollToSection(item.id)}
-                  sx={{
-                    justifyContent: 'flex-start',
-                    color: COLORS.primary,
-                    fontWeight: 700,
-                    borderRadius: '10px',
-                    px: 1.25,
-                    textTransform: 'none',
-                    '&:hover': { bgcolor: alpha(COLORS.primary, 0.07) },
-                  }}
-                >
-                  {item.label}
-                </Button>
-              ))}
-            </Stack>
-          </Paper>
-        </Grid>
-
-        <Grid size={{ xs: 12, xl: 10 }}>
+        <Grid size={{ xs: 12 }}>
           <Grid container spacing={2} sx={{ mb: 2.5 }}>
             <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
               <Paper
@@ -455,6 +460,58 @@ export default function HoroscopeSeekerDashboard({
                   ))}
                 </Stack>
               </Paper>
+
+              <Paper sx={{ p: 2.5, mt: 2, borderRadius: '20px', border: '1px solid', borderColor: COLORS.background }}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 800, color: COLORS.primary, mb: 1.5, fontFamily: LANGUAGE_FONT_FAMILY[language] }}>
+                  Traditional Sri Lankan Horoscope Details
+                </Typography>
+
+                <Grid container spacing={1.25}>
+                  {[
+                    { label: texts.gana || 'Gana', value: translateHoroscopeValue(chartDetails?.gana || texts.pending, language) },
+                    { label: texts.nakshatraPada || 'Nakshatra Pada', value: chartDetails?.nakshatraPada ? `Pada ${chartDetails.nakshatraPada}` : texts.pending },
+                    { label: texts.ascendant || 'Ascendant', value: translateHoroscopeValue(chartSummary?.ascendant || texts.pending, language) },
+                    { label: texts.tithi || 'Tithi', value: translateHoroscopeValue(chartDetails?.tithi || texts.pending, language) },
+                    { label: texts.paksha || 'Paksha', value: translateHoroscopeValue(chartDetails?.paksha || texts.pending, language) },
+                    { label: texts.yoga || 'Yoga', value: translateHoroscopeValue(chartDetails?.yoga || texts.pending, language) },
+                    { label: texts.karana || 'Karana', value: translateHoroscopeValue(chartDetails?.karana || texts.pending, language) },
+                    { label: texts.vedicDay || 'Vedic Day', value: translateHoroscopeValue(chartDetails?.vedicDay || texts.pending, language) },
+                  ].map((item) => (
+                    <Grid size={{ xs: 12, sm: 6 }} key={item.label}>
+                      <Box sx={{ p: 1.3, borderRadius: '12px', bgcolor: COLORS.background, height: '100%' }}>
+                        <Typography variant="caption" sx={{ display: 'block', color: COLORS.textSecondary, fontWeight: 700 }}>
+                          {item.label}
+                        </Typography>
+                        <Typography variant="body2" sx={{ color: COLORS.primary, fontWeight: 800 }}>
+                          {item.value}
+                        </Typography>
+                      </Box>
+                    </Grid>
+                  ))}
+                </Grid>
+
+                {!!chartHouses?.length && (
+                  <Box sx={{ mt: 1.75 }}>
+                    <Typography variant="caption" sx={{ color: COLORS.textSecondary, fontWeight: 700, display: 'block', mb: 0.75 }}>
+                      House Overview
+                    </Typography>
+                    <Grid container spacing={1}>
+                      {chartHouses.slice(0, 6).map((house: any) => (
+                        <Grid size={{ xs: 12, sm: 6, md: 4 }} key={`house-${house.house}-${house.sign}`}>
+                          <Box sx={{ p: 1.1, borderRadius: '10px', border: `1px solid ${alpha(COLORS.primary, 0.12)}` }}>
+                            <Typography variant="caption" sx={{ color: COLORS.textSecondary, fontWeight: 700 }}>
+                              H{house.house}
+                            </Typography>
+                            <Typography variant="body2" sx={{ color: COLORS.primary, fontWeight: 800 }}>
+                              {translateHoroscopeValue(house.sign, language)}
+                            </Typography>
+                          </Box>
+                        </Grid>
+                      ))}
+                    </Grid>
+                  </Box>
+                )}
+              </Paper>
             </Grid>
 
             <Grid size={{ xs: 12, lg: 5 }} sx={{ order: { xs: 2, lg: 2 } }}>
@@ -483,7 +540,7 @@ export default function HoroscopeSeekerDashboard({
                         {(luckyColors.length ? luckyColors : ['Not available']).map((value: string) => (
                           <Chip
                             key={`color-${value}`}
-                            label={value}
+                            label={toColorName(value)}
                             size="small"
                             avatar={
                               <Avatar
@@ -536,9 +593,21 @@ export default function HoroscopeSeekerDashboard({
                       <Typography variant="caption" sx={{ display: 'block', color: COLORS.textSecondary, mb: 0.8 }}>
                         Quick horoscope-based notes generated from your profile.
                       </Typography>
-                      <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                      <Stack spacing={0.9}>
                         {(profileFacts.length ? profileFacts : ['Not available']).map((value: string) => (
-                          <Chip key={`fact-${value}`} label={value} size="small" sx={{ bgcolor: alpha('#1565C0', 0.12), color: '#1565C0', fontWeight: 700 }} />
+                          <Box
+                            key={`fact-${value}`}
+                            sx={{
+                              p: 1.1,
+                              borderRadius: '10px',
+                              bgcolor: alpha('#1565C0', 0.08),
+                              border: `1px solid ${alpha('#1565C0', 0.22)}`,
+                            }}
+                          >
+                            <Typography variant="body2" sx={{ color: '#0F4FA8', lineHeight: 1.55 }}>
+                              {value}
+                            </Typography>
+                          </Box>
                         ))}
                       </Stack>
                     </Box>

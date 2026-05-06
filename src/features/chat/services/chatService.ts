@@ -22,52 +22,99 @@ sendStreamingMessage: async (
   const token = localStorage.getItem('token');
   const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
   const endpoint = `${apiUrl}/api/v1/chat/stream`;
-
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`,
-    },
-    body: JSON.stringify({
-      message: message.trim(),
-      language,
-      history,
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-  }
-
-  const reader = response.body!.getReader();
-  const decoder = new TextDecoder();
+  const trimmedMessage = message.trim();
   let fullResponse = '';
 
   try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        message: trimmedMessage,
+        language,
+        history,
+      }),
+    });
 
-      const chunk = decoder.decode(value, { stream: true });
-      const lines = chunk.split('\n');
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
 
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
+    if (!response.body) {
+      throw new Error('Empty stream response body');
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let sawDone = false;
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+
+        // Process complete lines; keep remainder in buffer for the next read.
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) {
+            continue;
+          }
+
           const data = line.slice(6);
           if (data === '[DONE]') {
+            sawDone = true;
             break;
           }
+
+          fullResponse += data;
+          onChunk(data);
+        }
+
+        if (sawDone) {
+          break;
+        }
+      }
+
+      // Flush any final buffered line (in case server didn't end with newline).
+      if (!sawDone && buffer.startsWith('data: ')) {
+        const data = buffer.slice(6).trimEnd();
+        if (data && data !== '[DONE]') {
           fullResponse += data;
           onChunk(data);
         }
       }
+    } finally {
+      reader.releaseLock();
     }
-  } finally {
-    reader.releaseLock();
-  }
 
-  return fullResponse;
+    return fullResponse;
+  } catch (streamError) {
+    // Fallback to non-stream endpoint when SSE/provider stream fails.
+    if (fullResponse) {
+      return fullResponse;
+    }
+
+    const fallback = await axiosInstance.post('/chat/assistant', {
+      message: trimmedMessage,
+      language,
+    });
+
+    const reply = fallback?.data?.data?.reply || fallback?.data?.reply || '';
+    if (!reply) {
+      throw streamError;
+    }
+
+    onChunk(reply);
+    return reply;
+  }
 },
 
 /**
@@ -151,5 +198,4 @@ sendMessage: async (messageData: any) => {
 };
 
 export default chatService;
-
 

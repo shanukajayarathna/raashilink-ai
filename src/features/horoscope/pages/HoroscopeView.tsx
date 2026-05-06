@@ -499,6 +499,8 @@ const HoroscopeView = () => {
           language={language}
           texts={texts}
           chartSummary={chartSummary}
+          chartDetails={chartDetails}
+          chartHouses={chartHouses}
           chartPlanets={chartPlanets}
           chartPositions={chartPositions}
           readingHighlights={readingHighlights}

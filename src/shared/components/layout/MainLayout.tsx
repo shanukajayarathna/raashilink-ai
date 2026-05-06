@@ -809,7 +809,7 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
       </main>
 
       {/* Floating RaashiBot */}
-      <FloatingRaashiBot />
+      {!isHoroscopeSeeker && <FloatingRaashiBot />}
 
       {/* Notification Panel */}
       <NotificationPanel

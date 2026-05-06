@@ -21,7 +21,8 @@ import logger from './utils/logger.js';
 import { seedDemoUsers } from './services/demoData.service.js';
 import './jobs/dailyMatches.job.js';
 
-dotenv.config();
+dotenv.config({ path: '.env' });
+dotenv.config({ path: '.env.local', override: true });
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
