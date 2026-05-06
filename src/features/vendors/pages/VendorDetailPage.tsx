@@ -13,7 +13,7 @@ import {
   Facebook, Instagram, Globe, Phone,
   Mail, Clock, Briefcase, Users,
   Camera, Play, ArrowRight, Share2,
-  Quote, Info, DollarSign, Package, X
+  Quote, Info, DollarSign, Package, X, Sparkles
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
@@ -205,14 +205,7 @@ export default function VendorDetailPage() {
     fetchPlanningAccess();
   }, [token]);
 
-  useEffect(() => {
-    if (planningCheckLoading || planningAccessGranted) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [planningCheckLoading, planningAccessGranted]);
+
 
   // Unlock immediately when partner accepts the wedding invite
   useEffect(() => {
@@ -291,6 +284,7 @@ export default function VendorDetailPage() {
                 <Button 
                   variant="contained" 
                   onClick={() => setIsQuoteModalOpen(true)}
+                  disabled={!planningAccessGranted}
                   sx={{ bgcolor: COLORS.secondary, color: COLORS.primary, borderRadius: 3, px: 4, fontWeight: 700 }}
                 >
                   Request Quote
@@ -340,10 +334,37 @@ export default function VendorDetailPage() {
             exit={{ opacity: 0, y: -20 }}
             transition={{ duration: 0.3 }}
           >
+            {!planningAccessGranted && !planningCheckLoading && (
+              <Alert 
+                severity="info" 
+                icon={<Sparkles size={20} color={COLORS.primary} />}
+                sx={{ 
+                  mb: 4, 
+                  borderRadius: 4, 
+                  bgcolor: '#FFF8E7', 
+                  border: '1px solid #E6C87E',
+                  '& .MuiAlert-message': { width: '100%' }
+                }}
+              >
+                <Typography variant="subtitle2" sx={{ fontWeight: 800, color: COLORS.primary }}>
+                  Viewing Portfolio Mode
+                </Typography>
+                <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mb: 1 }}>
+                  You can browse and view portfolios now. The ability to request quotes and book vendors will unlock once both partners accept the wedding invite.
+                </Typography>
+                <Button 
+                  size="small" 
+                  onClick={() => navigate('/messages')}
+                  sx={{ color: COLORS.primary, fontWeight: 700, textTransform: 'none', p: 0 }}
+                >
+                  Go to Messages to invite partner →
+                </Button>
+              </Alert>
+            )}
             {activeTab === 0 && <PortfolioTab portfolio={vendor.portfolio} onImageClick={setSelectedImage} />}
             {activeTab === 1 && <AboutTab vendor={vendor} />}
             {activeTab === 2 && <ReviewsTab reviews={vendor.reviews} rating={vendor.rating} count={vendor.reviewCount} />}
-            {activeTab === 3 && <PricingTab packages={vendor.pricingPackages} onRequestQuote={() => setIsQuoteModalOpen(true)} />}
+            {activeTab === 3 && <PricingTab packages={vendor.pricingPackages} onRequestQuote={() => setIsQuoteModalOpen(true)} disabled={!planningAccessGranted} />}
           </motion.div>
         </AnimatePresence>
       </Container>
@@ -388,43 +409,7 @@ export default function VendorDetailPage() {
         remainingBudget={Number((user as any)?.weddingProject?.totalBudget || 0)}
       />
 
-      {!planningCheckLoading && !planningAccessGranted && (
-        <Box
-          sx={{
-            position: 'fixed',
-            top: '64px',
-            left: 0,
-            right: 0,
-            bottom: 0,
-            zIndex: 1099,
-            backdropFilter: 'blur(8px)',
-            WebkitBackdropFilter: 'blur(8px)',
-            bgcolor: 'rgba(18, 12, 6, 0.25)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            p: 3,
-          }}
-        >
-          <Card sx={{ maxWidth: 560, borderRadius: 5, border: '1px solid #E6C87E', boxShadow: '0 16px 40px rgba(0,0,0,0.18)' }}>
-            <CardContent sx={{ p: 4, textAlign: 'center' }}>
-              <Typography variant="h5" sx={{ fontWeight: 900, color: COLORS.primary, mb: 1 }}>
-                Vendor details are locked
-              </Typography>
-              <Typography variant="body1" sx={{ color: COLORS.textSecondary }}>
-                This page unlocks after both partners accept wedding planning together.
-              </Typography>
-              <Button
-                variant="contained"
-                onClick={() => navigate('/messages')}
-                sx={{ mt: 3, bgcolor: COLORS.primary, borderRadius: 3, fontWeight: 700, textTransform: 'none' }}
-              >
-                Go to Messages to Send/Accept Invite
-              </Button>
-            </CardContent>
-          </Card>
-        </Box>
-      )}
+
     </Box>
   );
 }
@@ -702,15 +687,15 @@ function ReviewsTab({ reviews, rating, count }: any) {
   );
 }
 
-function PricingTab({ packages, onRequestQuote }: any) {
+function PricingTab({ packages, onRequestQuote, disabled }: any) {
   return (
     <Box>
       <Typography variant="h5" sx={{ fontWeight: 800, fontFamily: 'Playfair Display', mb: 4, color: COLORS.primary }}>
         Available Packages
       </Typography>
-      <Grid container spacing={4}>
+      <Grid container spacing={4} sx={{ overflow: 'visible' }}>
         {packages.map((pkg: any, i: number) => (
-          <Grid size={{ xs: 12, md: 4 }} key={i}>
+          <Grid size={{ xs: 12, md: 4 }} key={i} sx={{ overflow: 'visible' }}>
             <Card sx={{ 
               borderRadius: 6, 
               p: 4, 
@@ -720,7 +705,8 @@ function PricingTab({ packages, onRequestQuote }: any) {
               border: i === 1 ? `2px solid ${COLORS.secondary}` : 'none',
               transform: i === 1 ? 'scale(1.05)' : 'none',
               zIndex: i === 1 ? 2 : 1,
-              position: 'relative'
+              position: 'relative',
+              overflow: i === 1 ? 'visible' : 'hidden'
             }}>
               {i === 1 && (
                 <Box sx={{ position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%) translateY(-50%)', bgcolor: COLORS.secondary, color: 'white', px: 2, py: 0.5, borderRadius: 2, fontSize: '0.75rem', fontWeight: 800 }}>
@@ -743,9 +729,10 @@ function PricingTab({ packages, onRequestQuote }: any) {
                 fullWidth 
                 variant={i === 1 ? "contained" : "outlined"} 
                 onClick={onRequestQuote}
+                disabled={disabled}
                 sx={{ 
                   borderRadius: 3, 
-                  bgcolor: i === 1 ? COLORS.primary : 'transparent',
+                  bgcolor: i === 1 ? (disabled ? 'action.disabledBackground' : COLORS.primary) : 'transparent',
                   borderColor: COLORS.primary,
                   color: i === 1 ? 'white' : COLORS.primary,
                   fontWeight: 700
@@ -767,7 +754,16 @@ function PricingTab({ packages, onRequestQuote }: any) {
           <Button 
             variant="contained" 
             onClick={onRequestQuote}
-            sx={{ bgcolor: COLORS.secondary, color: COLORS.primary, px: 6, py: 1.5, borderRadius: 3, fontWeight: 800, '&:hover': { bgcolor: '#B89740' } }}
+            disabled={disabled}
+            sx={{ 
+              bgcolor: disabled ? 'action.disabledBackground' : COLORS.secondary, 
+              color: COLORS.primary, 
+              px: 6, 
+              py: 1.5, 
+              borderRadius: 3, 
+              fontWeight: 800, 
+              '&:hover': { bgcolor: '#B89740' } 
+            }}
           >
             Request Custom Quote
           </Button>
