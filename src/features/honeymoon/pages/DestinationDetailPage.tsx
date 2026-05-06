@@ -240,9 +240,10 @@ export default function DestinationDetail() {
               <Button
                 variant="contained"
                 startIcon={<Plane size={20} />}
+                onClick={() => navigate('/vendors?category=Travel')}
                 sx={{ bgcolor: COLORS.primary, borderRadius: 3, px: 4, py: 1.5, fontWeight: 800, textTransform: 'none', '&:hover': { bgcolor: '#6B1423' } }}
               >
-                Book Now
+                Find Travel Vendors
               </Button>
             </Stack>
           </Stack>
