@@ -249,6 +249,7 @@ const userSchema = new Schema(
     },
     passwordHash: { type: String, required: true, minlength: 6 },
     role: { type: String, enum: ['user', 'vendor', 'admin'], default: 'user', index: true },
+    userType: { type: String, enum: ['partner', 'couple', 'horoscope_seeker'], default: 'partner', index: true },
     personalInfo: { type: personalInfoSchema, required: true },
     birthData: { type: birthDataSchema },
     horoscopeData: { type: horoscopeDataSchema, default: () => ({}) },
@@ -278,6 +279,7 @@ const userSchema = new Schema(
 );
 
 userSchema.index({ role: 1, 'personalInfo.location': 1 });
+userSchema.index({ role: 1, userType: 1 });
 userSchema.index({ role: 1, 'personalInfo.gender': 1, 'personalInfo.location': 1 });
 userSchema.index({ 'preferences.ageRange.min': 1, 'preferences.ageRange.max': 1, role: 1 });
 userSchema.index({ 'personalInfo.phone': 1 }, { unique: true, sparse: true });
@@ -314,6 +316,7 @@ userSchema.virtual('name').get(function getName() {
 userSchema.virtual('profileType').get(function getProfileType() {
   if (this.role === 'admin') return 'admin';
   if (this.role === 'vendor') return 'vendor';
+  if (this.userType) return this.userType;
   return this.weddingProject?.partnerName ? 'couple' : 'partner';
 });
 
