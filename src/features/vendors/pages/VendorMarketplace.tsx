@@ -6,7 +6,7 @@ import {
   FormLabel, RadioGroup, FormControlLabel, 
   Radio, Checkbox, Select, MenuItem, 
   InputLabel, Drawer, useTheme, useMediaQuery,
-  Skeleton, Alert, Badge, Divider, Chip, Card, CardContent
+  Skeleton, Alert, Badge, Divider, Chip, Card, CardContent, Paper
 } from '@mui/material';
 import { 
   Search, Filter, X, SlidersHorizontal, 
@@ -118,7 +118,7 @@ function buildBudgetSummary(project: any) {
     project?.categoryAllocations,
     project?.budget?.allocations,
     byCategory,
-  ];
+  ].filter(Boolean);
 
   const allocatedByCategory: Record<string, number> = {};
   const spentByCategory: Record<string, number> = {};
@@ -356,7 +356,7 @@ export default function VendorMarketplace() {
     setAvailableOnly(false);
   };
 
-  const weddingDateKey = normalizeDate(user?.weddingProject?.weddingDate);
+  const weddingDateKey = normalizeDate(rawProject?.weddingDate || user?.weddingProject?.weddingDate);
 
   const normalizeDistrict = (value: string) => value.trim().toLowerCase();
 
@@ -440,7 +440,7 @@ export default function VendorMarketplace() {
     <Box sx={{ bgcolor: COLORS.cream, minHeight: '100vh', pb: 10, position: 'relative' }}>
       <Box>
       {/* Hero Section & Category Tabs */}
-      <Box sx={{ bgcolor: COLORS.white, pt: 6, pb: 2, borderBottom: '1px solid', borderColor: 'divider', position: 'sticky', top: 0, zIndex: 100 }}>
+      <Box sx={{ bgcolor: COLORS.cream, pt: 6, pb: 2 }}>
         <Container maxWidth="xl">
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={3} alignItems="center" sx={{ mb: 4 }}>
             <Box sx={{ flexGrow: 1 }}>
@@ -531,16 +531,30 @@ export default function VendorMarketplace() {
           {/* Sidebar Filter (Desktop) */}
           {!isMobile && (
             <Grid size={{ md: 3 }}>
-              <Box sx={{ position: 'sticky', top: 180 }}>
-                <FilterSidebar 
-                  minRating={minRating}
-                  setMinRating={setMinRating}
-                  selectedDistricts={selectedDistricts}
-                  setSelectedDistricts={setSelectedDistricts}
-                  availableOnly={availableOnly}
-                  setAvailableOnly={setAvailableOnly}
-                  onReset={handleResetFilters}
-                />
+              <Box sx={{ 
+                position: 'sticky', 
+                top: 100, 
+                zIndex: 10,
+                alignSelf: 'flex-start'
+              }}>
+                <Paper sx={{ 
+                  p: 3, 
+                  borderRadius: 5, 
+                  bgcolor: 'white', 
+                  border: '1px solid', 
+                  borderColor: 'divider',
+                  boxShadow: '0 4px 20px rgba(0,0,0,0.04)' 
+                }}>
+                  <FilterSidebar 
+                    minRating={minRating}
+                    setMinRating={setMinRating}
+                    selectedDistricts={selectedDistricts}
+                    setSelectedDistricts={setSelectedDistricts}
+                    availableOnly={availableOnly}
+                    setAvailableOnly={setAvailableOnly}
+                    onReset={handleResetFilters}
+                  />
+                </Paper>
               </Box>
             </Grid>
           )}
