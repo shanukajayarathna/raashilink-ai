@@ -11,14 +11,35 @@ async function createAdmin() {
     console.log('Connected to MongoDB');
 
     // Admin credentials
-    const adminEmail = 'admin@raashilink.ai';
-    const adminPassword = 'Admin@RaashiLink2024';
+    const adminEmail = 'admin@gmail.com';
+    const adminPassword = '11111111';
     const adminPhone = '+94771234567';
 
-    // Check if admin already exists
-    const existingAdmin = await User.findOne({ email: adminEmail });
+    // Update existing admin account (by role or email) so credentials are always in sync.
+    const existingAdmin = await User.findOne({
+      $or: [{ role: 'admin' }, { email: adminEmail }, { email: 'admin@raashilink.ai' }],
+    });
     if (existingAdmin) {
-      console.log('Admin user already exists with email:', adminEmail);
+      existingAdmin.email = adminEmail;
+      existingAdmin.passwordHash = await bcrypt.hash(adminPassword, 10);
+      existingAdmin.role = 'admin';
+      existingAdmin.personalInfo = {
+        ...(existingAdmin.personalInfo || {}),
+        firstName: existingAdmin.personalInfo?.firstName || 'Admin',
+        lastName: existingAdmin.personalInfo?.lastName || 'User',
+        phone: existingAdmin.personalInfo?.phone || adminPhone,
+      };
+      existingAdmin.verification = {
+        ...(existingAdmin.verification || {}),
+        emailVerified: true,
+        phoneVerified: true,
+      };
+
+      await existingAdmin.save();
+
+      console.log('\n✅ Existing admin user updated successfully!\n');
+      console.log('📧 Email: admin@gmail.com');
+      console.log('🔑 Password: 11111111');
       process.exit(0);
     }
 
@@ -42,8 +63,8 @@ async function createAdmin() {
     });
 
     console.log('\n✅ Admin user created successfully!\n');
-    console.log('📧 Email: admin@raashilink.ai');
-    console.log('🔑 Password: Admin@RaashiLink2024');
+    console.log('📧 Email: admin@gmail.com');
+    console.log('🔑 Password: 11111111');
     console.log('\n⚠️  Please save these credentials securely and change the password after first login.\n');
 
     process.exit(0);
