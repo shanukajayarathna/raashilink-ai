@@ -73,8 +73,12 @@ function formatLanguage(language) {
   }
 }
 
+function getUserFirstName(user) {
+  return String(user?.personalInfo?.firstName || user?.firstName || 'User').trim() || 'User';
+}
+
 function buildProfileSummary(user) {
-  const profileName = `${user.personalInfo?.firstName || 'User'} ${user.personalInfo?.lastName || ''}`.trim();
+  const profileName = `${getUserFirstName(user)} ${user.personalInfo?.lastName || user?.lastName || ''}`.trim();
   const role = user.role === 'vendor' ? 'Vendor' : user.weddingProject?.partnerName ? 'Couple' : 'Partner';
   const location = user.personalInfo?.location || 'Sri Lanka';
   const horoscopeSummary = buildHoroscopeSummary(user);
@@ -145,6 +149,7 @@ function buildHoroscopeSummary(user) {
 
 function buildSystemPrompt(user, language) {
   const profileSummary = buildProfileSummary(user);
+  const firstName = getUserFirstName(user);
   const isHoroscopeSeeker = String(user?.userType || '').toLowerCase() === 'horoscope_seeker';
   let realtimeSnapshotText = '';
   try {
@@ -163,6 +168,7 @@ function buildSystemPrompt(user, language) {
   return `You are RaashiBot, the AI assistant for RaashiLink.AI. Answer the user with kindness, cultural sensitivity, and relevance to Sri Lankan context.
 ${scopeLine}
 Always honor the user's selected language: ${formatLanguage(language)}.
+Always address the user by their first name in every reply, naturally and respectfully. User first name: ${firstName}.
 
 Astrology behavior rules:
 - Only interpret from the "Horoscope" and "Birth" data provided above; do not invent placements.
@@ -335,7 +341,7 @@ async function generateGeminiReply({ user, message, language }) {
 }
 
 function fallbackReply(user, language) {
-  const name = user.personalInfo?.firstName || 'Friend';
+  const name = getUserFirstName(user);
   const sign = user.horoscopeData?.moonSign || user.horoscopeData?.rashi || user.horoscopeData?.zodiacSign || 'special';
   const hasBirth =
     !!(user?.birthData?.dateOfBirth && user?.birthData?.placeOfBirth?.city && user?.birthData?.placeOfBirth?.country);
