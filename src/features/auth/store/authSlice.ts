@@ -11,6 +11,12 @@ interface AuthState {
   error: string | null;
 }
 
+const MAX_CACHED_MEDIA_URL_LENGTH = 2048;
+
+function isCacheableMediaUrl(value: unknown) {
+  return typeof value === 'string' && value.length > 0 && value.length <= MAX_CACHED_MEDIA_URL_LENGTH && !value.startsWith('data:');
+}
+
 function sanitizeCachedUser(user: any) {
   if (!user) return null;
 
@@ -19,8 +25,12 @@ function sanitizeCachedUser(user: any) {
     : Array.isArray(user.personalInfo?.photos)
       ? user.personalInfo.photos
       : [];
-  const mainPhoto = sourcePhotos.find((photo: any) => photo?.isMain)?.url || sourcePhotos[0]?.url || null;
-  const profilePic = user.profilePic || user.personalInfo?.profilePic || mainPhoto || null;
+  const cacheablePhotos = sourcePhotos
+    .filter((photo: any) => isCacheableMediaUrl(photo?.url))
+    .map((photo: any) => ({ ...photo, url: photo.url }));
+  const mainPhoto = cacheablePhotos.find((photo: any) => photo?.isMain)?.url || cacheablePhotos[0]?.url || null;
+  const rawProfilePic = user.profilePic || user.personalInfo?.profilePic || mainPhoto || null;
+  const profilePic = isCacheableMediaUrl(rawProfilePic) ? rawProfilePic : mainPhoto;
 
   return {
     id: user.id || user._id || null,
@@ -89,7 +99,35 @@ function sanitizeCachedUser(user: any) {
           drinking: user.lifestyle.drinking || '',
         }
       : undefined,
-    photos: profilePic ? [{ url: profilePic, isMain: true }] : sourcePhotos,
+    photos: profilePic ? [{ url: profilePic, isMain: true }] : cacheablePhotos,
+  };
+}
+
+function normalizeUserForState(user: any) {
+  if (!user) return null;
+
+  const sanitized = sanitizeCachedUser(user);
+  if (!sanitized) return null;
+
+  const sourcePhotos = Array.isArray(user.photos)
+    ? user.photos
+    : Array.isArray(user.personalInfo?.photos)
+      ? user.personalInfo.photos
+      : [];
+
+  const normalizedPhotos = sourcePhotos
+    .filter((photo: any) => typeof photo?.url === 'string' && photo.url.length > 0)
+    .map((photo: any) => ({ ...photo, url: photo.url }));
+  const mainPhoto = normalizedPhotos.find((photo: any) => photo?.isMain)?.url || normalizedPhotos[0]?.url || null;
+  const rawProfilePic = user.profilePic || user.personalInfo?.profilePic || mainPhoto || sanitized.profilePic || null;
+
+  return {
+    ...sanitized,
+    profilePic: typeof rawProfilePic === 'string' && rawProfilePic.length > 0 ? rawProfilePic : null,
+    photos:
+      typeof rawProfilePic === 'string' && rawProfilePic.length > 0
+        ? [{ url: rawProfilePic, isMain: true }]
+        : normalizedPhotos,
   };
 }
 
@@ -105,9 +143,13 @@ function readCachedUser() {
 function persistCachedUser(user: any) {
   const sanitized = sanitizeCachedUser(user);
 
-  if (sanitized) {
-    localStorage.setItem('user', JSON.stringify(sanitized));
-  } else {
+  try {
+    if (sanitized) {
+      localStorage.setItem('user', JSON.stringify(sanitized));
+    } else {
+      localStorage.removeItem('user');
+    }
+  } catch {
     localStorage.removeItem('user');
   }
 
@@ -199,10 +241,12 @@ const authSlice = createSlice({
      * Set user credentials and session.
      */
     setCredentials: (state, action: PayloadAction<{ user: any; token: string; role: any }>) => {
-      const sanitizedUser = persistCachedUser({ ...(state.user || {}), ...(action.payload.user || {}) });
-      state.user = sanitizedUser;
+      const mergedUser = { ...(state.user || {}), ...(action.payload.user || {}) };
+      persistCachedUser(mergedUser);
+      const normalizedUser = normalizeUserForState(mergedUser);
+      state.user = normalizedUser;
       state.token = action.payload.token;
-      state.role = action.payload.role || sanitizedUser?.role || null;
+      state.role = action.payload.role || normalizedUser?.role || null;
       state.isAuthenticated = true;
       localStorage.setItem('token', action.payload.token);
     },
@@ -221,7 +265,9 @@ const authSlice = createSlice({
      * Update current user's information.
      */
     updateUser: (state, action: PayloadAction<any>) => {
-      state.user = persistCachedUser({ ...state.user, ...action.payload });
+      const mergedUser = { ...state.user, ...action.payload };
+      persistCachedUser(mergedUser);
+      state.user = normalizeUserForState(mergedUser);
     },
     /**
      * Clear authentication error.
@@ -240,7 +286,9 @@ const authSlice = createSlice({
       .addCase(loginUser.fulfilled, (state, action) => {
         state.loading = false;
         state.isAuthenticated = true;
-        state.user = persistCachedUser({ ...(state.user || {}), ...(action.payload.user || {}) });
+        const mergedUser = { ...(state.user || {}), ...(action.payload.user || {}) };
+        persistCachedUser(mergedUser);
+        state.user = normalizeUserForState(mergedUser);
         state.token = action.payload.token;
         state.role = action.payload.role || action.payload.user?.role || null;
       })
@@ -266,7 +314,7 @@ const authSlice = createSlice({
       })
       .addCase(fetchProfile.fulfilled, (state, action) => {
         state.loading = false;
-        state.user = persistCachedUser(action.payload);
+        state.user = normalizeUserForState(action.payload);
       })
       .addCase(fetchProfile.rejected, (state, action) => {
         state.loading = false;
