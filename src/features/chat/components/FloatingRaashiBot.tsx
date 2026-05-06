@@ -2,19 +2,15 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   Box,
   IconButton,
-  Avatar,
-  Typography,
-  Stack,
   useTheme,
   useMediaQuery,
 } from '@mui/material';
 import {
-  X,
   Flower2,
-  Minus,
-  Maximize2,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { useSelector } from 'react-redux';
+import { RootState } from '@/app/store/store';
 import ChatInterface from './ChatInterface';
 
 const COLORS = {
@@ -28,14 +24,64 @@ const COLORS = {
   success: '#2E7D32',
 };
 
+const SIZES = [
+  { width: 380, height: 500 },
+  { width: 520, height: 650 },
+  { width: 700, height: 800 },
+];
+
 export default function FloatingRaashiBot() {
   const [isOpen, setIsOpen] = useState(false);
-  const [isMinimized, setIsMinimized] = useState(false);
+  const [sizeIndex, setSizeIndex] = useState(0);
+  const containerRef = useRef<HTMLDivElement>(null);
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
+  const currentUser = useSelector((state: RootState) => state.auth.user as any);
+  const isAuthenticated = useSelector((state: RootState) => state.auth.isAuthenticated);
+  const userId = (currentUser?._id || currentUser?.id || 'guest') as string;
+  const firstName = (currentUser?.firstName || currentUser?.personalInfo?.firstName || '').trim();
+
+  const welcomeText = firstName
+    ? `Ayubowan ${firstName}! 🌺 I'm RaashiBot, your Sri Lankan wedding assistant. How can I help you explore RaashiLink.AI today?`
+    : "Ayubowan! 🌺 I'm RaashiBot, your Sri Lankan wedding assistant. How can I help you explore RaashiLink.AI today?";
+
+  // Detect logout → close panel and clear this user's chat from sessionStorage
+  const prevUserIdRef = useRef<string | null>(null);
+  const prevAuthRef = useRef(isAuthenticated);
+  useEffect(() => {
+    if (prevAuthRef.current && !isAuthenticated) {
+      // User just logged out
+      setIsOpen(false);
+      if (prevUserIdRef.current) {
+        sessionStorage.removeItem(`raashibot_${prevUserIdRef.current}`);
+        prevUserIdRef.current = null;
+      }
+    }
+    prevAuthRef.current = isAuthenticated;
+    if (isAuthenticated && userId !== 'guest') {
+      prevUserIdRef.current = userId;
+    }
+  }, [isAuthenticated, userId]);
+
+  // Click outside to close
+  useEffect(() => {
+    if (!isOpen) return;
+    function handleMouseDown(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleMouseDown);
+    return () => document.removeEventListener('mousedown', handleMouseDown);
+  }, [isOpen]);
+
+  const size = SIZES[sizeIndex];
+  const panelWidth = isMobile ? 'calc(100vw - 48px)' : size.width;
+  const panelHeight = size.height;
+
   return (
-    <Box sx={{ position: 'fixed', bottom: 24, right: 24, zIndex: 1000 }}>
+    <Box ref={containerRef} sx={{ position: 'fixed', bottom: 24, right: 24, zIndex: 1000 }}>
       <AnimatePresence>
         {isOpen && (
           <motion.div
@@ -46,27 +92,33 @@ export default function FloatingRaashiBot() {
               position: 'absolute',
               bottom: 80,
               right: 0,
-              width: isMobile ? 'calc(100vw - 48px)' : 380,
-              height: isMinimized ? 60 : 500,
+              width: panelWidth,
+              height: panelHeight,
               display: 'flex',
               flexDirection: 'column',
-              boxShadow: '0 8px 32px rgba(139,26,46,0.15)',
+              boxShadow: '0 8px 32px rgba(139,26,46,0.18)',
               borderRadius: 24,
               overflow: 'hidden',
               backgroundColor: 'white',
               border: `1px solid ${COLORS.primary}20`,
+              transition: 'width 0.25s ease, height 0.25s ease',
             }}
           >
-            <ChatInterface 
-              isCompact 
-              onClose={() => setIsOpen(false)} 
+            <ChatInterface
+              key={userId}
+              isCompact
+              onClose={() => setIsOpen(false)}
+              onScaleUp={sizeIndex < SIZES.length - 1 ? () => setSizeIndex((i) => i + 1) : undefined}
+              onScaleDown={sizeIndex > 0 ? () => setSizeIndex((i) => i - 1) : undefined}
+              firstName={firstName}
+              sessionKey={userId}
               initialMessages={[
                 {
                   id: 'welcome',
                   role: 'bot',
-                  content: "Namaste! 🌺 I'm RaashiBot, your Sri Lankan wedding assistant. How can I help you explore RaashiLink.AI today?",
+                  content: welcomeText,
                   timestamp: new Date().toISOString(),
-                }
+                },
               ]}
             />
           </motion.div>
@@ -74,12 +126,9 @@ export default function FloatingRaashiBot() {
       </AnimatePresence>
 
       {/* Toggle Button */}
-      <motion.div
-        whileHover={{ scale: 1.1 }}
-        whileTap={{ scale: 0.9 }}
-      >
+      <motion.div whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}>
         <IconButton
-          onClick={() => setIsOpen(!isOpen)}
+          onClick={() => setIsOpen((v) => !v)}
           sx={{
             width: 60,
             height: 60,
@@ -87,10 +136,10 @@ export default function FloatingRaashiBot() {
             color: 'white',
             boxShadow: '0 4px 20px rgba(139,26,46,0.3)',
             '&:hover': { bgcolor: '#6B1423' },
-            position: 'relative'
+            position: 'relative',
           }}
         >
-          {isOpen ? <X size={28} /> : <Flower2 size={28} />}
+          <Flower2 size={28} />
           {!isOpen && (
             <Box
               sx={{
@@ -107,7 +156,7 @@ export default function FloatingRaashiBot() {
                 justifyContent: 'center',
                 fontSize: '10px',
                 fontWeight: 800,
-                color: COLORS.primary
+                color: COLORS.primary,
               }}
             >
               1
