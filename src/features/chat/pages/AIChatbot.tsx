@@ -76,6 +76,7 @@ export default function AIChatbot() {
   const [chatHistory, setChatHistory] = useState(EMPTY_HISTORY);
   const [chatKey, setChatKey] = useState(0); // Used to reset ChatInterface
   const { token } = useSelector((state: RootState) => state.auth);
+  const currentUser = useSelector((state: RootState) => state.auth.user as any);
 
   useEffect(() => {
     const loadConversations = async () => {
@@ -103,6 +104,32 @@ export default function AIChatbot() {
   const handleClearChat = () => {
     setChatKey(prev => prev + 1);
   };
+
+  const starterPrompts = (() => {
+    const isSeeker = String(currentUser?.userType || '').toLowerCase() === 'horoscope_seeker';
+    const hasHoroscope = !!(currentUser?.horoscopeData?.moonSign || currentUser?.horoscopeData?.rashi);
+    const hasBirthDate = !!currentUser?.birthData?.dateOfBirth;
+    const hasBirthPlace = !!currentUser?.birthData?.placeOfBirth?.city;
+    if (!hasBirthDate || !hasBirthPlace) {
+      return ['How do I add my birth details?', 'Why is birth data important?', 'Help me get started', 'What is Rashi?'];
+    }
+    if (!hasHoroscope) {
+      return ['Generate my horoscope', 'What is Nakshatra?', 'How does compatibility work?', 'What is Guna Milan?'];
+    }
+    if (isSeeker) {
+      return [
+        'What does my birth chart say about my career?',
+        'My lucky colors and auspicious days',
+        'What does my Nakshatra reveal about me?',
+        'Health advice from my chart',
+        'Best timing for an important decision',
+        'What do my PORUTHAM identifiers mean?',
+        'Spiritual practices for my Gana',
+        'Planetary remedies for me',
+      ];
+    }
+    return ['What kind of partner suits me?', 'Check my compatibility', 'My lucky day this week', 'Auspicious wedding dates', 'Explain Porutham', 'Honeymoon ideas'];
+  })();
 
   return (
     <Box sx={{ height: 'calc(100vh - 64px)', display: 'flex', bgcolor: COLORS.cream, overflow: 'hidden' }}>
@@ -203,7 +230,13 @@ export default function AIChatbot() {
         </Paper>
 
         <Box sx={{ flex: 1, overflow: 'hidden' }}>
-          <ChatInterface key={chatKey} language={language} />
+          <ChatInterface
+            key={chatKey}
+            language={language}
+            onLanguageChange={handleLanguageChange}
+            starterPrompts={starterPrompts}
+            firstName={currentUser?.personalInfo?.firstName || currentUser?.firstName || ''}
+          />
         </Box>
       </Box>
     </Box>
