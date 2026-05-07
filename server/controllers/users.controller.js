@@ -415,11 +415,39 @@ export const updateProfile = asyncHandler(async (req, res) => {
   const privacyBody = body.privacy && typeof body.privacy === 'object' ? body.privacy : {};
   const astrologyBody = body.astrology && typeof body.astrology === 'object' ? body.astrology : {};
 
+  const incomingFirstName = pickDefined(personalInfoBody.firstName, body.firstName);
+  const incomingLastName = pickDefined(personalInfoBody.lastName, body.lastName);
+
+  if (incomingFirstName !== undefined || incomingLastName !== undefined) {
+    const nextFirstName = String(
+      incomingFirstName !== undefined ? incomingFirstName : (currentUser.personalInfo?.firstName || '')
+    ).trim();
+    const nextLastName = String(
+      incomingLastName !== undefined ? incomingLastName : (currentUser.personalInfo?.lastName || '')
+    ).trim();
+
+    updates['personalInfo.firstName'] = nextFirstName;
+    updates['personalInfo.lastName'] = nextLastName;
+
+    const nextFullName = [nextFirstName, nextLastName].filter(Boolean).join(' ').trim();
+    if (nextFullName) {
+      updates.name = nextFullName;
+    }
+  }
+
   const incomingName = pickDefined(body.name, personalInfoBody.name);
-  if (incomingName) {
+  if (incomingName && incomingFirstName === undefined && incomingLastName === undefined) {
     const [firstName, ...rest] = String(incomingName).trim().split(/\s+/);
-    updates['personalInfo.firstName'] = firstName || currentUser.personalInfo?.firstName || '';
-    updates['personalInfo.lastName'] = rest.join(' ') || currentUser.personalInfo?.lastName || '';
+    const resolvedFirstName = firstName || currentUser.personalInfo?.firstName || '';
+    const resolvedLastName = rest.join(' ') || currentUser.personalInfo?.lastName || '';
+
+    updates['personalInfo.firstName'] = resolvedFirstName;
+    updates['personalInfo.lastName'] = resolvedLastName;
+
+    const resolvedFullName = [resolvedFirstName, resolvedLastName].filter(Boolean).join(' ').trim();
+    if (resolvedFullName) {
+      updates.name = resolvedFullName;
+    }
   }
 
   const fieldMap = {
