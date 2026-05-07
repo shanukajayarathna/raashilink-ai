@@ -123,7 +123,7 @@ const BirthChartWheel: React.FC<BirthChartWheelProps> = ({
         initial={{ rotate: -90, scale: 0.72, opacity: 0 }}
         animate={{ rotate: 0,  scale: 1,    opacity: 1 }}
         transition={{ duration: 1.6, ease: 'easeOut' }}
-        style={{ width: '100%', height: '100%', display: 'block', overflow: 'visible' }}
+        style={{ width: '100%', height: '100%', display: 'block', overflow: 'visible', willChange: 'transform, opacity' }}
         xmlns="http://www.w3.org/2000/svg"
       >
         <defs>
@@ -152,13 +152,17 @@ const BirthChartWheel: React.FC<BirthChartWheelProps> = ({
 
         {/* ════════════════════════════════════════════
             LIVE 1 – Outer astrolabe compass ring
-            Rotates CW 1 rev / 90 s
+            Rotates CW 1 rev / 90 s — native SVG animation (compositor thread)
         ════════════════════════════════════════════ */}
-        <motion.g
-          style={{ transformOrigin: `${CX}px ${CY}px` }}
-          animate={{ rotate: 360 }}
-          transition={{ duration: 90, repeat: Infinity, ease: 'linear' }}
-        >
+        <g>
+          <animateTransform
+            attributeName="transform"
+            type="rotate"
+            from={`0 ${CX} ${CY}`}
+            to={`360 ${CX} ${CY}`}
+            dur="90s"
+            repeatCount="indefinite"
+          />
           {/* Dark primary-coloured band */}
           <circle cx={CX} cy={CY} r={R_COUT} fill={C.primary} />
           <circle cx={CX} cy={CY} r={R_ZOUT} fill="none" />
@@ -203,7 +207,7 @@ const BirthChartWheel: React.FC<BirthChartWheelProps> = ({
           {/* ring borders */}
           <circle cx={CX} cy={CY} r={R_ZOUT} fill="none" stroke={C.secondary} strokeWidth="2.5" />
           <circle cx={CX} cy={CY} r={R_COUT} fill="none" stroke={C.secondary} strokeWidth="2" />
-        </motion.g>
+        </g>
 
         {/* ════════════════════════════════════════════
             LIVE 2 – Pulsing outer halo ring
@@ -211,6 +215,7 @@ const BirthChartWheel: React.FC<BirthChartWheelProps> = ({
         <motion.circle cx={CX} cy={CY} r={R_COUT + 7}
           fill="none" stroke={ascData.solid} strokeWidth="3"
           filter="url(#haloGlow)"
+          style={{ willChange: 'opacity' }}
           animate={{ opacity: [0.12, 0.5, 0.12], r: [R_COUT + 5, R_COUT + 12, R_COUT + 5] }}
           transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
         />
@@ -322,15 +327,21 @@ const BirthChartWheel: React.FC<BirthChartWheelProps> = ({
         })}
 
         {/* ════════════════════════════════════════════
-            LIVE 3 – Dashed inner ring counter-rotates
+            LIVE 3 – Dashed inner ring counter-rotates — native SVG animation
         ════════════════════════════════════════════ */}
-        <motion.circle cx={CX} cy={CY} r={R_HIN - 8}
+        <circle cx={CX} cy={CY} r={R_HIN - 8}
           fill="none" stroke={`${C.secondary}70`}
           strokeWidth="2" strokeDasharray="9 5"
-          style={{ transformOrigin: `${CX}px ${CY}px` }}
-          animate={{ rotate: -360 }}
-          transition={{ duration: 60, repeat: Infinity, ease: 'linear' }}
-        />
+        >
+          <animateTransform
+            attributeName="transform"
+            type="rotate"
+            from={`0 ${CX} ${CY}`}
+            to={`-360 ${CX} ${CY}`}
+            dur="60s"
+            repeatCount="indefinite"
+          />
+        </circle>
 
         {/* ── Centre circle ── */}
         <circle cx={CX} cy={CY} r={R_CENTRE - 2}
@@ -339,13 +350,17 @@ const BirthChartWheel: React.FC<BirthChartWheelProps> = ({
         />
 
         {/* ════════════════════════════════════════════
-            LIVE 4 – Compass crosshair (slow CW, 40 s)
+            LIVE 4 – Compass crosshair (slow CW, 40 s) — native SVG animation
         ════════════════════════════════════════════ */}
-        <motion.g
-          style={{ transformOrigin: `${CX}px ${CY}px` }}
-          animate={{ rotate: 360 }}
-          transition={{ duration: 40, repeat: Infinity, ease: 'linear' }}
-        >
+        <g>
+          <animateTransform
+            attributeName="transform"
+            type="rotate"
+            from={`0 ${CX} ${CY}`}
+            to={`360 ${CX} ${CY}`}
+            dur="40s"
+            repeatCount="indefinite"
+          />
           {[0, 90, 180, 270].map(angle => (
             <line key={angle}
               x1={px(20, angle)} y1={py(20, angle)}
@@ -360,13 +375,14 @@ const BirthChartWheel: React.FC<BirthChartWheelProps> = ({
               stroke={`${C.secondary}35`} strokeWidth="1"
             />
           ))}
-        </motion.g>
+        </g>
 
         {/* ════════════════════════════════════════════
             LIVE 5 – Pulsing centre glow
         ════════════════════════════════════════════ */}
         <motion.circle cx={CX} cy={CY} r="58"
           fill={`${ascData.solid}22`}
+          style={{ willChange: 'opacity' }}
           animate={{ r: [52, 66, 52], opacity: [0.3, 0.65, 0.3] }}
           transition={{ duration: 3.5, repeat: Infinity, ease: 'easeInOut' }}
         />
