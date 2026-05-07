@@ -170,6 +170,14 @@ function formatSeekingGenderDisplay(value: any) {
   return normalized.charAt(0).toUpperCase() + normalized.slice(1);
 }
 
+function normalizeLocationText(value: string) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
 function formatGenderDisplay(value: any) {
   if (value === undefined || value === null) return 'Not provided';
 
@@ -287,11 +295,15 @@ function buildPersonalityChartFromAnswers(answers: any[], fallbackData: any[]) {
 export default function UserProfile() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, token } = useSelector((state: RootState) => state.auth);  const dispatch = useDispatch();
+  const { user, token } = useSelector((state: RootState) => state.auth);
+  const isHoroscopeSeeker = user?.profileType === 'horoscope_seeker' || user?.userType === 'horoscope_seeker';
+  const dispatch = useDispatch();
   const searchParams = new URLSearchParams(location.search);
   const initialTab = parseInt(searchParams.get('tab') || '0', 10);
   const initialEdit = searchParams.get('edit') === 'true';
-  const [tabValue, setTabValue] = useState(isNaN(initialTab) ? 0 : Math.min(initialTab, 4));
+  const [tabValue, setTabValue] = useState(
+    isNaN(initialTab) ? 0 : Math.min(initialTab, isHoroscopeSeeker ? 0 : 4)
+  );
   const [loading, setLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [profileData, setProfileData] = useState<any>(null);
@@ -345,6 +357,12 @@ export default function UserProfile() {
   }, [galleryPreviewUrl]);
 
   useEffect(() => {
+    if (isHoroscopeSeeker && tabValue !== 0) {
+      setTabValue(0);
+    }
+  }, [isHoroscopeSeeker, tabValue]);
+
+  useEffect(() => {
     const query = String(editData.location || '').trim();
 
     if (!editing) {
@@ -377,6 +395,7 @@ export default function UserProfile() {
 
   useEffect(() => {
     const query = String(editData.birthPlace || '').trim();
+    const normalizedQuery = normalizeLocationText(query);
 
     if (!editing) {
       setBirthPlaceSuggestions([]);
@@ -384,8 +403,8 @@ export default function UserProfile() {
       return;
     }
 
-    if (query.length < 2) {
-      setBirthPlaceSuggestions(query ? [query] : []);
+    if (!query) {
+      setBirthPlaceSuggestions([]);
       setLoadingBirthPlaceSuggestions(false);
       return;
     }
@@ -393,11 +412,18 @@ export default function UserProfile() {
     const timer = window.setTimeout(async () => {
       setLoadingBirthPlaceSuggestions(true);
       try {
-        const suggestions = await userService.searchBirthPlaces(query, 5);
-        setBirthPlaceSuggestions(Array.from(new Set([query, ...suggestions])));
+        const suggestions: string[] = await userService.searchBirthPlaces(query, 5);
+        const remotePrefixMatches = suggestions
+          .filter((place) => normalizeLocationText(place).startsWith(normalizedQuery))
+          .slice(0, 5);
+        setBirthPlaceSuggestions(
+          remotePrefixMatches.length > 0
+            ? remotePrefixMatches
+            : []
+        );
       } catch (lookupError) {
         console.error('Birth place suggestion lookup failed:', lookupError);
-        setBirthPlaceSuggestions(query ? [query] : []);
+        setBirthPlaceSuggestions([]);
       } finally {
         setLoadingBirthPlaceSuggestions(false);
       }
@@ -674,6 +700,12 @@ export default function UserProfile() {
 
   const handleStartEdit = () => {
     if (!profileData) return;
+
+    if (isHoroscopeSeeker) {
+      navigate('/profile/edit');
+      return;
+    }
+
     setEditData(normalizeProfileData(profileData));
     setEditing(true);
   };
@@ -1003,14 +1035,16 @@ export default function UserProfile() {
                   <Typography variant="caption" sx={{ fontWeight: 800, color: COLORS.accent, display: 'flex', alignItems: 'center', gap: 0.5, justifyContent: 'flex-end' }}>
                     <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: '#4CAF50' }} /> {profileData.status}
                   </Typography>
-                  <Box sx={{ mt: 1, display: 'flex', alignItems: 'center', gap: 1, justifyContent: 'flex-end' }}>
-                    <Typography variant="caption" sx={{ fontWeight: 700 }}>Profile Strength</Typography>
-                    <Chip 
-                      label={`${profileData.completion}% Complete`} 
-                      size="small" 
-                      sx={{ bgcolor: alpha(COLORS.primary, 0.1), color: COLORS.primary, fontWeight: 800, fontSize: '0.65rem' }} 
-                    />
-                  </Box>
+                  {!isHoroscopeSeeker && (
+                    <Box sx={{ mt: 1, display: 'flex', alignItems: 'center', gap: 1, justifyContent: 'flex-end' }}>
+                      <Typography variant="caption" sx={{ fontWeight: 700 }}>Profile Strength</Typography>
+                      <Chip
+                        label={`${profileData.completion}% Complete`}
+                        size="small"
+                        sx={{ bgcolor: alpha(COLORS.primary, 0.1), color: COLORS.primary, fontWeight: 800, fontSize: '0.65rem' }}
+                      />
+                    </Box>
+                  )}
                 </Box>
                 <Stack
                   direction="row"
@@ -1096,10 +1130,10 @@ export default function UserProfile() {
             }}
           >
             <Tab label="About" />
-            <Tab label="Astrology" />
-            <Tab label="Lifestyle" />
-            <Tab label="Photos" />
-            <Tab label="Privacy" />
+            {!isHoroscopeSeeker && <Tab label="Astrology" />}
+            {!isHoroscopeSeeker && <Tab label="Lifestyle" />}
+            {!isHoroscopeSeeker && <Tab label="Photos" />}
+            {!isHoroscopeSeeker && <Tab label="Privacy" />}
           </Tabs>
         </Box>
       </MotionPaper>
@@ -1115,7 +1149,7 @@ export default function UserProfile() {
         >
           <CustomTabPanel value={tabValue} index={0}>
             <Grid container spacing={4}>
-              <Grid size={{ xs: 12, md: 7 }}>
+              <Grid size={{ xs: 12, md: isHoroscopeSeeker ? 12 : 7 }}>
                 <Stack spacing={4}>
                   <Paper sx={{ p: 4, borderRadius: '24px', boxShadow: '0 2px 16px rgba(0,0,0,0.03)' }}>
                     <Typography variant="h6" sx={{ mb: 3, fontWeight: 800, color: COLORS.primary }}>About Me</Typography>
@@ -1253,9 +1287,10 @@ export default function UserProfile() {
                     )}
                   </Paper>
 
-                  <Paper sx={{ p: 4, borderRadius: '24px', boxShadow: '0 2px 16px rgba(0,0,0,0.03)' }}>
-                    <Typography variant="h6" sx={{ mb: 3, fontWeight: 800, color: COLORS.primary }}>Personal Information</Typography>
-                    <Grid container spacing={3}>
+                  {!isHoroscopeSeeker && (
+                    <Paper sx={{ p: 4, borderRadius: '24px', boxShadow: '0 2px 16px rgba(0,0,0,0.03)' }}>
+                      <Typography variant="h6" sx={{ mb: 3, fontWeight: 800, color: COLORS.primary }}>Personal Information</Typography>
+                      <Grid container spacing={3}>
                       {[
                         { label: 'Age', value: profileData.age, key: 'age', icon: <Calendar size={18} /> },
                         { label: 'Gender', value: formatGenderDisplay(profileData.personalInfo.gender), key: 'personalInfo.gender', icon: <User size={18} /> },
@@ -1425,8 +1460,9 @@ export default function UserProfile() {
                           </Box>
                         </Grid>
                       ))}
-                    </Grid>
-                  </Paper>
+                      </Grid>
+                    </Paper>
+                  )}
 
                   {/* Contact & Security */}
                   <Paper sx={{ p: 4, borderRadius: '24px', boxShadow: '0 2px 16px rgba(0,0,0,0.03)' }}>
@@ -1472,8 +1508,9 @@ export default function UserProfile() {
                 </Stack>
               </Grid>
 
-              <Grid size={{ xs: 12, md: 5 }}>
-                <Paper sx={{ p: 4, borderRadius: '24px', boxShadow: '0 2px 16px rgba(0,0,0,0.03)', height: '100%' }}>
+              {!isHoroscopeSeeker && (
+                <Grid size={{ xs: 12, md: 5 }}>
+                  <Paper sx={{ p: 4, borderRadius: '24px', boxShadow: '0 2px 16px rgba(0,0,0,0.03)', height: '100%' }}>
                   <Typography variant="h6" sx={{ mb: 1, fontWeight: 800, color: COLORS.primary }}>Personality Traits</Typography>
                   <Typography variant="caption" sx={{ color: COLORS.textSecondary, mb: 4, display: 'block' }}>
                     {editing ? 'Retake the Big Five quiz to update your personality profile.' : 'Based on your Big Five personality quiz results'}
@@ -1529,12 +1566,13 @@ export default function UserProfile() {
                       ))}
                     </Stack>
                   )}
-                </Paper>
-              </Grid>
+                  </Paper>
+                </Grid>
+              )}
             </Grid>
           </CustomTabPanel>
 
-          <CustomTabPanel value={tabValue} index={1}>
+          {!isHoroscopeSeeker && <CustomTabPanel value={tabValue} index={1}>
             <Grid container spacing={4}>
               <Grid size={{ xs: 12, md: 6 }}>
                 <Paper sx={{ p: 4, borderRadius: '24px', boxShadow: '0 2px 16px rgba(0,0,0,0.03)' }}>
@@ -1591,7 +1629,7 @@ export default function UserProfile() {
                             onInputChange={(_, value) => setEditData({ ...editData, birthPlace: value })}
                             onChange={(_, value) => setEditData({ ...editData, birthPlace: typeof value === 'string' ? value : value || '' })}
                             filterOptions={(options) => options}
-                            noOptionsText={editData.birthPlace ? 'No matching places found' : 'Type at least 2 letters'}
+                            noOptionsText={editData.birthPlace ? 'No matching Sri Lankan places found' : 'Type to search places'}
                             renderInput={(params) => (
                               <TextField
                                 {...params}
@@ -1688,9 +1726,9 @@ export default function UserProfile() {
                 </Paper>
               </Grid>
             </Grid>
-          </CustomTabPanel>
+          </CustomTabPanel>}
 
-          <CustomTabPanel value={tabValue} index={2}>
+          {!isHoroscopeSeeker && <CustomTabPanel value={tabValue} index={2}>
             <Grid container spacing={4}>
               <Grid size={{ xs: 12, md: 6 }}>
                 <Paper sx={{ p: 4, borderRadius: '24px', boxShadow: '0 2px 16px rgba(0,0,0,0.03)' }}>
@@ -1882,9 +1920,9 @@ export default function UserProfile() {
                 </Stack>
               </Grid>
             </Grid>
-          </CustomTabPanel>
+          </CustomTabPanel>}
 
-          <CustomTabPanel value={tabValue} index={3}>
+          {!isHoroscopeSeeker && <CustomTabPanel value={tabValue} index={3}>
             <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <Typography variant="h6" sx={{ fontWeight: 800, color: COLORS.primary }}>Photo Gallery</Typography>
               <Button 
@@ -2006,9 +2044,9 @@ export default function UserProfile() {
                 </Grid>
               ))}
             </Grid>
-          </CustomTabPanel>
+          </CustomTabPanel>}
 
-          <CustomTabPanel value={tabValue} index={4}>
+          {!isHoroscopeSeeker && <CustomTabPanel value={tabValue} index={4}>
             <Grid container spacing={4}>
               <Grid size={{ xs: 12, md: 7 }}>
                 <Paper sx={{ p: 4, borderRadius: '24px', boxShadow: '0 2px 16px rgba(0,0,0,0.03)' }}>
@@ -2146,7 +2184,7 @@ export default function UserProfile() {
                 </Stack>
               </Grid>
             </Grid>
-          </CustomTabPanel>
+          </CustomTabPanel>}
         </MotionBox>
       </AnimatePresence>
     </Container>
