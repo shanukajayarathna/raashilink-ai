@@ -62,10 +62,27 @@ interface Dimension {
 interface CompatibilityScoresProps {
   overallScore: number;
   dimensions: Dimension[];
-  userA: { name: string; photo: string; sign: string; gana?: string; manglik?: string };
-  userB: { name: string; photo: string; sign: string; gana?: string; manglik?: string };
+  userA: { name: string; photo: string; sign: string; gana?: string; manglik?: string; rajju?: string; nadi?: string; yoni?: string };
+  userB: { name: string; photo: string; sign: string; gana?: string; manglik?: string; rajju?: string; nadi?: string; yoni?: string };
   explanation?: string;
 }
+
+const PORUTHAM_MEANINGS: Record<string, string> = {
+  Rajju: 'Marriage stability and long-term protection.',
+  Nadi: 'Health, vitality, and progeny compatibility.',
+  Yoni: 'Instinctive, emotional, and physical compatibility.',
+};
+
+const ASTRO_FACTOR_MEANINGS: Record<string, string> = {
+  varna: 'Temperament and spiritual disposition.',
+  vashya: 'Mutual influence and attraction.',
+  tara: 'Fortune, wellbeing, and mutual support.',
+  yoni: 'Instinctive and intimate compatibility.',
+  grahaMaitri: 'Mental harmony and planetary friendship.',
+  gana: 'Nature and behavioural compatibility.',
+  bhakoot: 'Emotional bonding and family prosperity.',
+  nadi: 'Health, energy flow, and progeny suitability.',
+};
 
 const CompatibilityScores: React.FC<CompatibilityScoresProps> = ({ overallScore, dimensions, userA, userB, explanation }) => {
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -195,11 +212,71 @@ const CompatibilityScores: React.FC<CompatibilityScoresProps> = ({ overallScore,
                     <Chip label={`Manglik: ${user.manglik || 'Pending'}`} size="small" sx={{ fontSize: '10px', height: 20 }} />
                     <Chip label={`Gana: ${user.gana || 'Pending'}`} size="small" sx={{ fontSize: '10px', height: 20 }} />
                   </Box>
+                  <Box sx={{ mt: 1, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                    <Chip label={`Rajju: ${user.rajju || 'Pending'}`} size="small" sx={{ fontSize: '10px', height: 20 }} />
+                    <Chip label={`Nadi: ${user.nadi || 'Pending'}`} size="small" sx={{ fontSize: '10px', height: 20 }} />
+                    <Chip label={`Yoni: ${user.yoni || 'Pending'}`} size="small" sx={{ fontSize: '10px', height: 20 }} />
+                  </Box>
                 </Box>
               </Paper>
             </Grid>
           ))}
         </Grid>
+
+        <Paper sx={{ mt: 2.5, p: 2.5, borderRadius: '18px', border: '1px solid', borderColor: COLORS.background, bgcolor: COLORS.white }}>
+          <Typography variant="subtitle2" sx={{ fontWeight: 800, color: COLORS.primary, mb: 1.5 }}>
+            Porutham Comparison (Both Sides)
+          </Typography>
+          <Grid container spacing={1.25}>
+            {[
+              {
+                label: 'Rajju',
+                left: userA.rajju || 'Pending',
+                right: userB.rajju || 'Pending',
+                cautionOnSame: true,
+              },
+              {
+                label: 'Nadi',
+                left: userA.nadi || 'Pending',
+                right: userB.nadi || 'Pending',
+                cautionOnSame: true,
+              },
+              {
+                label: 'Yoni',
+                left: userA.yoni || 'Pending',
+                right: userB.yoni || 'Pending',
+                cautionOnSame: false,
+              },
+            ].map((row) => {
+              const same = row.left !== 'Pending' && row.right !== 'Pending' && row.left === row.right;
+              const caution = row.cautionOnSame && same;
+              return (
+                <Grid size={{ xs: 12, md: 4 }} key={row.label}>
+                  <Box sx={{ p: 1.5, borderRadius: '12px', bgcolor: caution ? `${COLORS.error}10` : `${COLORS.accent}10`, border: '1px solid', borderColor: caution ? `${COLORS.error}66` : `${COLORS.accent}44` }}>
+                    <Typography variant="caption" sx={{ display: 'block', fontWeight: 800, color: caution ? COLORS.error : COLORS.accent, mb: 0.5 }}>
+                      {row.label.toUpperCase()}
+                    </Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 700, color: COLORS.textPrimary }}>
+                      {userA.name}: {row.left}
+                    </Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 700, color: COLORS.textPrimary }}>
+                      {userB.name}: {row.right}
+                    </Typography>
+                    <Typography variant="caption" sx={{ display: 'block', mt: 0.75, color: COLORS.textSecondary, lineHeight: 1.35 }}>
+                      {PORUTHAM_MEANINGS[row.label]}
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: COLORS.textSecondary }}>
+                      {caution ? 'Same value detected (traditional caution)' : 'Compared in overall astrological score'}
+                    </Typography>
+                  </Box>
+                </Grid>
+              );
+            })}
+          </Grid>
+          <Typography variant="caption" sx={{ display: 'block', mt: 1.5, color: COLORS.textSecondary }}>
+            Overall percentage is the final weighted compatibility score, including Porutham-adjusted astrological contribution.
+          </Typography>
+        </Paper>
       </Box>
 
       {/* Dimension Breakdown */}
@@ -284,17 +361,38 @@ const CompatibilityScores: React.FC<CompatibilityScoresProps> = ({ overallScore,
                     </Typography>
                   </Box>
 
+                  {dim.id === 'astro' && (
+                    <Box sx={{ mb: 3 }}>
+                      <Paper sx={{ p: 2.5, borderRadius: '16px', border: '1px solid', borderColor: COLORS.background, bgcolor: COLORS.white }}>
+                        <Typography variant="subtitle2" sx={{ fontWeight: 800, color: COLORS.primary, mb: 0.75 }}>
+                          Astrological Overall
+                        </Typography>
+                        <Typography variant="body2" sx={{ color: COLORS.textPrimary, fontWeight: 700, mb: 0.5 }}>
+                          {dim.score}/{dim.max} points for astrological compatibility
+                        </Typography>
+                        <Typography variant="caption" sx={{ display: 'block', color: COLORS.textSecondary, lineHeight: 1.5 }}>
+                          This combines Ashtakoota factors such as Varna, Vashya, Tara, Yoni, Graha Maitri, Gana, Bhakoot, and Nadi, plus Porutham checks for Rajju, Nadi, Yoni, and Gana. Manglik mismatch can reduce this astrological score further.
+                        </Typography>
+                      </Paper>
+                    </Box>
+                  )}
+
                   {dim.subScores && (
                     <Grid container spacing={2}>
                       {dim.subScores.map((sub, sIdx) => (
                         <Grid size={{ xs: 6, sm: 4, md: 3 }} key={sIdx}>
-                          <Box sx={{ p: 2, border: '1px solid', borderColor: COLORS.background, borderRadius: '12px', textAlign: 'center' }}>
+                          <Box sx={{ p: 2, border: '1px solid', borderColor: COLORS.background, borderRadius: '12px', textAlign: 'center', height: '100%' }}>
                             <Typography variant="caption" sx={{ display: 'block', color: COLORS.textSecondary, fontWeight: 700, mb: 0.5 }}>
                               {sub.name}
                             </Typography>
                             <Typography variant="body2" sx={{ fontWeight: 800, color: COLORS.primary }}>
                               {sub.score}/{sub.max} {sub.score === sub.max && <CheckCircle sx={{ fontSize: 12, color: COLORS.success, ml: 0.5 }} />}
                             </Typography>
+                            {dim.id === 'astro' && ASTRO_FACTOR_MEANINGS[sub.name] && (
+                              <Typography variant="caption" sx={{ display: 'block', mt: 0.75, color: COLORS.textSecondary, lineHeight: 1.35 }}>
+                                {ASTRO_FACTOR_MEANINGS[sub.name]}
+                              </Typography>
+                            )}
                           </Box>
                         </Grid>
                       ))}
