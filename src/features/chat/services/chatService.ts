@@ -74,8 +74,11 @@ sendStreamingMessage: async (
             break;
           }
 
-          fullResponse += data;
-          onChunk(data);
+          // Decode escaped newlines written by writeSseChunk on the backend.
+          // The backend encodes \\ as \\\\ and \n as \\n so we reverse in order.
+          const decoded = data.replace(/\\\\n/g, '\u0000').replace(/\\n/g, '\n').replace(/\u0000/g, '\\n');
+          fullResponse += decoded;
+          onChunk(decoded);
         }
 
         if (sawDone) {
@@ -87,8 +90,9 @@ sendStreamingMessage: async (
       if (!sawDone && buffer.startsWith('data: ')) {
         const data = buffer.slice(6).trimEnd();
         if (data && data !== '[DONE]') {
-          fullResponse += data;
-          onChunk(data);
+          const decoded = data.replace(/\\\\n/g, '\u0000').replace(/\\n/g, '\n').replace(/\u0000/g, '\\n');
+          fullResponse += decoded;
+          onChunk(decoded);
         }
       }
     } finally {
@@ -105,6 +109,7 @@ sendStreamingMessage: async (
     const fallback = await axiosInstance.post('/chat/assistant', {
       message: trimmedMessage,
       language,
+      history,
     });
 
     const reply = fallback?.data?.data?.reply || fallback?.data?.reply || '';
