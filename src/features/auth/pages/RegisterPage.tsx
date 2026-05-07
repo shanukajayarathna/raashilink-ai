@@ -73,11 +73,6 @@ const COLORS = {
   textSecondary: '#555555',
 };
 
-const SRI_LANKAN_DISTRICTS = [
-  'Ampara', 'Anuradhapura', 'Badulla', 'Batticaloa', 'Colombo', 'Galle', 'Gampaha', 'Hambantota', 'Jaffna', 'Kalutara',
-  'Kandy', 'Kegalle', 'Kilinochchi', 'Kurunegala', 'Mannar', 'Matale', 'Matara', 'Monaragala', 'Mullaitivu',
-  'Nuwara Eliya', 'Polonnaruwa', 'Puttalam', 'Ratnapura', 'Trincomalee', 'Vavuniya'
-];
 const SRI_LANKA_MOBILE_REGEX = /^7\d{8}$/;
 const MAX_IMAGE_SIZE_BYTES = (6 * 1024 * 1024) - 1;
 const BIRTH_CHART_MESSAGES = [
@@ -114,6 +109,14 @@ function normalizeSriLankanPhoneInput(value: string) {
 
 function isValidSriLankanPhoneInput(value: string) {
   return SRI_LANKA_MOBILE_REGEX.test(normalizeSriLankanPhoneInput(value));
+}
+
+function normalizeLocationText(value: string) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
 }
 
 const MotionBox = motion(Box);
@@ -202,7 +205,7 @@ const RegisterPage = () => {
     phoneAvailable: null as boolean | null,
     checking: false,
   });
-  const [birthPlaceSuggestions, setBirthPlaceSuggestions] = useState<string[]>(SRI_LANKAN_DISTRICTS.slice(0, 5));
+  const [birthPlaceSuggestions, setBirthPlaceSuggestions] = useState<string[]>([]);
   const [loadingBirthPlaceSuggestions, setLoadingBirthPlaceSuggestions] = useState(false);
 
   // Debounced availability check
@@ -236,9 +239,10 @@ const RegisterPage = () => {
 
   useEffect(() => {
     const query = String(formData.pob || '').trim();
+    const normalizedQuery = normalizeLocationText(query);
 
     if (!query) {
-      setBirthPlaceSuggestions(SRI_LANKAN_DISTRICTS.slice(0, 5));
+      setBirthPlaceSuggestions([]);
       setLoadingBirthPlaceSuggestions(false);
       return;
     }
@@ -246,15 +250,19 @@ const RegisterPage = () => {
     const timer = window.setTimeout(async () => {
       setLoadingBirthPlaceSuggestions(true);
       try {
-        const suggestions = await authService.searchBirthPlaces(query, 5);
+        const suggestions: string[] = await authService.searchBirthPlaces(query, 5);
+        const remotePrefixMatches = suggestions
+          .filter((place) => normalizeLocationText(place).startsWith(normalizedQuery))
+          .slice(0, 5);
+
         setBirthPlaceSuggestions(
-          suggestions.length > 0
-            ? suggestions
-            : SRI_LANKAN_DISTRICTS.filter((place) => place.toLowerCase().includes(query.toLowerCase())).slice(0, 5)
+          remotePrefixMatches.length > 0
+            ? remotePrefixMatches
+            : []
         );
       } catch (lookupError) {
         console.error('Birth place suggestion lookup failed:', lookupError);
-        setBirthPlaceSuggestions(SRI_LANKAN_DISTRICTS.filter((place) => place.toLowerCase().includes(query.toLowerCase())).slice(0, 5));
+        setBirthPlaceSuggestions([]);
       } finally {
         setLoadingBirthPlaceSuggestions(false);
       }
