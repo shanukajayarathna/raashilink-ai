@@ -206,7 +206,7 @@ export const fetchProfile = createAsyncThunk(
   'auth/fetchProfile',
   async (_, { rejectWithValue, getState }) => {
     try {
-      const data = await userService.getProfile({ includeMedia: false });
+      const data = await userService.getProfile({ includeMedia: true });
       const existingUser = (getState() as { auth?: AuthState })?.auth?.user || readCachedUser();
       const mergedUser = {
         ...(existingUser || {}),
