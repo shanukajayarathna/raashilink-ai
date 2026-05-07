@@ -372,6 +372,66 @@ export default function MatchDetailPanel({
                     </Box>
                   ))}
                 </Stack>
+
+                {detail.poruthamComparison && (
+                  <Box sx={{ mt: 2.5, p: 2, bgcolor: 'white', borderRadius: 3, border: '1px solid', borderColor: 'divider' }}>
+                    <Typography variant="caption" sx={{ display: 'block', fontWeight: 800, color: 'primary.main', mb: 1.25, letterSpacing: 0.5 }}>
+                      PORUTHAM COMPARISON (YOU VS MATCH)
+                    </Typography>
+                    <Grid container spacing={1.25}>
+                      {[
+                        {
+                          label: 'Rajju',
+                          selfValue: detail.poruthamComparison.self?.rajju || 'Pending',
+                          otherValue: detail.poruthamComparison.other?.rajju || 'Pending',
+                          caution: Boolean(detail.poruthamComparison.sameRajju),
+                          cautionText: 'Same Rajju: traditional caution',
+                        },
+                        {
+                          label: 'Nadi',
+                          selfValue: detail.poruthamComparison.self?.nadi || 'Pending',
+                          otherValue: detail.poruthamComparison.other?.nadi || 'Pending',
+                          caution: Boolean(detail.poruthamComparison.sameNadi),
+                          cautionText: 'Same Nadi: traditional caution',
+                        },
+                        {
+                          label: 'Yoni',
+                          selfValue: detail.poruthamComparison.self?.yoni || 'Pending',
+                          otherValue: detail.poruthamComparison.other?.yoni || 'Pending',
+                          caution: false,
+                          cautionText: 'Compared in overall astrological score',
+                        },
+                        {
+                          label: 'Gana',
+                          selfValue: detail.poruthamComparison.self?.gana || 'Pending',
+                          otherValue: detail.poruthamComparison.other?.gana || 'Pending',
+                          caution: false,
+                          cautionText: 'Compared in overall astrological score',
+                        },
+                      ].map((row) => (
+                        <Grid size={{ xs: 6 }} key={row.label}>
+                          <Box sx={{ p: 1.25, borderRadius: 2, bgcolor: row.caution ? 'error.50' : 'primary.50', border: '1px solid', borderColor: row.caution ? 'error.light' : 'primary.100' }}>
+                            <Typography variant="caption" sx={{ display: 'block', fontWeight: 800, color: row.caution ? 'error.main' : 'primary.main' }}>
+                              {row.label}
+                            </Typography>
+                            <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary' }}>
+                              You: {row.selfValue}
+                            </Typography>
+                            <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary' }}>
+                              Match: {row.otherValue}
+                            </Typography>
+                            <Typography variant="caption" sx={{ display: 'block', mt: 0.25, color: row.caution ? 'error.main' : 'text.secondary', fontSize: '0.58rem' }}>
+                              {row.caution ? row.cautionText : 'Included in overall %'}
+                            </Typography>
+                          </Box>
+                        </Grid>
+                      ))}
+                    </Grid>
+                    <Typography variant="caption" sx={{ display: 'block', mt: 1.25, color: 'text.secondary', fontSize: '0.62rem' }}>
+                      The compatibility percentage shown above is the overall final score with Porutham-aware astrological contribution.
+                    </Typography>
+                  </Box>
+                )}
               </Box>
 
               <Box sx={{ bgcolor: 'white', p: 3, borderRadius: 6, border: '1px solid', borderColor: 'divider' }}>
