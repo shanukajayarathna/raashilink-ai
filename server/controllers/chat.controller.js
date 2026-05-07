@@ -141,7 +141,7 @@ export const sendMessage = asyncHandler(async (req, res) => {
 });
 
 export const sendAssistantMessage = asyncHandler(async (req, res) => {
-  const { message, language } = req.body ?? {};
+  const { message, language, history = [] } = req.body ?? {};
 
   if (!message || !String(message).trim()) {
     throw new ApiError(400, 'Message content is required');
@@ -158,6 +158,7 @@ export const sendAssistantMessage = asyncHandler(async (req, res) => {
     user,
     message: String(message).trim(),
     language: resolvedLanguage,
+    history: Array.isArray(history) ? history : [],
   });
 
   res.status(200).json({
