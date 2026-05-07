@@ -15,7 +15,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const SCORER_PATH = path.resolve(__dirname, '../python/compatibility/scorer.py');
 const CACHE_TTL_SECONDS = 60 * 60 * 24;
-const COMPATIBILITY_VERSION = 3;
+const COMPATIBILITY_VERSION = 4;
 const MANGLIK_HOUSES = new Set([1, 2, 4, 7, 8, 12]);
 
 export function buildCacheKey(userAId, userBId) {
@@ -118,6 +118,75 @@ function deriveManglikStatus(user) {
     value: isManglik,
     label: isManglik ? `Yes (Mars in House ${marsHouse})` : `No (Mars in House ${marsHouse})`,
     marsHouse,
+  };
+}
+
+function isKnownPoruthamValue(value) {
+  const normalized = normalizeText(value);
+  return Boolean(normalized && normalized !== 'unknown' && normalized !== 'pending');
+}
+
+function calculatePoruthamScore(userA, userB, astroSubScores = {}) {
+  const components = [];
+  const rajjuA = userA?.horoscopeData?.rajju;
+  const rajjuB = userB?.horoscopeData?.rajju;
+  const nadiA = userA?.horoscopeData?.nadi;
+  const nadiB = userB?.horoscopeData?.nadi;
+
+  if (isKnownPoruthamValue(rajjuA) && isKnownPoruthamValue(rajjuB)) {
+    components.push({
+      key: 'rajju',
+      weight: 0.4,
+      score: normalizeText(rajjuA) === normalizeText(rajjuB) ? 0 : 100,
+      detail: `${rajjuA} vs ${rajjuB}`,
+    });
+  }
+
+  if (Number.isFinite(Number(astroSubScores.nadi))) {
+    components.push({
+      key: 'nadi',
+      weight: 0.25,
+      score: normalizeScore(Number(astroSubScores.nadi), 8),
+      detail: String(astroSubScores.nadi),
+    });
+  } else if (isKnownPoruthamValue(nadiA) && isKnownPoruthamValue(nadiB)) {
+    components.push({
+      key: 'nadi',
+      weight: 0.25,
+      score: normalizeText(nadiA) === normalizeText(nadiB) ? 0 : 100,
+      detail: `${nadiA} vs ${nadiB}`,
+    });
+  }
+
+  if (Number.isFinite(Number(astroSubScores.yoni))) {
+    components.push({
+      key: 'yoni',
+      weight: 0.2,
+      score: normalizeScore(Number(astroSubScores.yoni), 4),
+      detail: String(astroSubScores.yoni),
+    });
+  }
+
+  if (Number.isFinite(Number(astroSubScores.gana))) {
+    components.push({
+      key: 'gana',
+      weight: 0.15,
+      score: normalizeScore(Number(astroSubScores.gana), 6),
+      detail: String(astroSubScores.gana),
+    });
+  }
+
+  if (!components.length) {
+    return null;
+  }
+
+  const totalWeight = components.reduce((sum, item) => sum + item.weight, 0);
+  const weighted = components.reduce((sum, item) => sum + item.score * item.weight, 0);
+  const poruthamScore = Number((weighted / totalWeight).toFixed(2));
+
+  return {
+    score: poruthamScore,
+    components,
   };
 }
 
@@ -398,23 +467,25 @@ export async function calculateCompatibility({ userAId, userBId, fastMode = fals
         userB: userBHoroscope,
       });
 
-      astroScore = normalizeScore(astroResponseRaw.gunaTotal ?? astroResponseRaw.totalScore ?? 18, 36);
+      const baseAstroScore = normalizeScore(astroResponseRaw.gunaTotal ?? astroResponseRaw.totalScore ?? 18, 36);
       astroResponse = {
         ...astroResponseRaw,
         subScores: astroResponseRaw.gunaDetails ?? astroResponseRaw.subScores ?? {},
       };
 
+      const poruthamResult = calculatePoruthamScore(userA, userB, astroResponse.subScores);
+      astroScore = poruthamResult
+        ? Number((baseAstroScore * 0.8 + poruthamResult.score * 0.2).toFixed(2))
+        : baseAstroScore;
+
+      if (poruthamResult) {
+        astroResponse.poruthamScore = poruthamResult.score;
+        astroResponse.poruthamComponents = poruthamResult.components;
+      }
+
       if (manglikA.value != null && manglikB.value != null && manglikA.value !== manglikB.value) {
         astroScore = Math.max(0, Number((astroScore - 8).toFixed(2)));
         astroNotes.push('Manglik mismatch detected, lowering astrological compatibility.');
-      }
-
-      // Rajju Dosha: same Rajju = traditionally prohibited in Sri Lankan Vedic matching
-      const rajjuA = userA.horoscopeData?.rajju;
-      const rajjuB = userB.horoscopeData?.rajju;
-      if (rajjuA && rajjuB && rajjuA !== 'Unknown' && rajjuB !== 'Unknown' && rajjuA === rajjuB) {
-        astroScore = Math.max(0, Number((astroScore - 12).toFixed(2)));
-        astroNotes.push(`Rajju Dosha detected (both ${rajjuA}): traditionally prohibited, lowering astrological compatibility.`);
       }
     } catch (error) {
       logger.error('Horoscope engine failed, using fallback', {
@@ -514,18 +585,17 @@ export function calculateCompatibilityFromData(userA, userB) {
   const gunaResult = (nakA && rashiA && nakB && rashiB)
     ? calculateGunaMilan(nakA, rashiA, nakB, rashiB)
     : null;
-  let astroScore = gunaResult ? gunaResult.astroScore : 50;
+  const baseAstroScore = gunaResult ? gunaResult.astroScore : 50;
+  const poruthamResult = calculatePoruthamScore(userA, userB, gunaResult?.subScores ?? {});
+  let astroScore = poruthamResult
+    ? Number((baseAstroScore * 0.8 + poruthamResult.score * 0.2).toFixed(2))
+    : baseAstroScore;
 
-  // Apply same Manglik and Rajju Dosha deductions as the full Python path
+  // Apply same Manglik deduction as the full Python path
   const manglikA = deriveManglikStatus(userA);
   const manglikB = deriveManglikStatus(userB);
   if (manglikA.value != null && manglikB.value != null && manglikA.value !== manglikB.value) {
     astroScore = Math.max(0, Number((astroScore - 8).toFixed(2)));
-  }
-  const rajjuA = userA.horoscopeData?.rajju;
-  const rajjuB = userB.horoscopeData?.rajju;
-  if (rajjuA && rajjuB && rajjuA !== 'Unknown' && rajjuB !== 'Unknown' && rajjuA === rajjuB) {
-    astroScore = Math.max(0, Number((astroScore - 12).toFixed(2)));
   }
 
   const overallScore = Number(
@@ -540,7 +610,11 @@ export function calculateCompatibilityFromData(userA, userB) {
     familyScore,
     bandLabel,
     explanation: buildExplanation({ astroScore, personalityScore, lifestyleScore, familyScore, bandLabel }),
-    astroBreakdown: gunaResult?.subScores ?? {},
+    astroBreakdown: {
+      ...(gunaResult?.subScores ?? {}),
+      poruthamScore: poruthamResult?.score,
+      poruthamComponents: poruthamResult?.components ?? [],
+    },
     astroNotes: [],
     calculationVersion: COMPATIBILITY_VERSION,
   };
