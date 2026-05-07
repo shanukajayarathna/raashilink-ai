@@ -18,6 +18,55 @@ import { emitToUser } from '../lib/socket.js';
 import { resetBothWeddingProjects } from './wedding.controller.js';
 import { deriveGanaFromNakshatra } from '../utils/gana.js';
 
+const RAJJU_BY_NAKSHATRA = {
+  Ashwini: 'Pada', Bharani: 'Pada', Krittika: 'Pada',
+  Rohini: 'Kanta', Mrigashira: 'Kanta', Ardra: 'Kanta',
+  Punarvasu: 'Shiro', Pushya: 'Shiro', Ashlesha: 'Shiro',
+  Magha: 'Kanta', 'Purva Phalguni': 'Kanta', 'Uttara Phalguni': 'Kanta',
+  Hasta: 'Udara', Chitra: 'Udara', Swati: 'Udara',
+  Vishakha: 'Kati', Anuradha: 'Kati', Jyeshtha: 'Kati',
+  Mula: 'Pada', 'Purva Ashadha': 'Pada', 'Uttara Ashadha': 'Pada',
+  Shravana: 'Kanta', Dhanishta: 'Kanta', Shatabhisha: 'Kanta',
+  'Purva Bhadrapada': 'Shiro', 'Uttara Bhadrapada': 'Shiro', Revati: 'Shiro',
+};
+
+const NADI_BY_NAKSHATRA = {
+  Ashwini: 'Vata', Bharani: 'Pitta', Krittika: 'Kapha',
+  Rohini: 'Vata', Mrigashira: 'Pitta', Ardra: 'Kapha',
+  Punarvasu: 'Vata', Pushya: 'Pitta', Ashlesha: 'Kapha',
+  Magha: 'Vata', 'Purva Phalguni': 'Pitta', 'Uttara Phalguni': 'Kapha',
+  Hasta: 'Vata', Chitra: 'Pitta', Swati: 'Kapha',
+  Vishakha: 'Vata', Anuradha: 'Pitta', Jyeshtha: 'Kapha',
+  Mula: 'Vata', 'Purva Ashadha': 'Pitta', 'Uttara Ashadha': 'Kapha',
+  Shravana: 'Vata', Dhanishta: 'Pitta', Shatabhisha: 'Kapha',
+  'Purva Bhadrapada': 'Vata', 'Uttara Bhadrapada': 'Pitta', Revati: 'Kapha',
+};
+
+const YONI_BY_NAKSHATRA = {
+  Ashwini: 'Horse', Bharani: 'Elephant', Krittika: 'Sheep',
+  Rohini: 'Snake', Mrigashira: 'Serpent', Ardra: 'Dog',
+  Punarvasu: 'Cat', Pushya: 'Sheep', Ashlesha: 'Cat',
+  Magha: 'Rat', 'Purva Phalguni': 'Rat', 'Uttara Phalguni': 'Cow',
+  Hasta: 'Buffalo', Chitra: 'Tiger', Swati: 'Buffalo',
+  Vishakha: 'Tiger', Anuradha: 'Deer', Jyeshtha: 'Deer',
+  Mula: 'Dog', 'Purva Ashadha': 'Monkey', 'Uttara Ashadha': 'Mongoose',
+  Shravana: 'Monkey', Dhanishta: 'Lion', Shatabhisha: 'Horse',
+  'Purva Bhadrapada': 'Lion', 'Uttara Bhadrapada': 'Cow', Revati: 'Elephant',
+};
+
+function derivePoruthamFromNakshatra(nakshatra) {
+  const key = String(nakshatra || '').trim();
+  if (!key) {
+    return { rajju: null, nadi: null, yoni: null };
+  }
+
+  return {
+    rajju: RAJJU_BY_NAKSHATRA[key] || null,
+    nadi: NADI_BY_NAKSHATRA[key] || null,
+    yoni: YONI_BY_NAKSHATRA[key] || null,
+  };
+}
+
 function escapeRegex(value = '') {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -272,9 +321,31 @@ function buildCard(user, compatibility, mutualMatch) {
   };
 }
 
-function buildDetail(user, compatibility, mutualMatch) {
+function buildDetail(user, compatibility, mutualMatch, currentUser = null) {
   const fullName = user.name || [profileField(user, 'firstName'), profileField(user, 'lastName')].filter(Boolean).join(' ').trim() || 'Member';
   const hobbies = Array.isArray(user.lifestyle?.hobbies) ? user.lifestyle.hobbies.filter(Boolean) : [];
+  const currentNakshatra = currentUser?.horoscopeData?.nakshatra || currentUser?.horoscope?.nakshatra;
+  const otherNakshatra = user.horoscopeData?.nakshatra || user.horoscope?.nakshatra;
+  const selfDerivedPorutham = derivePoruthamFromNakshatra(currentNakshatra);
+  const otherDerivedPorutham = derivePoruthamFromNakshatra(otherNakshatra);
+  const selfPorutham = {
+    gana: currentUser?.horoscopeData?.gana || deriveGanaFromNakshatra(currentUser?.horoscopeData?.nakshatra || currentUser?.horoscope?.nakshatra) || 'Pending',
+    rajju: currentUser?.horoscopeData?.rajju || selfDerivedPorutham.rajju || 'Pending',
+    nadi: currentUser?.horoscopeData?.nadi || selfDerivedPorutham.nadi || 'Pending',
+    yoni: currentUser?.horoscopeData?.yoni || selfDerivedPorutham.yoni || 'Pending',
+  };
+  const otherPorutham = {
+    gana: user.horoscopeData?.gana || deriveGanaFromNakshatra(user.horoscopeData?.nakshatra || user.horoscope?.nakshatra) || 'Pending',
+    rajju: user.horoscopeData?.rajju || otherDerivedPorutham.rajju || 'Pending',
+    nadi: user.horoscopeData?.nadi || otherDerivedPorutham.nadi || 'Pending',
+    yoni: user.horoscopeData?.yoni || otherDerivedPorutham.yoni || 'Pending',
+  };
+
+  const isKnown = (value) => {
+    const normalized = String(value || '').trim().toLowerCase();
+    return Boolean(normalized && normalized !== 'pending' && normalized !== 'unknown' && normalized !== 'not provided');
+  };
+
   return {
     id: String(user._id),
     name: fullName,
@@ -323,6 +394,13 @@ function buildDetail(user, compatibility, mutualMatch) {
     profileImage: mainPhoto(user),
     mutualMatch,
     explanation: compatibility.explanation,
+    poruthamComparison: {
+      self: selfPorutham,
+      other: otherPorutham,
+      sameRajju: isKnown(selfPorutham.rajju) && isKnown(otherPorutham.rajju) && selfPorutham.rajju === otherPorutham.rajju,
+      sameNadi: isKnown(selfPorutham.nadi) && isKnown(otherPorutham.nadi) && selfPorutham.nadi === otherPorutham.nadi,
+      sameYoni: isKnown(selfPorutham.yoni) && isKnown(otherPorutham.yoni) && selfPorutham.yoni === otherPorutham.yoni,
+    },
   };
 }
 
@@ -633,6 +711,8 @@ export const getMatchDetail = asyncHandler(async (req, res) => {
     'horoscopeData.ascendant',
     'horoscopeData.gana',
     'horoscopeData.rajju',
+    'horoscopeData.nadi',
+    'horoscopeData.yoni',
     'horoscopeData.planetaryPositions',
     'photos',
   ].join(' ');
@@ -663,7 +743,7 @@ export const getMatchDetail = asyncHandler(async (req, res) => {
 
   res.status(200).json({
     success: true,
-    data: buildDetail(user, compatibility, Boolean(mutualInterest)),
+    data: buildDetail(user, compatibility, Boolean(mutualInterest), currentUser),
   });
 });
 
