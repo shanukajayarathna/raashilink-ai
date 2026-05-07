@@ -223,4 +223,40 @@ export async function resolveBirthPlace(value = '') {
   return resolved;
 }
 
-export const COMMON_SRI_LANKAN_LOCATIONS = Object.keys(SRI_LANKA_LOCATION_FALLBACKS);
+const ADDITIONAL_SRI_LANKAN_LOCATIONS = [
+  'Agalawatta', 'Ahangama', 'Akkaraipattu', 'Akuressa', 'Alawwa', 'Aluthgama', 'Ambalangoda', 'Ambalantota',
+  'Angoda', 'Aranayake', 'Arugam Bay', 'Atchuvely', 'Avissawella',
+  'Baddegama', 'Balangoda', 'Bandarawela', 'Beruwala', 'Bibile', 'Biyagama', 'Boralesgamuwa', 'Buttala',
+  'Chavakachcheri', 'Chenkalady', 'Chilaw',
+  'Dambulla', 'Dankotuwa', 'Dehiattakandiya', 'Dehiwala', 'Delgoda', 'Deniyaya', 'Deraniyagala', 'Dikwella',
+  'Eheliyagoda', 'Ekala', 'Elpitiya', 'Embilipitiya', 'Eravur',
+  'Galagedara', 'Galewela', 'Galigamuwa', 'Gampola', 'Ganemulla', 'Ginigathhena', 'Giriulla', 'Godakawela',
+  'Grandpass',
+  'Hakmana', 'Hanwella', 'Haputale', 'Hatton', 'Hikkaduwa', 'Hingurakgoda', 'Homagama', 'Horana', 'Horowpothana',
+  'Ingiriya',
+  'Ja-Ela',
+  'Kadawatha', 'Kadugannawa', 'Kaduruwela', 'Kaduwela', 'Kahawatta', 'Kalawana', 'Kalmunai', 'Kamburupitiya',
+  'Kankesanthurai', 'Kantalai', 'Karainagar', 'Karapitiya', 'Kataragama', 'Kattankudy', 'Katunayake', 'Kegalle Town',
+  'Kekirawa', 'Kelaniya', 'Kesbewa', 'Kilinochchi Town', 'Kinniya', 'Kiribathgoda', 'Kodikamam', 'Kohuwala',
+  'Kolonnawa', 'Kopay', 'Kotadeniyawa', 'Kotte', 'Kuliyapitiya', 'Kundasale',
+  'Lunugala', 'Lunuwila',
+  'Madampe', 'Madawala', 'Madurankuliya', 'Maharagama', 'Maho', 'Malabe', 'Maskeliya', 'Mawanella', 'Medawachchiya',
+  'Menikhinna', 'Middeniya', 'Mihintale', 'Minuwangoda', 'Mirigama', 'Moratuwa', 'Mount Lavinia', 'Muttur',
+  'Nallur', 'Narahenpita', 'Nattandiya', 'Nawalapitiya', 'Negombo', 'Nelundeniya', 'Nikaweratiya', 'Nittambuwa',
+  'Norochcholai', 'Nugegoda',
+  'Oddusuddan', 'Opanayaka',
+  'Padiyatalawa', 'Padukka', 'Panadura', 'Pannala', 'Peliyagoda', 'Pelmadulla', 'Peradeniya', 'Piliyandala',
+  'Pitabeddara', 'Point Pedro', 'Pooneryn', 'Pothuhera',
+  'Ragama', 'Rambukkana', 'Ranna', 'Ratmalana', 'Rikillagaskada', 'Ruwanwella',
+  'Sainthamaruthu', 'Sammanthurai', 'Seeduwa', 'Sevanagala', 'Siyambalanduwa', 'Sri Jayawardenepura Kotte',
+  'Talawakele', 'Talawa', 'Tangalle', 'Thalawakele', 'Thambuttegama', 'Theldeniya', 'Thihagoda', 'Thihariya',
+  'Tissamaharama', 'Trinco Town', 'Tumpane',
+  'Udawalawe', 'Udubaddawa', 'Ukuwela', 'Urubokka',
+  'Valaichchenai', 'Valvettithurai', 'Vavunativu', 'Veyangoda',
+  'Wadduwa', 'Walasmulla', 'Warakapola', 'Wariyapola', 'Wattala', 'Wellampitiya', 'Weligama', 'Weliweriya',
+  'Wellawaya', 'Welimada', 'Welisara', 'Wennappuwa', 'Werellagama', 'Yakkala', 'Yatiyantota'
+];
+
+export const COMMON_SRI_LANKAN_LOCATIONS = [
+  ...new Set([...Object.keys(SRI_LANKA_LOCATION_FALLBACKS), ...ADDITIONAL_SRI_LANKAN_LOCATIONS]),
+];
