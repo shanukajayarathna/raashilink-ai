@@ -145,6 +145,62 @@ const FAVORABLE_PARTNERS_BY_SIGN = {
   Pisces: ['Cancer', 'Scorpio', 'Capricorn'],
 };
 
+const RAJJU_BY_NAKSHATRA = {
+  Ashwini: 'Pada', Bharani: 'Pada', Krittika: 'Pada',
+  Rohini: 'Kanta', Mrigashira: 'Kanta', Ardra: 'Kanta',
+  Punarvasu: 'Shiro', Pushya: 'Shiro', Ashlesha: 'Shiro',
+  Magha: 'Kanta', 'Purva Phalguni': 'Kanta', 'Uttara Phalguni': 'Kanta',
+  Hasta: 'Udara', Chitra: 'Udara', Swati: 'Udara',
+  Vishakha: 'Kati', Anuradha: 'Kati', Jyeshtha: 'Kati',
+  Mula: 'Pada', 'Purva Ashadha': 'Pada', 'Uttara Ashadha': 'Pada',
+  Shravana: 'Kanta', Dhanishta: 'Kanta', Shatabhisha: 'Kanta',
+  'Purva Bhadrapada': 'Shiro', 'Uttara Bhadrapada': 'Shiro', Revati: 'Shiro',
+};
+
+const NADI_BY_NAKSHATRA = {
+  Ashwini: 'Vata', Bharani: 'Pitta', Krittika: 'Kapha',
+  Rohini: 'Vata', Mrigashira: 'Pitta', Ardra: 'Kapha',
+  Punarvasu: 'Vata', Pushya: 'Pitta', Ashlesha: 'Kapha',
+  Magha: 'Vata', 'Purva Phalguni': 'Pitta', 'Uttara Phalguni': 'Kapha',
+  Hasta: 'Vata', Chitra: 'Pitta', Swati: 'Kapha',
+  Vishakha: 'Vata', Anuradha: 'Pitta', Jyeshtha: 'Kapha',
+  Mula: 'Vata', 'Purva Ashadha': 'Pitta', 'Uttara Ashadha': 'Kapha',
+  Shravana: 'Vata', Dhanishta: 'Pitta', Shatabhisha: 'Kapha',
+  'Purva Bhadrapada': 'Vata', 'Uttara Bhadrapada': 'Pitta', Revati: 'Kapha',
+};
+
+const YONI_BY_NAKSHATRA = {
+  Ashwini: 'Horse', Bharani: 'Elephant', Krittika: 'Sheep',
+  Rohini: 'Snake', Mrigashira: 'Serpent', Ardra: 'Dog',
+  Punarvasu: 'Cat', Pushya: 'Sheep', Ashlesha: 'Cat',
+  Magha: 'Rat', 'Purva Phalguni': 'Rat', 'Uttara Phalguni': 'Cow',
+  Hasta: 'Buffalo', Chitra: 'Tiger', Swati: 'Buffalo',
+  Vishakha: 'Tiger', Anuradha: 'Deer', Jyeshtha: 'Deer',
+  Mula: 'Dog', 'Purva Ashadha': 'Monkey', 'Uttara Ashadha': 'Mongoose',
+  Shravana: 'Monkey', Dhanishta: 'Lion', Shatabhisha: 'Horse',
+  'Purva Bhadrapada': 'Lion', 'Uttara Bhadrapada': 'Cow', Revati: 'Elephant',
+};
+
+function deriveRajjuFromNakshatra(nakshatra) {
+  return RAJJU_BY_NAKSHATRA[String(nakshatra || '').trim()] || null;
+}
+
+function deriveNadiFromNakshatra(nakshatra) {
+  return NADI_BY_NAKSHATRA[String(nakshatra || '').trim()] || null;
+}
+
+function deriveYoniFromNakshatra(nakshatra) {
+  return YONI_BY_NAKSHATRA[String(nakshatra || '').trim()] || null;
+}
+
+function resolvePoruthamValue(storedValue, fallbackValue) {
+  const normalized = String(storedValue || '').trim().toLowerCase();
+  if (normalized && normalized !== 'pending' && normalized !== 'unknown' && normalized !== 'not provided') {
+    return storedValue;
+  }
+  return fallbackValue || 'Pending';
+}
+
 function formatDegree(value = 0) {
   const numeric = Number(value || 0);
   if (!Number.isFinite(numeric)) {
@@ -266,6 +322,339 @@ function calculateAuspiciousTime(horoscopeData = {}, user = {}) {
   return {
     time: `${formatMinutesAsClock(bestWindow.startMinutes)} - ${formatMinutesAsClock(bestWindow.endMinutes)}`,
     reason: `Favourable ${bestWindow.horaPlanet} hora selected for your ${ascendant} Lagna and ${moonSign} Moon sign on ${weekday}.`,
+  };
+}
+
+function scoreHoraCandidate({ horaPlanet, index, ascendantLord, moonLord, dayLord, nakshatraPada, ascDegree, currentMinutes, endMinutes }) {
+  let score = 0;
+
+  if (horaPlanet === ascendantLord) score += 3;
+  if (horaPlanet === moonLord) score += 3.5;
+  if (BENEFIC_PLANETS.has(horaPlanet)) score += 1.5;
+  if (horaPlanet === dayLord) score += 1;
+  if (((nakshatraPada + index + Math.floor(ascDegree / 10)) % 4) === 0) score += 0.75;
+  if (endMinutes >= currentMinutes) score += 0.5;
+  if (['Mars', 'Saturn'].includes(horaPlanet) && horaPlanet !== ascendantLord && horaPlanet !== moonLord) {
+    score -= 1;
+  }
+
+  return score;
+}
+
+function getHoraWindowCandidates(horoscopeData = {}, user = {}, durationHours = 2) {
+  const ascendant = horoscopeData.ascendant;
+  const moonSign = horoscopeData.moonSign || horoscopeData.rashi;
+  const timezone = horoscopeData.timezone || user?.birthData?.placeOfBirth?.timezone || 'Asia/Colombo';
+
+  if (!ascendant || !moonSign || ascendant === 'Pending' || moonSign === 'Pending') {
+    return [];
+  }
+
+  const weekday = new Intl.DateTimeFormat('en-US', { weekday: 'long', timeZone: timezone }).format(new Date());
+  const dayLord = DAY_LORDS[weekday] || 'Sun';
+  const ascendantLord = SIGN_LORDS[ascendant] || null;
+  const moonLord = SIGN_LORDS[moonSign] || null;
+  const currentMinutes = getCurrentMinutesInTimezone(timezone);
+  const startSequenceIndex = HORA_SEQUENCE.indexOf(dayLord);
+  const nakshatraPada = Number(horoscopeData.nakshatraPada || 1);
+  const ascDegree = Number(horoscopeData.ascendantDegree || 0);
+  const candidates = [];
+
+  for (let index = 0; index <= 12 - durationHours; index += 1) {
+    const startMinutes = 6 * 60 + index * 60;
+    const endMinutes = startMinutes + durationHours * 60;
+    const horaPlanets = Array.from({ length: durationHours }, (_, offset) => (
+      HORA_SEQUENCE[(startSequenceIndex + index + offset) % HORA_SEQUENCE.length]
+    ));
+
+    const score = horaPlanets.reduce((total, horaPlanet, offset) => (
+      total + scoreHoraCandidate({
+        horaPlanet,
+        index: index + offset,
+        ascendantLord,
+        moonLord,
+        dayLord,
+        nakshatraPada,
+        ascDegree,
+        currentMinutes,
+        endMinutes,
+      })
+    ), 0);
+
+    const uniquePlanets = [...new Set(horaPlanets)];
+    const containsPrimaryLord = uniquePlanets.includes(ascendantLord) || uniquePlanets.includes(moonLord);
+    const beneficCount = uniquePlanets.filter((planet) => BENEFIC_PLANETS.has(planet)).length;
+    const adjustedScore = score
+      + (beneficCount >= 2 ? 1.25 : 0)
+      - (!containsPrimaryLord && uniquePlanets.every((planet) => !BENEFIC_PLANETS.has(planet)) ? 1.25 : 0);
+
+    candidates.push({
+      startMinutes,
+      endMinutes,
+      horaPlanets: uniquePlanets,
+      score: adjustedScore,
+      currentMinutes,
+      weekday,
+      dayLord,
+      ascendant,
+      moonSign,
+      timezone,
+    });
+  }
+
+  return candidates;
+}
+
+function formatHoraWindowReason(window, tone = 'best') {
+  if (!window) return '';
+
+  const horaText = window.horaPlanets.join(' + ');
+  if (tone === 'caution') {
+    return `${horaText} hora combination is less supportive for your ${window.ascendant} Lagna and ${window.moonSign} Moon sign on ${window.weekday}.`;
+  }
+
+  return `${horaText} hora combination is supportive for your ${window.ascendant} Lagna and ${window.moonSign} Moon sign on ${window.weekday}.`;
+}
+
+function buildRelationshipAction(horoscopeData = {}) {
+  const venus = Array.isArray(horoscopeData.planetaryPositions)
+    ? horoscopeData.planetaryPositions.find((position) => position?.planet === 'Venus')
+    : null;
+  const seventhHouse = horoscopeData?.seventhHouseAnalysis;
+
+  if (seventhHouse?.lordDignity === 'Exalted') {
+    return 'Use today to have one honest long-term conversation with someone important and speak clearly about expectations.';
+  }
+
+  if ([5, 7, 11].includes(Number(venus?.house))) {
+    return 'Reach out warmly to someone you care about and express appreciation rather than waiting for them to guess your feelings.';
+  }
+
+  if ([6, 8, 12].includes(Number(venus?.house)) || horoscopeData?.manglik?.present) {
+    return 'Keep relationship conversations calm and concise today; clarify before reacting, especially if emotions rise quickly.';
+  }
+
+  return 'Strengthen one relationship today through a thoughtful check-in, a kind message, or a patient conversation.';
+}
+
+function buildWorkAction(horoscopeData = {}) {
+  const positions = Array.isArray(horoscopeData.planetaryPositions) ? horoscopeData.planetaryPositions : [];
+  const mercury = positions.find((position) => position?.planet === 'Mercury');
+  const sun = positions.find((position) => position?.planet === 'Sun');
+  const jupiter = positions.find((position) => position?.planet === 'Jupiter');
+
+  if ([3, 6, 10, 11].includes(Number(mercury?.house))) {
+    return 'Use your best window for writing, planning, negotiation, or an important message that needs precision.';
+  }
+
+  if ([9, 10, 11].includes(Number(jupiter?.house)) || [10, 11].includes(Number(sun?.house))) {
+    return 'Take one long-range decision forward today, especially around career direction, leadership, or guidance from a mentor.';
+  }
+
+  return 'Choose one pending decision, review the facts carefully, and commit to the next practical step during your best window.';
+}
+
+function buildDailyGuidance(horoscopeData = {}, user = {}) {
+  const windows = getHoraWindowCandidates(horoscopeData, user, 2);
+  const timezone = horoscopeData.timezone || user?.birthData?.placeOfBirth?.timezone || 'Asia/Colombo';
+  const dateIso = formatIsoDateInTimezone(new Date(), timezone);
+  if (!windows.length) {
+    return {
+      bestWindow: {
+        dateIso,
+        time: 'Update birth details to calculate',
+        reason: 'Your chart needs complete birth details for personalized time windows.',
+      },
+      cautionWindow: {
+        dateIso,
+        time: 'Unavailable',
+        reason: 'Caution timing appears after chart generation.',
+      },
+      relationshipAction: 'Complete your chart to unlock relationship guidance.',
+      workAction: 'Complete your chart to unlock timing-based work guidance.',
+    };
+  }
+
+  const currentMinutes = windows[0].currentMinutes;
+  const upcomingWindows = windows.filter((window) => window.endMinutes >= currentMinutes);
+  const relevantWindows = upcomingWindows.length ? upcomingWindows : windows;
+  const bestWindow = relevantWindows.reduce((best, candidate) => (candidate.score > best.score ? candidate : best), relevantWindows[0]);
+  const cautionWindow = relevantWindows.reduce((worst, candidate) => (candidate.score < worst.score ? candidate : worst), relevantWindows[0]);
+
+  return {
+    bestWindow: {
+      dateIso,
+      time: `${formatMinutesAsClock(bestWindow.startMinutes)} - ${formatMinutesAsClock(bestWindow.endMinutes)}`,
+      reason: formatHoraWindowReason(bestWindow),
+    },
+    cautionWindow: {
+      dateIso,
+      time: `${formatMinutesAsClock(cautionWindow.startMinutes)} - ${formatMinutesAsClock(cautionWindow.endMinutes)}`,
+      reason: formatHoraWindowReason(cautionWindow, 'caution'),
+    },
+    relationshipAction: buildRelationshipAction(horoscopeData),
+    workAction: buildWorkAction(horoscopeData),
+  };
+}
+
+function formatDateLabel(date, timeZone) {
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    month: 'short',
+    day: 'numeric',
+  }).format(date);
+}
+
+function formatIsoDateInTimezone(date, timeZone) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+
+  const year = parts.find((part) => part.type === 'year')?.value || '1970';
+  const month = parts.find((part) => part.type === 'month')?.value || '01';
+  const day = parts.find((part) => part.type === 'day')?.value || '01';
+
+  return `${year}-${month}-${day}`;
+}
+
+function getWeekdayName(date, timeZone) {
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    weekday: 'long',
+  }).format(date);
+}
+
+function getWeekdayFocus(dayLord) {
+  const focusMap = {
+    Sun: 'visibility and leadership',
+    Moon: 'emotions and home decisions',
+    Mars: 'speed, action, and conflict management',
+    Mercury: 'communication and practical thinking',
+    Jupiter: 'guidance, learning, and long-term wisdom',
+    Venus: 'relationships, beauty, and harmony',
+    Saturn: 'discipline, responsibility, and patience',
+  };
+
+  return focusMap[dayLord] || 'steady judgment';
+}
+
+function buildWeeklyForecast(horoscopeData = {}, user = {}) {
+  const ascendant = horoscopeData.ascendant;
+  const moonSign = horoscopeData.moonSign || horoscopeData.rashi;
+  const timezone = horoscopeData.timezone || user?.birthData?.placeOfBirth?.timezone || 'Asia/Colombo';
+  const ascendantLord = SIGN_LORDS[ascendant] || null;
+  const moonLord = SIGN_LORDS[moonSign] || null;
+  const dasaLord = horoscopeData?.dasaInfo?.current?.lord || null;
+  const antardashaLord = horoscopeData?.antardasha?.current?.lord || null;
+  const explicitAuspiciousDays = Array.isArray(horoscopeData?.auspiciousDays) ? horoscopeData.auspiciousDays : [];
+  const baseDate = new Date();
+
+  const trend = Array.from({ length: 7 }, (_, offset) => {
+    const date = new Date(baseDate.getTime() + offset * 24 * 60 * 60 * 1000);
+    const weekday = getWeekdayName(date, timezone);
+    const dayLord = DAY_LORDS[weekday] || 'Sun';
+    let score = 50;
+
+    if (dayLord === ascendantLord) score += 8;
+    if (dayLord === moonLord) score += 8;
+    if (dayLord === dasaLord) score += 4;
+    if (dayLord === antardashaLord) score += 2;
+    if (BENEFIC_PLANETS.has(dayLord)) score += 4;
+    if (explicitAuspiciousDays.includes(weekday)) score += 6;
+    if (['Mars', 'Saturn'].includes(dayLord) && dayLord !== ascendantLord && dayLord !== moonLord) score -= 5;
+    if (horoscopeData?.sadeSati?.present && dayLord === 'Saturn') score -= 4;
+    if (horoscopeData?.kalaSarpaDosha?.present && ['Rahu', 'Saturn', 'Mars'].includes(dayLord)) score -= 3;
+
+    const tone = score >= 62 ? 'strong' : score >= 52 ? 'steady' : 'careful';
+    const reasonParts = [];
+    if (dayLord === ascendantLord) reasonParts.push('aligned with your ascendant lord');
+    if (dayLord === moonLord) reasonParts.push('supports your moon sign');
+    if (explicitAuspiciousDays.includes(weekday)) reasonParts.push('matches one of your auspicious weekdays');
+    if (dayLord === dasaLord || dayLord === antardashaLord) reasonParts.push('echoes your current dasha cycle');
+    if (!reasonParts.length) reasonParts.push(`focuses on ${getWeekdayFocus(dayLord)}`);
+
+    return {
+      weekday,
+      isoDate: formatIsoDateInTimezone(date, timezone),
+      dateLabel: formatDateLabel(date, timezone),
+      dayLord,
+      score,
+      tone,
+      reason: reasonParts.join(', '),
+      focus: getWeekdayFocus(dayLord),
+    };
+  });
+
+  const sorted = [...trend].sort((a, b) => b.score - a.score);
+  const bestDays = sorted.slice(0, 2);
+  const avoidDay = [...trend].sort((a, b) => a.score - b.score)[0];
+  const summary = `The next 7 days favour ${bestDays.map((day) => day.weekday).join(' and ')} for important moves, while ${avoidDay.weekday} is better for slower decisions because it is more sensitive for your current chart cycle.`;
+
+  return {
+    summary,
+    trend,
+    auspiciousDays: bestDays,
+    avoidDay: {
+      weekday: avoidDay.weekday,
+      isoDate: avoidDay.isoDate,
+      dateLabel: avoidDay.dateLabel,
+      reason: `${avoidDay.weekday} is your lowest-scoring day this week because it emphasizes ${avoidDay.focus}.`,
+    },
+  };
+}
+
+function buildPracticalRecommendations(horoscopeData = {}) {
+  const currentLord = horoscopeData?.dasaInfo?.current?.lord || null;
+  const subLord = horoscopeData?.antardasha?.current?.lord || null;
+  const activeLords = [currentLord, subLord].filter(Boolean);
+  const intenseLords = activeLords.filter((lord) => ['Saturn', 'Mars', 'Rahu', 'Ketu'].includes(lord));
+  const intense = Boolean(
+    intenseLords.length ||
+    horoscopeData?.sadeSati?.present ||
+    horoscopeData?.sadeSati?.ashtamaShani ||
+    horoscopeData?.kalaSarpaDosha?.present ||
+    ['High', 'Full'].includes(horoscopeData?.manglik?.severity)
+  );
+
+  if (!intense) {
+    return {
+      intense: false,
+      headline: null,
+      reasons: [],
+      items: [],
+    };
+  }
+
+  const reasons = [];
+  if (intenseLords.length) reasons.push(`${intenseLords.join('/')} influence in your current dasha cycle`);
+  if (horoscopeData?.sadeSati?.present) reasons.push('active Sade Sati period');
+  if (horoscopeData?.sadeSati?.ashtamaShani) reasons.push('Ashtama Shani pressure');
+  if (horoscopeData?.kalaSarpaDosha?.present) reasons.push('Kala Sarpa influence');
+  if (['High', 'Full'].includes(horoscopeData?.manglik?.severity)) reasons.push('strong Manglik intensity');
+
+  const items = [];
+  if (intenseLords.includes('Saturn') || horoscopeData?.sadeSati?.present || horoscopeData?.sadeSati?.ashtamaShani) {
+    items.push({ kind: 'Do', text: 'Move steadily, keep promises small and realistic, and give major commitments more time than usual.' });
+  }
+  if (intenseLords.includes('Mars') || ['High', 'Full'].includes(horoscopeData?.manglik?.severity)) {
+    items.push({ kind: 'Avoid', text: 'Do not make important relationship or family decisions in anger, haste, or after an argument.' });
+  }
+  if (intenseLords.includes('Rahu') || horoscopeData?.kalaSarpaDosha?.present) {
+    items.push({ kind: 'Do', text: 'Double-check facts, messages, and promises before saying yes to anything confusing or glamorous.' });
+  }
+  if (intenseLords.includes('Ketu')) {
+    items.push({ kind: 'Avoid', text: 'Avoid withdrawing completely; ask one trusted person for clarity before isolating yourself.' });
+  }
+  items.push({ kind: 'Do', text: 'Use your best 2-hour window for sensitive discussions, paperwork, or decisions that must be made this week.' });
+
+  return {
+    intense: true,
+    headline: `${currentLord || 'Current'}${subLord ? ` / ${subLord}` : ''} period calls for extra care and discipline.`,
+    reasons: reasons.slice(0, 3),
+    items: items.slice(0, 3),
   };
 }
 
@@ -448,6 +837,9 @@ function buildChartData(user) {
   const accuracyMeta = getBirthAccuracyMeta(user);
   const moonSign = horoscopeData.moonSign || horoscopeData.rashi || 'Pending';
   const gana = horoscopeData.gana || deriveGanaFromNakshatra(horoscopeData.nakshatra) || 'Pending';
+  const rajju = horoscopeData.rajju || deriveRajjuFromNakshatra(horoscopeData.nakshatra);
+  const nadi = horoscopeData.nadi || deriveNadiFromNakshatra(horoscopeData.nakshatra);
+  const yoni = horoscopeData.yoni || deriveYoniFromNakshatra(horoscopeData.nakshatra);
   const positionsSource = Array.isArray(horoscopeData.planetaryPositions) && horoscopeData.planetaryPositions.length > 0
     ? horoscopeData.planetaryPositions
     : [
@@ -458,6 +850,9 @@ function buildChartData(user) {
 
   const auspiciousTime = calculateAuspiciousTime(horoscopeData, user);
   const chartGrade = horoscopeData.chartGrade || deriveFallbackChartGrade(horoscopeData, accuracyMeta);
+  const dailyGuidance = buildDailyGuidance(horoscopeData, user);
+  const weeklyForecast = buildWeeklyForecast(horoscopeData, user);
+  const recommendations = buildPracticalRecommendations(horoscopeData);
 
   // Manglik label — prefer stored value, fall back to live derivation
   const manglikStored = horoscopeData.manglik;
@@ -486,9 +881,9 @@ function buildChartData(user) {
       venusSummary: horoscopeData.venusSummary || null,
       jupiterSummary: horoscopeData.jupiterSummary || null,
       ascendantNavamsha: horoscopeData.ascendantNavamsha || null,
-      rajju: horoscopeData.rajju || null,
-      nadi: horoscopeData.nadi || null,
-      yoni: horoscopeData.yoni || null,
+      rajju,
+      nadi,
+      yoni,
       rasiLord: horoscopeData.rasiLord || null,
       chartGrade: horoscopeData.chartGrade || null,
       chartGrade,
@@ -533,6 +928,11 @@ function buildChartData(user) {
       auspiciousDays: Array.isArray(horoscopeData.auspiciousDays) ? horoscopeData.auspiciousDays : [],
       favorablePartners: Array.isArray(horoscopeData.favorablePartners) ? horoscopeData.favorablePartners : [],
       profileFacts: Array.isArray(horoscopeData.profileFacts) ? horoscopeData.profileFacts : [],
+    },
+    guidance: {
+      daily: dailyGuidance,
+      weekly: weeklyForecast,
+      recommendations,
     },
     meta: {
       ...accuracyMeta,
@@ -770,9 +1170,9 @@ export async function generateAndPersistHoroscope(user, { force = false } = {}) 
     venusSummary: result.venusSummary || null,
     jupiterSummary: result.jupiterSummary || null,
     ascendantNavamsha: result.ascendantNavamsha || null,
-    rajju: result.rajju || null,
-    nadi: result.nadi || null,
-    yoni: result.yoni || null,
+    rajju: result.rajju || deriveRajjuFromNakshatra(result.nakshatra),
+    nadi: result.nadi || deriveNadiFromNakshatra(result.nakshatra),
+    yoni: result.yoni || deriveYoniFromNakshatra(result.nakshatra),
     rasiLord: result.rasiLord || null,
     antardasha: result.antardasha || null,
     marriageWindow: result.marriageWindow || [],
@@ -813,6 +1213,16 @@ export async function generateAndPersistHoroscope(user, { force = false } = {}) 
 }
 
 function buildCompatibilityPayload(currentUser, partner, result) {
+  const userANakshatra = currentUser.horoscopeData?.nakshatra || currentUser.horoscope?.nakshatra;
+  const userBNakshatra = partner.horoscopeData?.nakshatra || partner.horoscope?.nakshatra;
+
+  const userARajju = resolvePoruthamValue(currentUser.horoscopeData?.rajju, deriveRajjuFromNakshatra(userANakshatra));
+  const userBRajju = resolvePoruthamValue(partner.horoscopeData?.rajju, deriveRajjuFromNakshatra(userBNakshatra));
+  const userANadi = resolvePoruthamValue(currentUser.horoscopeData?.nadi, deriveNadiFromNakshatra(userANakshatra));
+  const userBNadi = resolvePoruthamValue(partner.horoscopeData?.nadi, deriveNadiFromNakshatra(userBNakshatra));
+  const userAYoni = resolvePoruthamValue(currentUser.horoscopeData?.yoni, deriveYoniFromNakshatra(userANakshatra));
+  const userBYoni = resolvePoruthamValue(partner.horoscopeData?.yoni, deriveYoniFromNakshatra(userBNakshatra));
+
   return {
     overallScore: result.overallScore,
     astroScore: result.astroScore,
@@ -831,6 +1241,9 @@ function buildCompatibilityPayload(currentUser, partner, result) {
         deriveGanaFromNakshatra(currentUser.horoscopeData?.nakshatra || currentUser.horoscope?.nakshatra) ||
         'Pending',
       manglik: result.userAInsights?.manglik || deriveManglikLabelFromUser(currentUser),
+      rajju: userARajju,
+      nadi: userANadi,
+      yoni: userAYoni,
       sign:
         currentUser.horoscopeData?.moonSign ||
         currentUser.horoscopeData?.rashi ||
@@ -847,6 +1260,9 @@ function buildCompatibilityPayload(currentUser, partner, result) {
         deriveGanaFromNakshatra(partner.horoscopeData?.nakshatra || partner.horoscope?.nakshatra) ||
         'Pending',
       manglik: result.userBInsights?.manglik || deriveManglikLabelFromUser(partner),
+      rajju: userBRajju,
+      nadi: userBNadi,
+      yoni: userBYoni,
       sign:
         partner.horoscopeData?.moonSign ||
         partner.horoscopeData?.rashi ||
@@ -860,10 +1276,12 @@ function buildCompatibilityPayload(currentUser, partner, result) {
         name: 'Astrological Compatibility',
         score: Math.round(result.astroScore * 0.4),
         max: 40,
-        explanation: result.explanation,
-        subScores: Object.entries(result.astroBreakdown || {}).map(([name, score]) => ({
+        explanation: `${result.explanation} Includes Porutham factors (Rajju, Nadi, Yoni, Gana) in the astrological calculation.`,
+        subScores: Object.entries(result.astroBreakdown || {})
+          .filter(([name, score]) => Number.isFinite(Number(score)) && !['poruthamScore'].includes(name))
+          .map(([name, score]) => ({
           name,
-          score,
+          score: Number(score),
           max:
             {
               varna: 1,
@@ -875,7 +1293,7 @@ function buildCompatibilityPayload(currentUser, partner, result) {
               bhakoot: 7,
               nadi: 8,
             }[name] || 0,
-          status: score > 0 ? 'success' : 'warning',
+          status: Number(score) > 0 ? 'success' : 'warning',
         })),
       },
       {
@@ -900,6 +1318,23 @@ function buildCompatibilityPayload(currentUser, partner, result) {
         explanation: 'This score reflects long-term family expectations and value fit.',
       },
     ],
+    poruthamComparison: {
+      rajju: {
+        userA: userARajju,
+        userB: userBRajju,
+        same: userARajju !== 'Pending' && userBRajju !== 'Pending' && userARajju === userBRajju,
+      },
+      nadi: {
+        userA: userANadi,
+        userB: userBNadi,
+        same: userANadi !== 'Pending' && userBNadi !== 'Pending' && userANadi === userBNadi,
+      },
+      yoni: {
+        userA: userAYoni,
+        userB: userBYoni,
+        same: userAYoni !== 'Pending' && userBYoni !== 'Pending' && userAYoni === userBYoni,
+      },
+    },
   };
 }
 
@@ -954,8 +1389,8 @@ async function syncHoroscopeDocument(user) {
         venusSummary: user.horoscopeData?.venusSummary || null,
         jupiterSummary: user.horoscopeData?.jupiterSummary || null,
         ascendantNavamsha: user.horoscopeData?.ascendantNavamsha || null,
-        rajju: user.horoscopeData?.rajju || null,
-        nadi: user.horoscopeData?.nadi || null,
+        rajju: user.horoscopeData?.rajju || deriveRajjuFromNakshatra(user.horoscopeData?.nakshatra || user.horoscope?.nakshatra),
+        nadi: user.horoscopeData?.nadi || deriveNadiFromNakshatra(user.horoscopeData?.nakshatra || user.horoscope?.nakshatra),
         yoni: user.horoscopeData?.yoni || null,
         rasiLord: user.horoscopeData?.rasiLord || null,
         marriageWindow: user.horoscopeData?.marriageWindow || [],
@@ -978,7 +1413,7 @@ async function persistMatchResult(userAId, userBId, result) {
     {
       $set: {
         compatibilityScore: result.overallScore,
-        calculationVersion: Number(result.calculationVersion || 2),
+        calculationVersion: Number(result.calculationVersion || 4),
         dimensionScores: {
           astro: result.astroScore,
           personality: result.personalityScore,
@@ -1056,7 +1491,7 @@ export const calculateCompatibility = asyncHandler(async (req, res) => {
   const [first, second] = [String(userAId), String(userBId)].sort();
   const existingMatch = forceRefresh ? null : await Match.findOne({ userAId: first, userBId: second }).lean();
 
-  if (existingMatch && Number(existingMatch.calculationVersion || 1) >= 2) {
+  if (existingMatch && Number(existingMatch.calculationVersion || 1) >= 4) {
     // Return cached DB result
     const explanationText = (existingMatch.explanation || '').toUpperCase();
     const result = {
