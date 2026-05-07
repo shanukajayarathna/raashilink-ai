@@ -53,9 +53,10 @@ interface ChatMessageProps {
     timestamp: string;
   };
   isCompact?: boolean;
+  userAvatarSrc?: string;
 }
 
-export default function ChatMessage({ message, isCompact }: ChatMessageProps) {
+export default function ChatMessage({ message, isCompact, userAvatarSrc }: ChatMessageProps) {
   const isBot = message.role === 'bot';
   const theme = useTheme();
 
@@ -76,6 +77,7 @@ export default function ChatMessage({ message, isCompact }: ChatMessageProps) {
       >
         {/* Avatar */}
         <Avatar
+          src={!isBot ? userAvatarSrc : undefined}
           sx={{
             width: isCompact ? 28 : 36,
             height: isCompact ? 28 : 36,
@@ -102,9 +104,30 @@ export default function ChatMessage({ message, isCompact }: ChatMessageProps) {
               fontSize: isCompact ? '0.8rem' : 'inherit',
             }}
           >
-            <div className="markdown-body" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: isBot ? COLORS.textPrimary : 'white' }}>
+            <Box
+              sx={{
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                color: isBot ? COLORS.textPrimary : 'white',
+                '& p': { m: 0, mb: '0.3em', lineHeight: 1.55 },
+                '& p:last-child': { mb: 0 },
+                '& a': { color: isBot ? COLORS.primary : '#FFF9C4', textDecoration: 'underline' },
+                '& code': { bgcolor: isBot ? 'rgba(0,0,0,0.07)' : 'rgba(255,255,255,0.22)', color: 'inherit', px: '4px', py: '1px', borderRadius: '3px', fontSize: '0.88em', fontFamily: 'monospace' },
+                '& pre': { bgcolor: isBot ? 'rgba(0,0,0,0.07)' : 'rgba(255,255,255,0.12)', p: 1, borderRadius: 1, overflowX: 'auto', my: '0.4em', '& code': { bgcolor: 'transparent', p: 0 } },
+                '& strong': { fontWeight: 700, color: 'inherit' },
+                '& em': { fontStyle: 'italic', color: 'inherit' },
+                '& ul, & ol': { pl: '1.4em', my: '0.3em' },
+                '& li': { color: 'inherit', mb: '0.15em', lineHeight: 1.5 },
+                '& h1, & h2, & h3, & h4': { color: isBot ? COLORS.primary : 'white', fontWeight: 700, lineHeight: 1.3, mt: '0.4em', mb: '0.2em' },
+                '& blockquote': { borderLeft: `3px solid ${isBot ? COLORS.secondary : 'rgba(255,255,255,0.45)'}`, pl: '0.75em', ml: 0, my: '0.3em', color: 'inherit', opacity: 0.9 },
+                '& hr': { border: 'none', borderTop: `1px solid ${isBot ? COLORS.primary + '25' : 'rgba(255,255,255,0.25)'}`, my: '0.5em' },
+                '& table': { borderCollapse: 'collapse', width: '100%', my: '0.4em' },
+                '& th': { bgcolor: isBot ? COLORS.primary + '12' : 'rgba(255,255,255,0.15)', fontWeight: 700 },
+                '& th, & td': { border: `1px solid ${isBot ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.25)'}`, px: '0.5em', py: '0.3em', color: 'inherit', fontSize: '0.9em' },
+              }}
+            >
               <ReactMarkdown>{message.content}</ReactMarkdown>
-            </div>
+            </Box>
 
             {/* Special Content Rendering */}
             {message.type === 'match' && <MatchCard data={message.data} isCompact={isCompact} />}
