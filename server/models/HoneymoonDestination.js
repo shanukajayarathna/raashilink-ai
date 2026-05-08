@@ -19,6 +19,20 @@ const honeymoonDestinationSchema = new Schema(
       },
     },
     highlights: { type: [String], default: [] },
+    contact: {
+      name: { type: String, trim: true, maxlength: 160 },
+      phone: { type: String, trim: true, maxlength: 60 },
+      email: { type: String, trim: true, maxlength: 160 },
+      website: {
+        type: String,
+        trim: true,
+        maxlength: 300,
+        validate: {
+          validator: (value) => !value || /^https?:\/\/.+/i.test(value),
+          message: 'Website must be a valid URL',
+        },
+      },
+    },
   },
   {
     timestamps: true,

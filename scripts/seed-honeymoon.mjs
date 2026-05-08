@@ -17,6 +17,12 @@ const schema = new mongoose.Schema({
   bestSeason: String,
   images: [String],
   highlights: [String],
+  contact: {
+    name: String,
+    phone: String,
+    email: String,
+    website: String,
+  },
 }, { versionKey: false, timestamps: true });
 schema.index({ country: 1, region: 1 }, { unique: true });
 
@@ -55,6 +61,12 @@ const destinations = [
     bestSeason: 'November – April',
     images: ['https://images.unsplash.com/photo-1552465011-b4e21bf6e79a?w=1200'],
     highlights: ['Whale Watching at Dawn', 'Coconut Tree Hill Sunset', 'Beach Bonfire', 'Fresh Seafood by the Shore'],
+    contact: {
+      name: 'Sri Lanka Tourism Promotion Bureau',
+      phone: '+94 11 242 6800',
+      email: 'info@srilanka.travel',
+      website: 'https://www.srilanka.travel/',
+    },
   },
   // ── MOUNTAIN / ADVENTURE ───────────────────────────────────────────────────
   {
@@ -86,6 +98,12 @@ const destinations = [
     bestSeason: 'January – April',
     images: ['https://images.unsplash.com/photo-1586861635167-e5223aadc9fe?w=1200'],
     highlights: ['Nine Arch Bridge at Sunrise', 'Tea Plucking Experience', 'Little Adam\'s Peak Hike', 'Scenic Kandy–Ella Train Ride'],
+    contact: {
+      name: 'Ceylon Tea Trails Reservations',
+      phone: '+94 11 774 5700',
+      email: 'reservations@resplendentceylon.com',
+      website: 'https://www.resplendentceylon.com/teatrails/',
+    },
   },
   // ── CITY / CULTURE ─────────────────────────────────────────────────────────
   {
@@ -117,6 +135,12 @@ const destinations = [
     bestSeason: 'November – April',
     images: ['https://images.unsplash.com/photo-1567157577867-05ccb1388e66?w=1200'],
     highlights: ['Sunset on the Ramparts', 'Boutique Hotel in the Fort', 'Local Art Gallery Hopping', 'Surf Lesson at Jungle Beach'],
+    contact: {
+      name: 'Fort Bazaar Galle',
+      phone: '+94 91 203 7300',
+      email: 'reservations@fortbazaar.com',
+      website: 'https://www.fortbazaar.com/',
+    },
   },
   // ── WILDLIFE / SAFARI ──────────────────────────────────────────────────────
   {
@@ -138,6 +162,12 @@ const destinations = [
     bestSeason: 'February – July',
     images: ['https://images.unsplash.com/photo-1561731216-c3a4d99437d5?w=1200'],
     highlights: ['Leopard Safari at Dawn', 'Elephant Herd at Udawalawa', 'Bush Dinner under the Stars', 'Bird Watching at Bundala Lagoon'],
+    contact: {
+      name: 'Jetwing Yala',
+      phone: '+94 47 203 0300',
+      email: 'reservations@jetwinghotels.com',
+      website: 'https://www.jetwinghotels.com/jetwingyala/',
+    },
   },
   // ── RURAL / ROMANTIC ───────────────────────────────────────────────────────
   {
@@ -159,6 +189,28 @@ const destinations = [
     bestSeason: 'May – September',
     images: ['https://images.unsplash.com/photo-1588668214407-6ea9a6d8c272?w=1200'],
     highlights: ['Sigiriya Rock Fortress Sunrise', 'Dambulla Cave Temple', 'Village Bicycle Tour', 'Ayurvedic Couples Massage'],
+    contact: {
+      name: 'Aliya Resort & Spa Sigiriya',
+      phone: '+94 66 205 0400',
+      email: 'reservations@aliyasigiriya.com',
+      website: 'https://www.aliyaresort.com/',
+    },
+  },
+  {
+    country: 'Sri Lanka',
+    region: 'Trincomalee & Nilaveli',
+    description: 'Turquoise bays, calm seas and soft white beaches on Sri Lanka\'s east coast. Trincomalee and Nilaveli are ideal for couples who want quieter beaches, snorkeling at Pigeon Island and oceanfront sunsets.',
+    activityTags: ['beach', 'island', 'swim', 'snorkeling', 'sunset-cruise'],
+    budgetTier: 'mid-range',
+    bestSeason: 'May – September',
+    images: ['https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=1200'],
+    highlights: ['Pigeon Island Snorkeling', 'Nilaveli Beach Sunset', 'Koneswaram Temple Visit', 'Private Catamaran Cruise'],
+    contact: {
+      name: 'Trinco Blu by Cinnamon',
+      phone: '+94 26 222 3077',
+      email: 'reservations@trinco-blue.com',
+      website: 'https://www.cinnamonhotels.com/trinco-blu',
+    },
   },
 ];
 
@@ -167,21 +219,25 @@ async function seed() {
   console.log('Connected to MongoDB');
 
   let inserted = 0;
-  let skipped = 0;
+  let updated = 0;
 
   for (const dest of destinations) {
-    const exists = await HoneymoonDestination.findOne({ country: dest.country, region: dest.region });
-    if (exists) {
-      console.log(`  ↷  Skipping (already exists): ${dest.region}, ${dest.country}`);
-      skipped++;
-      continue;
+    const result = await HoneymoonDestination.updateOne(
+      { country: dest.country, region: dest.region },
+      { $set: dest },
+      { upsert: true }
+    );
+
+    if (result.upsertedCount > 0) {
+      console.log(`  ✔  Inserted: ${dest.region}, ${dest.country}`);
+      inserted++;
+    } else {
+      console.log(`  ↻  Updated: ${dest.region}, ${dest.country}`);
+      updated++;
     }
-    await HoneymoonDestination.create(dest);
-    console.log(`  ✔  Inserted: ${dest.region}, ${dest.country}`);
-    inserted++;
   }
 
-  console.log(`\nDone. Inserted: ${inserted}  Skipped: ${skipped}`);
+  console.log(`\nDone. Inserted: ${inserted}  Updated: ${updated}`);
   await mongoose.disconnect();
 }
 

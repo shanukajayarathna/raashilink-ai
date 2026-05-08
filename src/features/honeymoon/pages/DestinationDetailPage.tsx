@@ -38,6 +38,8 @@ import {
   Camera,
   Music,
   Tent,
+  Phone,
+  Mail,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -125,6 +127,12 @@ function mapDestinationDetail(destination: any) {
       ],
       currency: 'Check the local currency and payment rules before travel.',
       safety: 'Review local travel guidance and seasonal weather advisories before departure.',
+    },
+    contact: destination?.contact || {
+      name: country === 'Sri Lanka' ? 'Sri Lanka Tourism Promotion Bureau' : '',
+      phone: country === 'Sri Lanka' ? '+94 11 242 6800' : '',
+      email: country === 'Sri Lanka' ? 'info@srilanka.travel' : '',
+      website: country === 'Sri Lanka' ? 'https://www.srilanka.travel/' : '',
     },
   };
 }
@@ -407,6 +415,46 @@ export default function DestinationDetail() {
                           </Stack>
                           <Typography variant="body1" sx={{ color: COLORS.textSecondary, lineHeight: 1.8 }}>{destination.travelInfo.safety}</Typography>
                         </Box>
+                        {(destination.contact?.name || destination.contact?.phone || destination.contact?.email || destination.contact?.website) && (
+                          <Box sx={{ p: 2.5, borderRadius: 3, bgcolor: alpha(COLORS.accent, 0.08), border: `1px solid ${alpha(COLORS.accent, 0.25)}` }}>
+                            <Typography variant="h6" sx={{ fontWeight: 800, mb: 1.5, color: COLORS.primary }}>
+                              Local Contact
+                            </Typography>
+                            {destination.contact?.name && (
+                              <Typography variant="body2" sx={{ color: COLORS.textPrimary, fontWeight: 700, mb: 1 }}>
+                                {destination.contact.name}
+                              </Typography>
+                            )}
+                            {destination.contact?.phone && (
+                              <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.8 }}>
+                                <Phone size={16} color={COLORS.accent} />
+                                <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
+                                  {destination.contact.phone}
+                                </Typography>
+                              </Stack>
+                            )}
+                            {destination.contact?.email && (
+                              <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.8 }}>
+                                <Mail size={16} color={COLORS.accent} />
+                                <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
+                                  {destination.contact.email}
+                                </Typography>
+                              </Stack>
+                            )}
+                            {destination.contact?.website && (
+                              <Button
+                                href={destination.contact.website}
+                                target="_blank"
+                                rel="noreferrer"
+                                size="small"
+                                endIcon={<ExternalLink size={16} />}
+                                sx={{ mt: 1.2, px: 0, color: COLORS.primary, fontWeight: 700, textTransform: 'none', justifyContent: 'flex-start' }}
+                              >
+                                Visit official website
+                              </Button>
+                            )}
+                          </Box>
+                        )}
                         <Button
                           fullWidth
                           variant="contained"

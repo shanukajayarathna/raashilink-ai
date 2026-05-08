@@ -17,7 +17,11 @@ export const listDestinations = asyncHandler(async (req, res) => {
 
   // Fallback: if the budget+activity combo returns nothing, loosen the budget filter
   if (destinations.length === 0 && budgetTier && activity) {
-    destinations = await HoneymoonDestination.find({ activityTags: { $in: [activity] } })
+    const fallbackQuery = { activityTags: { $in: [activity] } };
+    if (country) fallbackQuery.country = country;
+    if (region) fallbackQuery.region = region;
+
+    destinations = await HoneymoonDestination.find(fallbackQuery)
       .sort({ country: 1, region: 1 })
       .lean();
   }

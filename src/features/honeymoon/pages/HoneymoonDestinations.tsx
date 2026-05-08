@@ -183,6 +183,7 @@ export default function HoneymoonDestinations() {
     try {
       const budgetTier = preferences.budget === 'mid' ? 'mid-range' : preferences.budget;
       const response = await honeymoonService.getDestinations({
+        country: 'Sri Lanka',
         activity: preferences.vibe,
         budgetTier,
       });
