@@ -12,6 +12,8 @@ import {
   useTheme,
   useMediaQuery,
 } from '@mui/material';
+import { useSelector } from 'react-redux';
+import { RootState } from '@/app/store/store';
 import {
   Send,
   Mic,
@@ -20,6 +22,8 @@ import {
   Calendar,
   Wallet,
   X,
+  ZoomIn,
+  ZoomOut,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import chatService from '../services/chatService';
@@ -55,26 +59,81 @@ const WELCOME_TOPICS = [
 interface ChatInterfaceProps {
   isCompact?: boolean;
   onClose?: () => void;
+  onScaleUp?: () => void;
+  onScaleDown?: () => void;
   initialMessages?: any[];
   language?: 'en' | 'si' | 'ta';
+  firstName?: string;
+  sessionKey?: string;
 }
 
 export type ChatInterfaceHandle = {
   sendMessage: (text: string) => void;
 };
 
+const resolveAvatarSrc = (...sources: any[]) => {
+  for (const source of sources) {
+    if (!source || typeof source !== 'string') continue;
+    const value = source.trim();
+    if (!value) continue;
+    if (/^(https?:)?\/\//i.test(value) || value.startsWith('data:') || value.startsWith('blob:')) {
+      return value;
+    }
+    return value.startsWith('/') ? value : `/${value}`;
+  }
+  return undefined;
+};
+
 const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>(function ChatInterface(
-  { isCompact, onClose, initialMessages = [], language = 'en' },
+  { isCompact, onClose, onScaleUp, onScaleDown, initialMessages = [], language = 'en', firstName = '', sessionKey },
   ref
 ) {
-  const [messages, setMessages] = useState<any[]>(initialMessages);
+  const currentUser = useSelector((state: RootState) => state.auth.user as any);
+  const userAvatarSrc = resolveAvatarSrc(
+    currentUser?.profilePic,
+    currentUser?.personalInfo?.profilePic,
+    currentUser?.photos?.find?.((photo: any) => photo?.isMain)?.url,
+    currentUser?.photos?.[0]?.url
+  );
+
+  const [messages, setMessages] = useState<any[]>(() => {
+    if (sessionKey) {
+      try {
+        const stored = sessionStorage.getItem(`raashibot_${sessionKey}`);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch { /* ignore */ }
+    }
+    return initialMessages;
+  });
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
-  const [isWelcomeState, setIsWelcomeState] = useState(initialMessages.length === 0);
+  const [isWelcomeState, setIsWelcomeState] = useState(() => {
+    if (sessionKey) {
+      try {
+        const stored = sessionStorage.getItem(`raashibot_${sessionKey}`);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed) && parsed.length > 0) return false;
+        }
+      } catch { /* ignore */ }
+    }
+    return initialMessages.length === 0;
+  });
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const messagesEndRef = useRef<null | HTMLDivElement>(null);
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+
+  // Persist messages to sessionStorage whenever they change
+  useEffect(() => {
+    if (!sessionKey || messages.length === 0) return;
+    try {
+      sessionStorage.setItem(`raashibot_${sessionKey}`, JSON.stringify(messages));
+    } catch { /* ignore */ }
+  }, [messages, sessionKey]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -205,17 +264,29 @@ const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>(functi
       />
       {/* Optional Header for Compact Mode */}
       {isCompact && (
-        <Paper elevation={0} sx={{ p: 1.5, borderBottom: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'center', justifyContent: 'space-between', bgcolor: COLORS.primary, color: 'white' }}>
+        <Paper elevation={0} sx={{ p: 1.5, borderBottom: '1px solid', borderColor: `${COLORS.primary}40`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', bgcolor: COLORS.primary, color: 'white', flexShrink: 0, position: 'relative', zIndex: 2 }}>
           <Stack direction="row" spacing={1.5} alignItems="center">
             <Avatar sx={{ width: 32, height: 32, bgcolor: 'white', color: COLORS.primary }}>
               <Flower2 size={20} />
             </Avatar>
             <Box>
-              <Typography variant="subtitle2" sx={{ fontWeight: 800, lineHeight: 1.2 }}>RaashiBot</Typography>
-              <Typography variant="caption" sx={{ opacity: 0.8 }}>Online Assistant</Typography>
+              <Typography variant="subtitle2" sx={{ fontWeight: 800, lineHeight: 1.2, color: 'white' }}>RaashiBot</Typography>
+              <Typography variant="caption" sx={{ opacity: 0.85, color: 'white', display: 'block' }}>Online Assistant</Typography>
             </Box>
           </Stack>
-          <IconButton size="small" sx={{ color: 'white' }} onClick={onClose}><X size={18} /></IconButton>
+          <Stack direction="row" spacing={0.25} alignItems="center">
+            {onScaleDown && (
+              <IconButton size="small" sx={{ color: 'white', opacity: 0.85, '&:hover': { opacity: 1, bgcolor: 'rgba(255,255,255,0.15)' } }} onClick={onScaleDown} title="Shrink">
+                <ZoomOut size={15} />
+              </IconButton>
+            )}
+            {onScaleUp && (
+              <IconButton size="small" sx={{ color: 'white', opacity: 0.85, '&:hover': { opacity: 1, bgcolor: 'rgba(255,255,255,0.15)' } }} onClick={onScaleUp} title="Expand">
+                <ZoomIn size={15} />
+              </IconButton>
+            )}
+            <IconButton size="small" sx={{ color: 'white', '&:hover': { bgcolor: 'rgba(255,255,255,0.15)' } }} onClick={onClose}><X size={18} /></IconButton>
+          </Stack>
         </Paper>
       )}
 
@@ -234,10 +305,14 @@ const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>(functi
       >
         <AnimatePresence>
           {isWelcomeState && (
-            <WelcomeScreen isCompact={isCompact} onTopicClick={(topic) => handleSendMessage(topic)} />
+            <WelcomeScreen
+              isCompact={isCompact}
+              firstName={firstName}
+              onTopicClick={(topic) => handleSendMessage(topic)}
+            />
           )}
           {messages.map((msg) => (
-            <ChatMessage key={msg.id} message={msg} isCompact={isCompact} />
+            <ChatMessage key={msg.id} message={msg} isCompact={isCompact} userAvatarSrc={userAvatarSrc} />
           ))}
           {isTyping && (
             <motion.div
@@ -309,13 +384,15 @@ const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>(functi
 
 export default ChatInterface;
 
-function WelcomeScreen({ onTopicClick, isCompact }: { onTopicClick: (topic: string) => void; isCompact?: boolean }) {
+function WelcomeScreen({ onTopicClick, isCompact, firstName }: { onTopicClick: (topic: string) => void; isCompact?: boolean; firstName?: string }) {
+  const heading = firstName?.trim() ? `Ayubowan ${firstName.trim()}! I'm RaashiBot` : "Ayubowan! I'm RaashiBot";
+
   return (
     <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', textAlign: 'center', padding: '20px' }}>
       <motion.div animate={{ rotate: 360 }} transition={{ duration: 20, repeat: Infinity, ease: "linear" }} style={{ marginBottom: isCompact ? '12px' : '24px' }}>
         <Flower2 size={isCompact ? 48 : 80} color={COLORS.primary} strokeWidth={1} />
       </motion.div>
-      <Typography variant={isCompact ? "h6" : "h4"} sx={{ fontWeight: 800, fontFamily: 'Playfair Display', color: COLORS.primary, mb: 1 }}>Namaste! I'm RaashiBot</Typography>
+      <Typography variant={isCompact ? "h6" : "h4"} sx={{ fontWeight: 800, fontFamily: 'Playfair Display', color: COLORS.primary, mb: 1 }}>{heading}</Typography>
       {!isCompact && <Typography variant="body1" sx={{ color: COLORS.textSecondary, maxWidth: 500, mb: 6 }}>I can help you find your perfect match, understand your horoscope, and plan your wedding.</Typography>}
       <Stack direction={isCompact ? "column" : "row"} spacing={isCompact ? 1 : 2} sx={{ width: '100%', maxWidth: 800 }}>
         {WELCOME_TOPICS.map((topic, i) => (
