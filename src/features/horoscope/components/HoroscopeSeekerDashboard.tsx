@@ -16,10 +16,13 @@ import {
   AutoAwesome,
   CalendarMonth,
   CheckCircle,
+  Email,
   EditOutlined,
+  Phone,
   Print,
   Refresh,
   TrendingUp,
+  VerifiedUser,
   WarningAmber,
 } from '@mui/icons-material';
 import BirthChartWheel from './BirthChartWheel';
@@ -106,7 +109,16 @@ type Props = {
   hasCriticalBirthDetailsMissing: boolean;
   error: string | null;
   birthFeedback: { type: 'success' | 'warning'; message: string } | null;
+  verification: {
+    emailVerified: boolean;
+    phoneVerified: boolean;
+  };
+  verificationEmail: string;
+  verificationPhone: string;
+  verificationBusyChannel: 'email' | 'phone' | null;
   onRefresh: () => void;
+  onRequestVerificationOtp: (channel: 'email' | 'phone') => void;
+  onOpenVerifyDialog: (channel: 'email' | 'phone') => void;
   onOpenEditor: () => void;
   onPrint: () => void;
 };
@@ -114,6 +126,7 @@ type Props = {
 type TrendCard = {
   title: string;
   value: string;
+  description?: string;
   tone: string;
   series: number[];
 };
@@ -167,7 +180,13 @@ export default function HoroscopeSeekerDashboard({
   hasCriticalBirthDetailsMissing,
   error,
   birthFeedback,
+  verification,
+  verificationEmail,
+  verificationPhone,
+  verificationBusyChannel,
   onRefresh,
+  onRequestVerificationOtp,
+  onOpenVerifyDialog,
   onOpenEditor,
   onPrint,
 }: Props) {
@@ -215,24 +234,118 @@ export default function HoroscopeSeekerDashboard({
   const chartGrade = chartSummary?.chartGrade;
   const chartGradeGood = chartGrade?.grade === 'Excellent' || chartGrade?.grade === 'Good';
   const chartGradeColor = chartGradeGood ? COLORS.accent : '#C62828';
+  const emailNeedsVerification = !verification?.emailVerified;
+  const phoneNeedsVerification = Boolean(verificationPhone) && !verification?.phoneVerified;
+  const hasPendingVerification = emailNeedsVerification || phoneNeedsVerification;
+  const getEmotionalInsight = (sign: string) => {
+    const insights: Record<string, string> = {
+      Aries: 'Dynamic and impulsive emotional drive.',
+      Taurus: 'Stable and grounded emotional needs.',
+      Gemini: 'Versatile and curious emotional expression.',
+      Cancer: 'Highly intuitive and sensitive emotional state.',
+      Leo: 'Warm and expressive emotional confidence.',
+      Virgo: 'Analytical and practical emotional approach.',
+      Libra: 'Harmonious and social emotional focus.',
+      Scorpio: 'Intense and transformative emotional energy.',
+      Sagittarius: 'Optimistic and freedom-seeking emotional outlook.',
+      Capricorn: 'Disciplined and reserved emotional structure.',
+      Aquarius: 'Original and independent emotional perspective.',
+      Pisces: 'Compassionate and imaginative emotional depth.',
+    };
+    return insights[sign] || 'Emotional patterns influenced by your moon sign.';
+  };
+
+  const getVitalityInsight = (sign: string) => {
+    const insights: Record<string, string> = {
+      Aries: 'High physical energy and assertive drive.',
+      Taurus: 'Steady endurance and physical persistence.',
+      Gemini: 'Mental vitality and adaptive energy.',
+      Cancer: 'Nurturing energy tied to emotional comfort.',
+      Leo: 'Radiant vitality and strong creative presence.',
+      Virgo: 'Focused energy on health and refinement.',
+      Libra: 'Balanced energy through social interaction.',
+      Scorpio: 'Resilient and regenerative life force.',
+      Sagittarius: 'Expansive and adventurous energy levels.',
+      Capricorn: 'Ambitious and disciplined physical focus.',
+      Aquarius: 'Unique and community-oriented vitality.',
+      Pisces: 'Sensitive and spiritually-attuned energy.',
+    };
+    return insights[sign] || 'Core vitality shaped by your solar placement.';
+  };
+
+  const getCommunicationInsight = (sign: string) => {
+    const insights: Record<string, string> = {
+      Aries: 'Direct and forceful communication style.',
+      Taurus: 'Deliberate and practical verbal expression.',
+      Gemini: 'Quick-witted and highly versatile dialogue.',
+      Cancer: 'Empathetic and protective communication.',
+      Leo: 'Dramatic and authoritative self-expression.',
+      Virgo: 'Precise and detailed information sharing.',
+      Libra: 'Diplomatic and persuasive conversationalist.',
+      Scorpio: 'Profound and investigative mental focus.',
+      Sagittarius: 'Honest and philosophically-driven speech.',
+      Capricorn: 'Structured and serious intellectual tone.',
+      Aquarius: 'Innovative and unconventional thinking.',
+      Pisces: 'Poetic and intuitive mental processing.',
+    };
+    return insights[sign] || 'Communication patterns based on your mercury sign.';
+  };
+
+  const generateStableSeries = (seed: string, length = 7) => {
+    let hash = 0;
+    for (let i = 0; i < seed.length; i++) {
+      hash = (hash << 5) - hash + seed.charCodeAt(i);
+      hash |= 0;
+    }
+    const result = [];
+    let current = Math.abs(hash % 100);
+    for (let i = 0; i < length; i++) {
+      result.push(current);
+      current = Math.abs((current * 13 + 7) % 100);
+    }
+    return result;
+  };
+
+  const moonSign = chartSummary?.moonSign || '';
+  const sunSign = chartSummary?.sunSign || '';
+  const mercurySign = chartPositions.find((p: any) => p.planet === 'Mercury')?.sign || '';
+  const venusSign = chartPositions.find((p: any) => p.planet === 'Venus')?.sign || '';
+
   const trendCards: TrendCard[] = [
     {
       title: 'Planetary Balance',
       value: chartGrade?.grade || 'Pending',
+      description: chartGrade?.summary || 'Overall harmony of your natal placements.',
       tone: COLORS.accent,
-      series: [42, 48, 55, 53, 60, 66, 70],
+      series: generateStableSeries(chartGrade?.grade || 'balance'),
     },
     {
       title: 'Emotional Rhythm',
-      value: translateHoroscopeValue(chartSummary?.moonSign || texts.pending, language),
+      value: translateHoroscopeValue(moonSign || texts.pending, language),
+      description: getEmotionalInsight(moonSign),
       tone: '#1565C0',
-      series: [35, 40, 37, 50, 52, 57, 61],
+      series: generateStableSeries(moonSign + 'moon'),
+    },
+    {
+      title: 'Vitality Level',
+      value: translateHoroscopeValue(sunSign || texts.pending, language),
+      description: getVitalityInsight(sunSign),
+      tone: '#E65100',
+      series: generateStableSeries(sunSign + 'sun'),
+    },
+    {
+      title: 'Mental Clarity',
+      value: translateHoroscopeValue(mercurySign || texts.pending, language),
+      description: getCommunicationInsight(mercurySign),
+      tone: '#00838F',
+      series: generateStableSeries(mercurySign + 'mercury'),
     },
     {
       title: 'Focus Strength',
       value: chartSummary?.auspiciousTime || texts.pending,
+      description: 'Your daily peak for important decisions.',
       tone: '#7A6020',
-      series: [28, 33, 47, 45, 56, 61, 64],
+      series: generateStableSeries(chartSummary?.auspiciousTime || 'focus'),
     },
   ];
 
@@ -243,9 +356,7 @@ export default function HoroscopeSeekerDashboard({
     }
   };
 
-  const buildSparkPath = (series: number[]) => {
-    const width = 220;
-    const height = 54;
+  const buildSparkPath = (series: number[], width: number, height: number) => {
     const max = Math.max(...series);
     const min = Math.min(...series);
     const range = max - min || 1;
@@ -290,7 +401,7 @@ export default function HoroscopeSeekerDashboard({
             </Avatar>
             <Box sx={{ minWidth: 0 }}>
               <Typography variant="h4" sx={{ fontFamily: 'Playfair Display', fontWeight: 800, color: COLORS.primary, lineHeight: 1.15 }}>
-                {greeting}, {user?.name || 'Seeker'}
+                {greeting}, {(user?.name || 'Seeker').split(' ')[0]}
               </Typography>
               <Typography variant="body2" sx={{ color: COLORS.textSecondary, mt: 0.5 }}>
                 Your Horoscope Dashboard
@@ -329,6 +440,76 @@ export default function HoroscopeSeekerDashboard({
         <Alert severity={hasCriticalBirthDetailsMissing ? 'info' : 'warning'} sx={{ mb: 2, borderRadius: '12px' }}>
           {accuracyNotice}
         </Alert>
+      )}
+
+      {hasPendingVerification && (
+        <Paper sx={{ p: 3, borderRadius: '20px', mb: 3.5, border: `1px solid ${alpha('#B26A00', 0.24)}`, bgcolor: '#FFFBF2' }}>
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} justifyContent="space-between" alignItems={{ xs: 'flex-start', md: 'center' }}>
+            <Box>
+              <Typography variant="h6" sx={{ fontWeight: 800, color: COLORS.primary }}>
+                Pending Verification
+              </Typography>
+              <Typography variant="body2" sx={{ color: COLORS.textSecondary, mt: 0.4 }}>
+                Verify your contact details to keep your account fully secure.
+              </Typography>
+            </Box>
+            <Chip icon={<VerifiedUser />} label="Action Needed" sx={{ bgcolor: '#FFF3E0', color: '#B26A00', fontWeight: 700 }} />
+          </Stack>
+
+          <Stack spacing={2} sx={{ mt: 2.25 }}>
+            {emailNeedsVerification && (
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25} alignItems={{ xs: 'flex-start', sm: 'center' }}>
+                <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 1, minWidth: { sm: 280 } }}>
+                  <Email sx={{ color: COLORS.primary, fontSize: 18 }} />
+                  <Typography variant="body2" sx={{ color: COLORS.textPrimary }}>
+                    Verify email: {verificationEmail || 'Not available'}
+                  </Typography>
+                </Box>
+                <Button
+                  variant="outlined"
+                  onClick={() => onRequestVerificationOtp('email')}
+                  disabled={verificationBusyChannel === 'email'}
+                  sx={{ borderRadius: '10px' }}
+                >
+                  {verificationBusyChannel === 'email' ? 'Sending...' : 'Send OTP'}
+                </Button>
+                <Button
+                  variant="contained"
+                  onClick={() => onOpenVerifyDialog('email')}
+                  sx={{ borderRadius: '10px', bgcolor: COLORS.primary }}
+                >
+                  Enter OTP
+                </Button>
+              </Stack>
+            )}
+
+            {phoneNeedsVerification && (
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25} alignItems={{ xs: 'flex-start', sm: 'center' }}>
+                <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 1, minWidth: { sm: 280 } }}>
+                  <Phone sx={{ color: COLORS.accent, fontSize: 18 }} />
+                  <Typography variant="body2" sx={{ color: COLORS.textPrimary }}>
+                    Verify phone: {verificationPhone}
+                  </Typography>
+                </Box>
+                <Button
+                  variant="outlined"
+                  onClick={() => onRequestVerificationOtp('phone')}
+                  disabled={verificationBusyChannel === 'phone'}
+                  sx={{ borderRadius: '10px' }}
+                >
+                  {verificationBusyChannel === 'phone' ? 'Sending...' : 'Send OTP'}
+                </Button>
+                <Button
+                  variant="contained"
+                  onClick={() => onOpenVerifyDialog('phone')}
+                  sx={{ borderRadius: '10px', bgcolor: COLORS.primary }}
+                >
+                  Enter OTP
+                </Button>
+              </Stack>
+            )}
+          </Stack>
+        </Paper>
       )}
 
       <Grid container spacing={3} alignItems="flex-start">
@@ -423,23 +604,76 @@ export default function HoroscopeSeekerDashboard({
             </Grid>
 
             <Grid size={{ xs: 12, xl: 4 }}>
-              <Paper id="seeker-trends" sx={{ p: 2.5, borderRadius: '20px', border: '1px solid', borderColor: COLORS.background, height: '100%' }}>
-                <Typography variant="subtitle1" sx={{ fontWeight: 800, color: COLORS.primary, mb: 1.5 }}>
-                  Trend Signals
-                </Typography>
-                <Stack spacing={1.5}>
+              <Paper
+                id="seeker-trends"
+                sx={{
+                  p: 3,
+                  borderRadius: '24px',
+                  border: '1px solid',
+                  borderColor: alpha(COLORS.primary, 0.08),
+                  background: `linear-gradient(180deg, #FFFFFF 0%, ${alpha(COLORS.background, 0.4)} 100%)`,
+                  height: '100%',
+                  display: 'flex',
+                  flexDirection: 'column',
+                }}
+              >
+                <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2.5 }}>
+                  <TrendingUp sx={{ fontSize: 20, color: COLORS.primary }} />
+                  <Typography variant="h6" sx={{ fontWeight: 800, color: COLORS.primary }}>
+                    Trend Signals
+                  </Typography>
+                </Stack>
+
+                <Stack spacing={2} sx={{ flexGrow: 1 }}>
                   {trendCards.map((card) => (
-                    <Box key={card.title} sx={{ p: 1.25, borderRadius: '12px', bgcolor: alpha(card.tone, 0.05), border: `1px solid ${alpha(card.tone, 0.24)}` }}>
-                      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 0.75 }}>
-                        <Typography variant="caption" sx={{ color: COLORS.textSecondary, fontWeight: 700 }}>{card.title}</Typography>
-                        <Typography variant="caption" sx={{ color: card.tone, fontWeight: 800 }}>{card.value}</Typography>
+                    <Box
+                      key={card.title}
+                      sx={{
+                        p: 2,
+                        borderRadius: '16px',
+                        bgcolor: alpha(card.tone, 0.04),
+                        border: `1px solid ${alpha(card.tone, 0.15)}`,
+                        transition: 'transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out',
+                        '&:hover': {
+                          transform: 'translateY(-2px)',
+                          boxShadow: `0 4px 12px ${alpha(card.tone, 0.1)}`,
+                        },
+                      }}
+                    >
+                      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
+                        <Box>
+                          <Typography variant="caption" sx={{ color: COLORS.textSecondary, fontWeight: 800, letterSpacing: 0.5, display: 'block' }}>
+                            {card.title.toUpperCase()}
+                          </Typography>
+                          <Typography variant="body1" sx={{ color: card.tone, fontWeight: 900 }}>
+                            {card.value}
+                          </Typography>
+                        </Box>
+                        <svg viewBox="0 0 80 30" width="80" height="30" preserveAspectRatio="none" aria-hidden>
+                          <path
+                            d={buildSparkPath(card.series, 80, 30)}
+                            fill="none"
+                            stroke={card.tone}
+                            strokeWidth="2.5"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
                       </Stack>
-                      <svg viewBox="0 0 220 54" width="100%" height="54" preserveAspectRatio="none" aria-hidden>
-                        <path d={buildSparkPath(card.series)} fill="none" stroke={card.tone} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
+                      {card.description && (
+                        <Typography variant="caption" sx={{ color: COLORS.textSecondary, lineHeight: 1.4, display: 'block', mt: 0.5 }}>
+                          {card.description}
+                        </Typography>
+                      )}
                     </Box>
                   ))}
                 </Stack>
+
+                <Box sx={{ mt: 3, pt: 2, borderTop: `1px dashed ${alpha(COLORS.primary, 0.1)}` }}>
+                  <Typography variant="caption" sx={{ color: COLORS.textSecondary, fontStyle: 'italic', display: 'block', textAlign: 'center' }}>
+                    Derived from your unique planetary configurations at birth.
+                  </Typography>
+                </Box>
               </Paper>
             </Grid>
 
