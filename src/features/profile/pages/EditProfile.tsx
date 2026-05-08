@@ -77,6 +77,14 @@ const SRI_LANKAN_ETHNICITIES = [
   'Other',
 ];
 
+function normalizeLocationText(value: string) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
 export default function EditProfile() {
   const navigate = useNavigate();
   const { user, token } = useSelector((state: RootState) => state.auth);
@@ -114,6 +122,8 @@ export default function EditProfile() {
 
   const [formData, setFormData] = useState({
     name: '',
+    firstName: '',
+    lastName: '',
     bio: '',
     tagline: '',
     location: '',
@@ -168,6 +178,7 @@ export default function EditProfile() {
 
   useEffect(() => {
     const query = String(formData.birthPlace || '').trim();
+    const normalizedQuery = normalizeLocationText(query);
 
     if (!query) {
       setBirthPlaceSuggestions([]);
@@ -178,8 +189,16 @@ export default function EditProfile() {
     const timer = window.setTimeout(async () => {
       setLoadingBirthPlaceSuggestions(true);
       try {
-        const suggestions = await userService.searchBirthPlaces(query, 5);
-        setBirthPlaceSuggestions(suggestions);
+        const suggestions: string[] = await userService.searchBirthPlaces(query, 5);
+        const remotePrefixMatches = suggestions
+          .filter((place) => normalizeLocationText(place).startsWith(normalizedQuery))
+          .slice(0, 5);
+
+        setBirthPlaceSuggestions(
+          remotePrefixMatches.length > 0
+            ? remotePrefixMatches
+            : []
+        );
       } catch (lookupError) {
         console.error('Birth place suggestion lookup failed:', lookupError);
         setBirthPlaceSuggestions([]);
@@ -309,8 +328,15 @@ export default function EditProfile() {
     setError(null);
     try {
       const fullPayload = buildProfileUpdatePayload(formData);
+      const seekerFirstName = String(formData.firstName || '').trim();
+      const seekerLastName = String(formData.lastName || '').trim();
+      const seekerFullName = [seekerFirstName, seekerLastName].filter(Boolean).join(' ').trim();
       const seekerPayload = {
-        name: fullPayload.name,
+        name: seekerFullName || fullPayload.name,
+        personalInfo: {
+          firstName: seekerFirstName,
+          lastName: seekerLastName,
+        },
         birthDate: fullPayload.birthDate,
         birthTime: fullPayload.birthTime,
         birthPlace: fullPayload.birthPlace,
@@ -398,6 +424,38 @@ export default function EditProfile() {
         {/* Basic Info Section */}
         <Grid size={{ xs: 12, md: 8 }}>
           <Stack spacing={4}>
+            {isHoroscopeSeeker && (
+              <MotionPaper
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                sx={{ p: 4, borderRadius: '24px', boxShadow: '0 2px 16px rgba(139,26,46,0.05)' }}
+              >
+                <Typography variant="h6" sx={{ mb: 3, fontWeight: 800, color: COLORS.primary, display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <User size={20} /> Profile Name
+                </Typography>
+                <Grid container spacing={3}>
+                  <Grid size={{ xs: 12, sm: 6 }}>
+                    <TextField
+                      fullWidth
+                      label="First Name"
+                      value={formData.firstName}
+                      onChange={(e) => handleChange('firstName', e.target.value)}
+                      variant="outlined"
+                    />
+                  </Grid>
+                  <Grid size={{ xs: 12, sm: 6 }}>
+                    <TextField
+                      fullWidth
+                      label="Last Name"
+                      value={formData.lastName}
+                      onChange={(e) => handleChange('lastName', e.target.value)}
+                      variant="outlined"
+                    />
+                  </Grid>
+                </Grid>
+              </MotionPaper>
+            )}
+
             {!isHoroscopeSeeker && (
               <MotionPaper
                 initial={{ opacity: 0, y: 20 }}
