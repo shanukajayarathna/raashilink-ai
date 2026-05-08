@@ -170,14 +170,6 @@ function formatSeekingGenderDisplay(value: any) {
   return normalized.charAt(0).toUpperCase() + normalized.slice(1);
 }
 
-function normalizeLocationText(value: string) {
-  return String(value || '')
-    .trim()
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '');
-}
-
 function formatGenderDisplay(value: any) {
   if (value === undefined || value === null) return 'Not provided';
 
@@ -395,7 +387,6 @@ export default function UserProfile() {
 
   useEffect(() => {
     const query = String(editData.birthPlace || '').trim();
-    const normalizedQuery = normalizeLocationText(query);
 
     if (!editing) {
       setBirthPlaceSuggestions([]);
@@ -403,8 +394,8 @@ export default function UserProfile() {
       return;
     }
 
-    if (!query) {
-      setBirthPlaceSuggestions([]);
+    if (query.length < 2) {
+      setBirthPlaceSuggestions(query ? [query] : []);
       setLoadingBirthPlaceSuggestions(false);
       return;
     }
@@ -412,18 +403,11 @@ export default function UserProfile() {
     const timer = window.setTimeout(async () => {
       setLoadingBirthPlaceSuggestions(true);
       try {
-        const suggestions: string[] = await userService.searchBirthPlaces(query, 5);
-        const remotePrefixMatches = suggestions
-          .filter((place) => normalizeLocationText(place).startsWith(normalizedQuery))
-          .slice(0, 5);
-        setBirthPlaceSuggestions(
-          remotePrefixMatches.length > 0
-            ? remotePrefixMatches
-            : []
-        );
+        const suggestions = await userService.searchBirthPlaces(query, 5);
+        setBirthPlaceSuggestions(Array.from(new Set([query, ...suggestions])));
       } catch (lookupError) {
         console.error('Birth place suggestion lookup failed:', lookupError);
-        setBirthPlaceSuggestions([]);
+        setBirthPlaceSuggestions(query ? [query] : []);
       } finally {
         setLoadingBirthPlaceSuggestions(false);
       }
@@ -1629,7 +1613,7 @@ export default function UserProfile() {
                             onInputChange={(_, value) => setEditData({ ...editData, birthPlace: value })}
                             onChange={(_, value) => setEditData({ ...editData, birthPlace: typeof value === 'string' ? value : value || '' })}
                             filterOptions={(options) => options}
-                            noOptionsText={editData.birthPlace ? 'No matching Sri Lankan places found' : 'Type to search places'}
+                            noOptionsText={editData.birthPlace ? 'No matching places found' : 'Type at least 2 letters'}
                             renderInput={(params) => (
                               <TextField
                                 {...params}
