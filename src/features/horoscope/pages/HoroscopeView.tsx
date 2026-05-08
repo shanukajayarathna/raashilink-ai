@@ -28,7 +28,6 @@ import {
   Search,
   TrendingUp,
   Refresh,
-  Share,
   EditOutlined,
   AutoAwesome,
   Close,
@@ -807,18 +806,6 @@ const HoroscopeView = () => {
               }}
             >
               {texts.refresh}
-            </Button>
-            <Button
-              variant="contained"
-              startIcon={<Share />}
-              sx={{
-                borderRadius: '12px',
-                bgcolor: COLORS.primary,
-                fontFamily: LANGUAGE_FONT_FAMILY[language],
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {texts.shareChart}
             </Button>
             <Button
               variant="outlined"
