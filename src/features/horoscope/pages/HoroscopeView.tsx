@@ -16,6 +16,7 @@ import {
   Chip,
   Avatar,
   Dialog,
+  DialogActions,
   DialogContent,
   DialogTitle,
   IconButton,
@@ -55,7 +56,7 @@ import { RootState } from '@/app/store/store';
 import { AppDispatch } from '@/app/store/store';
 import { fetchMyChart, calculateCompatibility, clearCompatibility } from '../store/horoscopeSlice';
 import { fetchProfile, updateUser } from '@/features/auth/store/authSlice';
-import { setLanguage } from '@/app/store/uiSlice';
+import { setLanguage, showToast } from '@/app/store/uiSlice';
 import BirthChartWheel from '../components/BirthChartWheel';
 import HoroscopeSeekerDashboard from '../components/HoroscopeSeekerDashboard';
 import CompatibilityScores from '../components/CompatibilityScores';
@@ -196,6 +197,21 @@ const HoroscopeView = () => {
     knowsBirthTime: true,
   });
   const [compatibilityError, setCompatibilityError] = useState<string | null>(null);
+  const [verificationStatus, setVerificationStatus] = useState({
+    emailVerified: Boolean(user?.verification?.emailVerified),
+    phoneVerified: Boolean(user?.verification?.phoneVerified),
+  });
+  const [verificationContact, setVerificationContact] = useState({
+    email: user?.verification?.email || user?.email || '',
+    phone: user?.verification?.phone || user?.personalInfo?.phone || user?.phone || '',
+  });
+  const [verifyDialog, setVerifyDialog] = useState<{ open: boolean; channel: 'email' | 'phone' | null }>({
+    open: false,
+    channel: null,
+  });
+  const [otpValue, setOtpValue] = useState('');
+  const [verificationBusyChannel, setVerificationBusyChannel] = useState<'email' | 'phone' | null>(null);
+  const [verifying, setVerifying] = useState(false);
   const lastAutoFetchKeyRef = useRef('');
   const compatibilityResultsRef = useRef<HTMLDivElement>(null);
 
@@ -405,6 +421,34 @@ const HoroscopeView = () => {
     fetchMatches();
   }, [isHoroscopeSeeker]);
 
+  useEffect(() => {
+    if (!isHoroscopeSeeker) return;
+
+    const fetchVerificationState = async () => {
+      try {
+        const response = await userService.getProfile({ includeMedia: false });
+        const latestVerification = {
+          emailVerified: Boolean(response?.verification?.emailVerified),
+          phoneVerified: Boolean(response?.verification?.phoneVerified),
+        };
+
+        setVerificationStatus(latestVerification);
+        setVerificationContact({
+          email: response?.verification?.email || response?.email || user?.email || '',
+          phone: response?.verification?.phone || response?.personalInfo?.phone || user?.phone || '',
+        });
+
+        dispatch(updateUser({
+          verification: { ...(user?.verification || {}), ...latestVerification },
+        }));
+      } catch (fetchError) {
+        console.error('Failed to load horoscope seeker verification state:', fetchError);
+      }
+    };
+
+    fetchVerificationState();
+  }, [dispatch, isHoroscopeSeeker, user?._id]);
+
   const handleCalculate = async () => {
     if (!selectedMatch || !user) return;
     setCompatibilityError(null);
@@ -433,6 +477,55 @@ const HoroscopeView = () => {
   const openEditor = () => {
     setBirthFormError(null);
     setEditorOpen(true);
+  };
+
+  const handleRequestVerificationOtp = async (channel: 'email' | 'phone') => {
+    try {
+      setVerificationBusyChannel(channel);
+      const response = await userService.requestVerificationOtp(channel);
+      dispatch(
+        showToast({
+          type: 'success',
+          message: response.devOtp
+            ? `OTP sent. Development OTP: ${response.devOtp}`
+            : response.message || 'Verification OTP sent successfully.',
+        })
+      );
+    } catch (otpError: any) {
+      dispatch(showToast({ type: 'error', message: otpError.response?.data?.message || 'Failed to send OTP.' }));
+    } finally {
+      setVerificationBusyChannel(null);
+    }
+  };
+
+  const handleConfirmVerification = async () => {
+    if (!verifyDialog.channel || otpValue.trim().length !== 6) {
+      dispatch(showToast({ type: 'error', message: 'Enter a valid 6-digit OTP.' }));
+      return;
+    }
+
+    try {
+      setVerifying(true);
+      const response = await userService.confirmVerificationOtp({
+        channel: verifyDialog.channel,
+        otp: otpValue.trim(),
+      });
+
+      const nextVerification = {
+        ...verificationStatus,
+        ...response.verification,
+      };
+
+      setVerificationStatus(nextVerification);
+      dispatch(updateUser({ verification: { ...(user?.verification || {}), ...nextVerification } }));
+      dispatch(showToast({ type: 'success', message: response.message || 'Verification completed.' }));
+      setVerifyDialog({ open: false, channel: null });
+      setOtpValue('');
+    } catch (verifyError: any) {
+      dispatch(showToast({ type: 'error', message: verifyError.response?.data?.message || 'Failed to verify OTP.' }));
+    } finally {
+      setVerifying(false);
+    }
   };
 
   const handleSaveBirthDetails = async () => {
@@ -514,7 +607,16 @@ const HoroscopeView = () => {
           hasCriticalBirthDetailsMissing={hasCriticalBirthDetailsMissing}
           error={error}
           birthFeedback={birthFeedback}
+          verification={verificationStatus}
+          verificationEmail={verificationContact.email}
+          verificationPhone={verificationContact.phone}
+          verificationBusyChannel={verificationBusyChannel}
           onRefresh={() => dispatch(fetchMyChart({ force: true }))}
+          onRequestVerificationOtp={handleRequestVerificationOtp}
+          onOpenVerifyDialog={(channel) => {
+            setVerifyDialog({ open: true, channel });
+            setOtpValue('');
+          }}
           onOpenEditor={openEditor}
           onPrint={() => window.print()}
         />
@@ -640,6 +742,35 @@ const HoroscopeView = () => {
               </Stack>
             </Stack>
           </DialogContent>
+        </Dialog>
+
+        <Dialog open={verifyDialog.open} onClose={() => !verifying && setVerifyDialog({ open: false, channel: null })} maxWidth="xs" fullWidth>
+          <DialogTitle sx={{ fontWeight: 800, color: COLORS.primary }}>
+            Verify {verifyDialog.channel === 'email' ? 'Email' : 'Phone'}
+          </DialogTitle>
+          <DialogContent>
+            <Typography variant="body2" sx={{ color: COLORS.textSecondary, mb: 2 }}>
+              Enter the 6-digit OTP sent to your {verifyDialog.channel}.
+            </Typography>
+            <TextField
+              fullWidth
+              label="OTP"
+              value={otpValue}
+              onChange={(event) => setOtpValue(event.target.value.replace(/\D/g, '').slice(0, 6))}
+              inputProps={{ maxLength: 6, inputMode: 'numeric', pattern: '[0-9]*' }}
+            />
+          </DialogContent>
+          <DialogActions sx={{ p: 2.5 }}>
+            <Button onClick={() => setVerifyDialog({ open: false, channel: null })} disabled={verifying}>Cancel</Button>
+            <Button
+              variant="contained"
+              onClick={handleConfirmVerification}
+              disabled={verifying}
+              sx={{ bgcolor: COLORS.primary, '&:hover': { bgcolor: '#6B1424' } }}
+            >
+              {verifying ? 'Verifying...' : 'Verify'}
+            </Button>
+          </DialogActions>
         </Dialog>
       </>
     );
