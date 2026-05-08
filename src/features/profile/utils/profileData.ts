@@ -375,6 +375,8 @@ export function buildEditProfileFormData(profile: any) {
 
   return {
     name: normalized.name,
+    firstName: normalized.personalInfo.firstName || '',
+    lastName: normalized.personalInfo.lastName || '',
     bio: normalized.bio,
     tagline: normalized.tagline,
     location: normalized.location,
