@@ -61,9 +61,14 @@ const quoteRequestSchema = new Schema(
     category: { type: String, trim: true, maxlength: 80 },
     status: {
       type: String,
-      enum: ['new', 'responded', 'accepted', 'declined'],
+      enum: ['new', 'responded', 'accepted', 'declined', 'cancelled_by_vendor', 'cancelled_by_user'],
       default: 'new',
       index: true,
+    },
+    paymentStatus: {
+      type: String,
+      enum: ['pending', 'partial', 'paid'],
+      default: 'pending',
     },
     requestDetails: { type: quoteRequestDetailsSchema, required: true },
     response: { type: quoteResponseSchema, default: () => ({}) },
