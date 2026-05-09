@@ -42,6 +42,7 @@ import {
 import { motion } from 'motion/react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import weddingService from '../services/weddingService';
+import chatService from '@/features/chat/services/chatService';
 
 const COLORS = {
   primary: '#8B1A2E',
@@ -83,7 +84,40 @@ interface ChecklistTabProps {
   readOnly?: boolean;
   currentUserId?: string;
   partnerId?: string;
+  project?: any;
+  budget?: any;
+  couple?: any;
   setGlobalLoading?: (state: { open: boolean; message: string }) => void;
+}
+
+function safeJsonArrayFromText(text: string): any[] {
+  const raw = String(text || '').trim();
+  if (!raw) return [];
+
+  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const candidate = fenced?.[1] || raw;
+
+  const firstBracket = candidate.indexOf('[');
+  const lastBracket = candidate.lastIndexOf(']');
+  const jsonSlice = firstBracket >= 0 && lastBracket > firstBracket ? candidate.slice(firstBracket, lastBracket + 1) : candidate;
+
+  try {
+    const parsed = JSON.parse(jsonSlice);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function normalizeAssignedTo(value: any, currentUserId?: string, partnerId?: string) {
+  const normalized = String(value || 'both').trim().toLowerCase();
+  if ((normalized === 'you' || normalized === 'self' || normalized === 'me') && currentUserId) {
+    return currentUserId;
+  }
+  if ((normalized === 'partner' || normalized === 'spouse') && partnerId) {
+    return partnerId;
+  }
+  return 'Both';
 }
 
 function inferCategory(item: any) {
@@ -138,7 +172,7 @@ const EMPTY_TASK = {
 
 const MotionCard = motion(Card);
 
-export default function ChecklistTab({ checklist: initialChecklist, onChecklistChange, readOnly, currentUserId, partnerId, setGlobalLoading }: ChecklistTabProps) {
+export default function ChecklistTab({ checklist: initialChecklist, onChecklistChange, readOnly, currentUserId, partnerId, project, budget, couple, setGlobalLoading }: ChecklistTabProps) {
   const [checklist, setChecklist] = useState<any[]>(() => initialChecklist || []);
   const [tasks, setTasks] = useState<Task[]>(() => buildTasks(initialChecklist || [], currentUserId, partnerId));
   const [filter, setFilter] = useState('All');
@@ -146,6 +180,7 @@ export default function ChecklistTab({ checklist: initialChecklist, onChecklistC
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [isAISuggesting, setIsAISuggesting] = useState(false);
+  const [aiSuggestError, setAiSuggestError] = useState('');
   const [togglingIdx, setTogglingIdx] = useState<number | null>(null);
   const [deletingIdx, setDeletingIdx] = useState<number | null>(null);
   const [editingTaskIndex, setEditingTaskIndex] = useState<number | null>(null);
@@ -243,21 +278,81 @@ export default function ChecklistTab({ checklist: initialChecklist, onChecklistC
   };
 
   const handleAISuggest = async () => {
+    setAiSuggestError('');
     setIsAISuggesting(true);
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-    const aiSuggestions = [
-      { title: 'Book Traditional Dancers', category: 'Logistics', assignedTo: 'Both', dueDate: undefined },
-      { title: 'Finalize Poruwa Decor', category: 'Decorations', assignedTo: 'Partner', dueDate: undefined },
-      { title: 'Confirm Mehendi Artist', category: 'Beauty', assignedTo: 'You', dueDate: undefined },
-    ];
 
     try {
-      for (const suggestion of aiSuggestions) {
+      const expenseList = Array.isArray(budget?.expenses)
+        ? budget.expenses
+        : Array.isArray(project?.expenses)
+          ? project.expenses
+          : [];
+      const spentByCategory = expenseList.reduce((acc: Record<string, number>, item: any) => {
+        if (!item) return acc;
+        const cat = String(item.category || 'Others');
+        acc[cat] = (acc[cat] || 0) + Number(item.amount || 0);
+        return acc;
+      }, {});
+
+      const checklistSnapshot = (Array.isArray(checklist) ? checklist : [])
+        .slice(0, 20)
+        .map((item: any) => ({
+          title: item?.title,
+          completed: Boolean(item?.completed),
+          dueDate: item?.dueDate || null,
+          assignedTo: item?.assignedTo || 'Both',
+          category: inferCategory(item),
+        }));
+
+      const context = {
+        weddingDate: project?.weddingDate || couple?.date || null,
+        venue: typeof project?.venueId === 'object'
+          ? (project?.venueId?.businessName || project?.venueId?.name || null)
+          : project?.venueId || couple?.venue || null,
+        totalBudget: Number(budget?.totalBudget || project?.totalBudget || 0),
+        totalSpent: Number(budget?.totalSpent || 0),
+        spentByCategory,
+        checklist: checklistSnapshot,
+        couple: {
+          partner1: couple?.partner1 || 'You',
+          partner2: couple?.partner2 || 'Partner',
+        },
+      };
+
+      const response = await chatService.sendAssistantMessage({
+        message:
+          'Generate exactly 3 high-impact wedding checklist tasks based on the provided context. Consider wedding date urgency, venue status, budget pressure, and current checklist gaps. Return ONLY a JSON array, no markdown. Each item must include: title (string), category (one of ' +
+          CATEGORIES.join(', ') +
+          "), assignedTo ('you'|'partner'|'both'), dueDate (YYYY-MM-DD or null). Context: " +
+          JSON.stringify(context),
+        language: 'en',
+        history: [],
+      });
+
+      const parsed = safeJsonArrayFromText(response?.data?.reply || '');
+      const existingTitles = new Set((checklist || []).map((item: any) => String(item?.title || '').trim().toLowerCase()));
+      const deduped = parsed
+        .filter((item: any) => item && typeof item.title === 'string' && item.title.trim())
+        .filter((item: any) => !existingTitles.has(String(item.title).trim().toLowerCase()))
+        .slice(0, 3)
+        .map((item: any) => ({
+          title: String(item.title).trim(),
+          category: CATEGORIES.includes(String(item.category || '').trim()) ? String(item.category).trim() : 'Logistics',
+          assignedTo: normalizeAssignedTo(item.assignedTo, currentUserId, partnerId),
+          dueDate: item.dueDate && /^\d{4}-\d{2}-\d{2}$/.test(String(item.dueDate)) ? String(item.dueDate) : undefined,
+        }));
+
+      if (deduped.length === 0) {
+        setAiSuggestError('AI did not return usable new tasks. Please try again after updating wedding details.');
+        return;
+      }
+
+      for (const suggestion of deduped) {
         await weddingService.addTask(suggestion);
       }
       await refreshChecklistFromServer();
     } catch {
-      // silent
+      setAiSuggestError('Failed to fetch AI suggestions. Please try again.');
     } finally {
       setIsAISuggesting(false);
     }
@@ -505,6 +600,12 @@ export default function ChecklistTab({ checklist: initialChecklist, onChecklistC
           sx={{ bgcolor: 'white', borderRadius: 3, minWidth: 250 }}
         />
       </Stack>
+
+      {aiSuggestError && (
+        <Alert severity="warning" sx={{ mb: 3, borderRadius: 3 }}>
+          {aiSuggestError}
+        </Alert>
+      )}
 
       {selectedIndices.length > 0 && (
         <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
