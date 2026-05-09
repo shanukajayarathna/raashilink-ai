@@ -433,6 +433,33 @@ export const requestQuote = asyncHandler(async (req, res) => {
     requesterName,
   });
 
+  try {
+    const notification = await Notification.create({
+      userId: vendor.userId,
+      type: 'vendor_quote_request',
+      fromUserId: req.user._id,
+      fromUserName: requesterName,
+      fromUserProfilePic: null,
+      metadata: {
+        quoteRequestId: String(quoteRequest._id),
+        vendorId: String(vendor._id),
+        preview: requirements || `New quote request for ${vendor.businessName}`,
+      },
+    });
+    emitToUser(String(vendor.userId), 'notification', {
+      id: String(notification._id),
+      type: notification.type,
+      fromUserId: String(req.user._id),
+      fromUserName: requesterName,
+      fromUserProfilePic: null,
+      conversationId: null,
+      metadata: notification.metadata || null,
+      read: false,
+      createdAt: notification.createdAt,
+      preview: notification.metadata?.preview || '',
+    });
+  } catch { /* notification failure should not block the quote request */ }
+
   res.status(201).json({
     success: true,
     data: {
