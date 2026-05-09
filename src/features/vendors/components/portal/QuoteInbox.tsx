@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Avatar,
+  Backdrop,
   Box,
   Button,
   Chip,
@@ -18,6 +19,7 @@ import {
   TextField,
   Typography,
   alpha,
+  CircularProgress,
 } from '@mui/material';
 
 import {
@@ -77,6 +79,7 @@ interface QuoteRequest {
 export default function QuoteInbox() {
   const [quotes, setQuotes] = useState<QuoteRequest[]>([]);
   const [loading, setLoading] = useState(true);
+  const initializedRef = React.useRef(false);
   const [selectedQuote, setSelectedQuote] = useState<QuoteRequest | null>(null);
   const [isQuoteModalOpen, setIsQuoteModalOpen] = useState(false);
   const [isDeclineModalOpen, setIsDeclineModalOpen] = useState(false);
@@ -95,7 +98,7 @@ export default function QuoteInbox() {
 
   const fetchQuotes = async () => {
     try {
-      setLoading(true);
+      if (!initializedRef.current) setLoading(true);
       const response = await vendorService.getQuoteInbox();
       setQuotes(Array.isArray(response?.data?.items) ? response.data.items : []);
     } catch (error) {
@@ -103,6 +106,7 @@ export default function QuoteInbox() {
       setQuotes([]);
     } finally {
       setLoading(false);
+      initializedRef.current = true;
     }
   };
 
@@ -119,11 +123,13 @@ export default function QuoteInbox() {
 
     window.addEventListener('focus', handleRefresh);
     window.addEventListener('app:refresh', handleRefresh as EventListener);
+    window.addEventListener('vendor:quote_arrived', handleRefresh as EventListener);
 
     return () => {
       window.clearInterval(intervalId);
       window.removeEventListener('focus', handleRefresh);
       window.removeEventListener('app:refresh', handleRefresh as EventListener);
+      window.removeEventListener('vendor:quote_arrived', handleRefresh as EventListener);
     };
   }, []);
 
@@ -358,7 +364,7 @@ export default function QuoteInbox() {
         </Grid>
       )}
 
-      <Dialog open={isQuoteModalOpen} onClose={() => setIsQuoteModalOpen(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: '20px', p: 1 } }}>
+      <Dialog open={isQuoteModalOpen} onClose={() => !submitting && setIsQuoteModalOpen(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: '20px', p: 1 } }}>
         <DialogTitle sx={{ fontWeight: 700, fontFamily: 'Playfair Display', color: COLORS.primary }}>
           Approve Request for {selectedQuote?.coupleName}
         </DialogTitle>
@@ -385,7 +391,7 @@ export default function QuoteInbox() {
             <Alert severity="error" sx={{ borderRadius: '10px', mb: 1 }} onClose={() => setSubmitError('')}>{submitError}</Alert>
           )}
           <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
-            <Button onClick={() => setIsQuoteModalOpen(false)} sx={{ color: COLORS.textSecondary }}>Cancel</Button>
+            <Button onClick={() => setIsQuoteModalOpen(false)} disabled={submitting} sx={{ color: COLORS.textSecondary }}>Cancel</Button>
             <Button variant="contained" onClick={handleApprove} disabled={submitting} startIcon={<MessageSquare size={18} />} sx={{ bgcolor: COLORS.primary, borderRadius: '10px', px: 4, '&:hover': { bgcolor: '#6b1423' } }}>
               {submitting ? 'Confirming...' : 'Confirm Booking'}
             </Button>
@@ -393,7 +399,7 @@ export default function QuoteInbox() {
         </DialogActions>
       </Dialog>
 
-      <Dialog open={isDeclineModalOpen} onClose={() => setIsDeclineModalOpen(false)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: '20px', p: 1 } }}>
+      <Dialog open={isDeclineModalOpen} onClose={() => !submitting && setIsDeclineModalOpen(false)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: '20px', p: 1 } }}>
         <DialogTitle sx={{ fontWeight: 700, color: '#d32f2f' }}>
           Decline Request
         </DialogTitle>
@@ -414,13 +420,28 @@ export default function QuoteInbox() {
             <Alert severity="error" sx={{ borderRadius: '10px', mb: 1 }} onClose={() => setSubmitError('')}>{submitError}</Alert>
           )}
           <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
-            <Button onClick={() => setIsDeclineModalOpen(false)} sx={{ color: COLORS.textSecondary }}>Cancel</Button>
+            <Button onClick={() => setIsDeclineModalOpen(false)} disabled={submitting} sx={{ color: COLORS.textSecondary }}>Cancel</Button>
             <Button variant="contained" onClick={handleDecline} disabled={submitting} sx={{ bgcolor: '#d32f2f', borderRadius: '10px', px: 4, '&:hover': { bgcolor: '#b71c1c' } }}>
               {submitting ? 'Declining...' : 'Decline'}
             </Button>
           </Box>
         </DialogActions>
       </Dialog>
+
+      <Backdrop
+        open={submitting}
+        sx={{
+          zIndex: (theme) => theme.zIndex.modal + 5,
+          backdropFilter: 'blur(5px)',
+          backgroundColor: 'rgba(20,20,20,0.25)',
+          color: '#fff',
+          flexDirection: 'column',
+          gap: 1,
+        }}
+      >
+        <CircularProgress color="inherit" />
+        <Typography variant="body2" sx={{ fontWeight: 600 }}>Processing request...</Typography>
+      </Backdrop>
     </Box>
   );
 }
