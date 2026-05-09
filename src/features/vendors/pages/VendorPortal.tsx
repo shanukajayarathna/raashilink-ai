@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   Box, 
   Container, 
@@ -19,7 +19,13 @@ import {
   useMediaQuery,
   Skeleton,
   Button,
-  Alert
+  Alert,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  Stack,
 } from '@mui/material';
 import { 
   LayoutDashboard, 
@@ -27,7 +33,6 @@ import {
   MessageSquare, 
   Calendar, 
   BarChart3, 
-  Settings, 
   LogOut, 
   Bell,
   User,
@@ -42,7 +47,10 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import { RootState } from '@/app/store/store';
-import { logout } from '@/features/auth/store/authSlice';
+import { logout, updateUser } from '@/features/auth/store/authSlice';
+import userService from '@/features/profile/services/userService';
+import { showToast } from '@/app/store/uiSlice';
+import notificationService, { type AppNotification } from '@/features/notifications/services/notificationService';
 import vendorService from '../services/vendorService';
 import { formatDistanceToNow } from 'date-fns';
 import { connectSocket } from '@/shared/hooks/useRealtimeUpdates';
@@ -127,12 +135,47 @@ export default function VendorPortal() {
   const [loading, setLoading] = useState(true);
   const [vendorData, setVendorData] = useState<any>(null);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const [notifAnchorEl, setNotifAnchorEl] = useState<null | HTMLElement>(null);
+  const [quoteNotifications, setQuoteNotifications] = useState<AppNotification[]>([]);
+  const [verifyDialog, setVerifyDialog] = useState<{ open: boolean; channel: 'email' | 'phone' | null }>({
+    open: false,
+    channel: null,
+  });
+  const [otpValue, setOtpValue] = useState('');
+  const [busyChannel, setBusyChannel] = useState<'email' | 'phone' | null>(null);
+  const [verifying, setVerifying] = useState(false);
   
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const { user, token } = useSelector((state: RootState) => state.auth);
+  const activeTabRef = useRef(activeTab);
+  const unreadQuoteCount = quoteNotifications.length;
+
+  useEffect(() => {
+    activeTabRef.current = activeTab;
+  }, [activeTab]);
+
+  const fetchQuoteNotifications = useCallback(async () => {
+    try {
+      const data = await notificationService.getAll();
+      const unreadQuotes = (data.notifications || []).filter((n) => n.type === 'vendor_quote_request');
+      setQuoteNotifications(unreadQuotes);
+    } catch {
+      // silent
+    }
+  }, []);
+
+  const markQuoteNotificationsAsRead = useCallback(async (ids?: string[]) => {
+    const targetIds = ids && ids.length > 0 ? ids : quoteNotifications.map((n) => n.id);
+    if (targetIds.length === 0) return;
+    try {
+      await Promise.all(targetIds.map((id) => notificationService.markRead(id).catch(() => {})));
+    } finally {
+      setQuoteNotifications((prev) => prev.filter((n) => !targetIds.includes(n.id)));
+    }
+  }, [quoteNotifications]);
 
   const fetchVendorData = useCallback(async (options?: { showLoader?: boolean }) => {
     const showLoader = options?.showLoader === true;
@@ -205,13 +248,16 @@ export default function VendorPortal() {
   useEffect(() => {
     if (token) {
       fetchVendorData({ showLoader: true });
+      fetchQuoteNotifications();
 
       const intervalId = window.setInterval(() => {
         fetchVendorData();
+        fetchQuoteNotifications();
       }, 15000);
 
       const handleRefresh = () => {
         fetchVendorData();
+        fetchQuoteNotifications();
       };
 
       window.addEventListener('focus', handleRefresh);
@@ -220,19 +266,46 @@ export default function VendorPortal() {
       const socket = connectSocket(token);
       const onVendorQuoteRequest = () => {
         fetchVendorData();
+        // Silently refresh QuoteInbox list without showing skeleton
+        window.dispatchEvent(new CustomEvent('vendor:quote_arrived'));
+      };
+      const onNotification = (payload: AppNotification) => {
+        if (payload?.type !== 'vendor_quote_request') return;
+
+        if (activeTabRef.current === 1) {
+          notificationService.markRead(payload.id).catch(() => {});
+          // Still trigger silent refresh of the open Quotes tab
+          window.dispatchEvent(new CustomEvent('vendor:quote_arrived'));
+          return;
+        }
+
+        setQuoteNotifications((prev) => {
+          if (prev.some((n) => n.id === payload.id)) return prev;
+          return [payload, ...prev];
+        });
+        dispatch(showToast({ type: 'info', message: `${payload.fromUserName || 'A user'} sent a new quote request.` }));
+        window.dispatchEvent(new CustomEvent('vendor:quote_arrived'));
       };
       socket.on('vendor_quote_request', onVendorQuoteRequest);
+      socket.on('notification', onNotification);
 
       return () => {
         window.clearInterval(intervalId);
         window.removeEventListener('focus', handleRefresh);
         window.removeEventListener('app:refresh', handleRefresh as EventListener);
         socket.off('vendor_quote_request', onVendorQuoteRequest);
+        socket.off('notification', onNotification);
       };
     }
 
     setLoading(false);
-  }, [token, fetchVendorData]);
+  }, [token, fetchVendorData, fetchQuoteNotifications, dispatch]);
+
+  useEffect(() => {
+    if (activeTab === 1 && unreadQuoteCount > 0) {
+      markQuoteNotificationsAsRead();
+    }
+  }, [activeTab, unreadQuoteCount, markQuoteNotificationsAsRead]);
 
   if (loading) {
     return (
@@ -261,6 +334,67 @@ export default function VendorPortal() {
 
   const handleMenuClose = () => {
     setAnchorEl(null);
+  };
+
+  const handleNotificationsOpen = (event: React.MouseEvent<HTMLElement>) => {
+    setNotifAnchorEl(event.currentTarget);
+  };
+
+  const handleNotificationsClose = () => {
+    setNotifAnchorEl(null);
+  };
+
+  const handleRequestVerificationOtp = async (channel: 'email' | 'phone') => {
+    try {
+      setBusyChannel(channel);
+      const response = await userService.requestVerificationOtp(channel);
+      dispatch(
+        showToast({
+          type: 'success',
+          message: response.devOtp
+            ? `OTP sent. Development OTP: ${response.devOtp}`
+            : response.message || 'Verification OTP sent successfully.',
+        })
+      );
+    } catch (error: any) {
+      dispatch(showToast({ type: 'error', message: error.response?.data?.message || 'Failed to send OTP.' }));
+    } finally {
+      setBusyChannel(null);
+    }
+  };
+
+  const handleConfirmVerification = async () => {
+    if (!verifyDialog.channel || otpValue.trim().length !== 6) {
+      dispatch(showToast({ type: 'error', message: 'Enter a valid 6-digit OTP.' }));
+      return;
+    }
+
+    try {
+      setVerifying(true);
+      const response = await userService.confirmVerificationOtp({
+        channel: verifyDialog.channel,
+        otp: otpValue.trim(),
+      });
+
+      const nextVerification = {
+        ...(vendorData?.verification || {}),
+        ...(response?.verification || {}),
+      };
+
+      setVendorData((prev: any) => ({
+        ...prev,
+        verification: nextVerification,
+      }));
+      dispatch(updateUser({ verification: { ...(user?.verification || {}), ...nextVerification } }));
+      dispatch(showToast({ type: 'success', message: response.message || 'Verification completed.' }));
+
+      setVerifyDialog({ open: false, channel: null });
+      setOtpValue('');
+    } catch (error: any) {
+      dispatch(showToast({ type: 'error', message: error.response?.data?.message || 'Failed to verify OTP.' }));
+    } finally {
+      setVerifying(false);
+    }
   };
 
   const tabs = [
@@ -333,7 +467,22 @@ export default function VendorPortal() {
                   }
                 }}
               >
-                {tab.label}
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <span>{tab.label}</span>
+                  {index === 1 && unreadQuoteCount > 0 && (
+                    <Chip
+                      label={unreadQuoteCount > 99 ? '99+' : unreadQuoteCount}
+                      size="small"
+                      sx={{
+                        height: 18,
+                        fontSize: '0.65rem',
+                        fontWeight: 700,
+                        bgcolor: activeTab === index ? COLORS.primary : 'error.main',
+                        color: 'white',
+                      }}
+                    />
+                  )}
+                </Box>
               </Button>
             ))}
           </Box>
@@ -391,9 +540,9 @@ export default function VendorPortal() {
           </Typography>
 
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Tooltip title="Notifications">
-              <IconButton size="small" sx={{ bgcolor: 'rgba(0,0,0,0.03)' }}>
-                <Badge variant="dot" color="error">
+            <Tooltip title="Quote Notifications">
+              <IconButton size="small" sx={{ bgcolor: 'rgba(0,0,0,0.03)' }} onClick={handleNotificationsOpen}>
+                <Badge badgeContent={unreadQuoteCount > 99 ? '99+' : unreadQuoteCount} color="error">
                   <Bell size={20} />
                 </Badge>
               </IconButton>
@@ -448,7 +597,20 @@ export default function VendorPortal() {
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.2 }}
             >
-              {activeTab === 0 && <DashboardOverview stats={vendorData.stats} activity={vendorData.activity} vendorProfile={vendorData.vendorProfile} verification={vendorData.verification} />}
+              {activeTab === 0 && (
+                <DashboardOverview
+                  stats={vendorData.stats}
+                  activity={vendorData.activity}
+                  vendorProfile={vendorData.vendorProfile}
+                  verification={vendorData.verification}
+                  onRequestOtp={handleRequestVerificationOtp}
+                  onOpenVerify={(channel) => {
+                    setVerifyDialog({ open: true, channel });
+                    setOtpValue('');
+                  }}
+                  busyChannel={busyChannel}
+                />
+              )}
               {activeTab === 1 && <QuoteInbox />}
               {activeTab === 2 && <BookingsManager quotes={vendorData.quoteItems || []} />}
               {activeTab === 3 && (
@@ -522,7 +684,9 @@ export default function VendorPortal() {
                   gap: 0.5
                 }}
               >
-                {tab.icon}
+                <Badge badgeContent={index === 1 && unreadQuoteCount > 0 ? (unreadQuoteCount > 99 ? '99+' : unreadQuoteCount) : 0} color="error">
+                  {tab.icon}
+                </Badge>
                 <Typography variant="caption" sx={{ fontSize: '0.65rem', fontWeight: activeTab === index ? 600 : 500 }}>
                   {tab.label}
                 </Typography>
@@ -549,25 +713,117 @@ export default function VendorPortal() {
           }
         }}
       >
-        <MenuItem onClick={() => { handleMenuClose(); setActiveTab(5); }}>
-          <ListItemIcon><User size={18} /></ListItemIcon>
-          Profile
-        </MenuItem>
-        <MenuItem onClick={() => { handleMenuClose(); setActiveTab(6); }}>
-          <ListItemIcon><Settings size={18} /></ListItemIcon>
-          Settings
-        </MenuItem>
-        <Divider />
         <MenuItem onClick={handleLogout} sx={{ color: 'error.main' }}>
           <ListItemIcon><LogOut size={18} color="#d32f2f" /></ListItemIcon>
           Logout
         </MenuItem>
       </Menu>
+
+      <Menu
+        anchorEl={notifAnchorEl}
+        open={Boolean(notifAnchorEl)}
+        onClose={handleNotificationsClose}
+        transformOrigin={{ horizontal: 'right', vertical: 'top' }}
+        anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
+        PaperProps={{
+          sx: {
+            mt: 1.5,
+            borderRadius: '12px',
+            minWidth: 320,
+            maxWidth: 380,
+            boxShadow: '0 6px 24px rgba(0,0,0,0.12)',
+            border: '1px solid rgba(0,0,0,0.06)',
+          },
+        }}
+      >
+        <Box sx={{ px: 2, py: 1.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>Quote Notifications</Typography>
+          {unreadQuoteCount > 0 && (
+            <Button
+              size="small"
+              onClick={async () => {
+                await markQuoteNotificationsAsRead();
+              }}
+              sx={{ textTransform: 'none', fontWeight: 600 }}
+            >
+              Mark all read
+            </Button>
+          )}
+        </Box>
+        <Divider />
+        {quoteNotifications.length === 0 ? (
+          <Box sx={{ px: 2, py: 2.5 }}>
+            <Typography variant="body2" color="textSecondary">No unread quote notifications.</Typography>
+          </Box>
+        ) : (
+          quoteNotifications.map((notif) => (
+            <MenuItem
+              key={notif.id}
+              onClick={async () => {
+                setActiveTab(1);
+                await markQuoteNotificationsAsRead([notif.id]);
+                handleNotificationsClose();
+              }}
+              sx={{ alignItems: 'flex-start', py: 1.25 }}
+            >
+              <ListItemIcon sx={{ minWidth: 34, mt: 0.25 }}>
+                <MessageSquare size={16} color={COLORS.primary} />
+              </ListItemIcon>
+              <Box>
+                <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1.35 }}>
+                  {notif.fromUserName || 'A user'} sent a quote request
+                </Typography>
+                <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mt: 0.3 }}>
+                  {notif.preview || notif.metadata?.preview || 'Open Quotes to review details.'}
+                </Typography>
+              </Box>
+            </MenuItem>
+          ))
+        )}
+      </Menu>
+
+      <Dialog open={verifyDialog.open} onClose={() => setVerifyDialog({ open: false, channel: null })} fullWidth maxWidth="xs">
+        <DialogTitle sx={{ fontFamily: 'Playfair Display', fontWeight: 700 }}>
+          Verify {verifyDialog.channel === 'email' ? 'Email' : 'Phone'}
+        </DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ pt: 1 }}>
+            <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
+              Enter the 6-digit OTP sent to your {verifyDialog.channel}.
+            </Typography>
+            <TextField
+              fullWidth
+              label="OTP"
+              value={otpValue}
+              onChange={(event) => setOtpValue(event.target.value.replace(/\D/g, '').slice(0, 6))}
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 3 }}>
+          <Button onClick={() => setVerifyDialog({ open: false, channel: null })}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={handleConfirmVerification}
+            disabled={verifying}
+            sx={{ bgcolor: COLORS.primary, '&:hover': { bgcolor: '#6b1423' } }}
+          >
+            {verifying ? 'Verifying...' : 'Verify'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
 
-export const DashboardOverview = ({ stats, activity, vendorProfile, verification }: any) => {
+export const DashboardOverview = ({
+  stats,
+  activity,
+  vendorProfile,
+  verification,
+  onRequestOtp,
+  onOpenVerify,
+  busyChannel,
+}: any) => {
   if (!stats) return (
     <Grid container spacing={3}>
       {[1, 2, 3, 4].map((i) => (
@@ -608,6 +864,38 @@ export const DashboardOverview = ({ stats, activity, vendorProfile, verification
               <Typography variant="caption" sx={{ display: 'block', lineHeight: 1.5 }}>
                 {!verification?.emailVerified && 'Email '}{!verification?.emailVerified && !verification?.phoneVerified && '& '}{!verification?.phoneVerified && 'phone '} verification needed to enable client communication.
               </Typography>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mt: 1.5 }}>
+                {!verification?.emailVerified && (
+                  <>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={() => onRequestOtp?.('email')}
+                      disabled={busyChannel === 'email'}
+                    >
+                      {busyChannel === 'email' ? 'Sending...' : 'Send Email OTP'}
+                    </Button>
+                    <Button size="small" variant="contained" onClick={() => onOpenVerify?.('email')} sx={{ bgcolor: COLORS.primary }}>
+                      Verify Email
+                    </Button>
+                  </>
+                )}
+                {!verification?.phoneVerified && (
+                  <>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={() => onRequestOtp?.('phone')}
+                      disabled={busyChannel === 'phone'}
+                    >
+                      {busyChannel === 'phone' ? 'Sending...' : 'Send Phone OTP'}
+                    </Button>
+                    <Button size="small" variant="contained" onClick={() => onOpenVerify?.('phone')} sx={{ bgcolor: COLORS.primary }}>
+                      Verify Phone
+                    </Button>
+                  </>
+                )}
+              </Stack>
             </Alert>
           )}
         </Box>
