@@ -3,6 +3,7 @@ import multer from 'multer';
 import Vendor from '../models/Vendor.js';
 import WeddingProject from '../models/WeddingProject.js';
 import QuoteRequest from '../models/QuoteRequest.js';
+import Notification from '../models/Notification.js';
 import { emitToUser } from '../lib/socket.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import ApiError from '../utils/ApiError.js';
@@ -308,6 +309,36 @@ export const submitQuote = asyncHandler(async (req, res) => {
     requesterName,
   });
 
+  try {
+    const notification = await Notification.create({
+      userId: vendor.userId,
+      type: 'vendor_quote_request',
+      fromUserId: req.user._id,
+      fromUserName: requesterName,
+      fromUserProfilePic: null,
+      metadata: {
+        quoteRequestId: String(quoteRequest._id),
+        vendorId: String(vendor._id),
+        preview: message || `New quote request for ${vendor.businessName}`,
+      },
+    });
+
+    emitToUser(String(vendor.userId), 'notification', {
+      id: String(notification._id),
+      type: notification.type,
+      fromUserId: String(req.user._id),
+      fromUserName: requesterName,
+      fromUserProfilePic: null,
+      conversationId: null,
+      metadata: notification.metadata || null,
+      read: false,
+      createdAt: notification.createdAt,
+      preview: notification.metadata?.preview || '',
+    });
+  } catch {
+    // Notification creation should not block quote request submission.
+  }
+
   res.status(201).json({
     success: true,
     data: {
@@ -341,6 +372,7 @@ function formatQuoteRequest(quote) {
     projectId: String(quote.projectId?._id || quote.projectId),
     category: quote.category,
     status: quote.status,
+    paymentStatus: quote.paymentStatus || 'pending',
     createdAt: quote.createdAt,
     coupleName:
       details.contactName ||
@@ -393,9 +425,29 @@ export const getVendorQuoteInbox = asyncHandler(async (req, res) => {
 
 export const updateQuoteRequest = asyncHandler(async (req, res) => {
   ensureObjectId(req.params.id, 'quoteRequestId');
-  const { status, price, packageName, message } = req.body ?? {};
-  const allowedStatuses = ['responded', 'accepted', 'declined'];
-  if (!allowedStatuses.includes(status)) {
+  const { status, price, packageName, message, paymentStatus } = req.body ?? {};
+  const allowedStatuses = ['responded', 'accepted', 'declined', 'cancelled_by_vendor'];
+  const allowedPaymentStatuses = ['pending', 'partial', 'paid'];
+
+  // Payment-status-only update
+  if (!status && paymentStatus) {
+    if (!allowedPaymentStatuses.includes(paymentStatus)) {
+      throw new ApiError(400, `paymentStatus must be one of: ${allowedPaymentStatuses.join(', ')}`);
+    }
+    const quote = await QuoteRequest.findById(req.params.id);
+    if (!quote) throw new ApiError(404, 'Quote request not found');
+    let hasAccess = String(quote.vendorUserId || '') === String(req.user._id);
+    if (!hasAccess) {
+      const ownVendor = await Vendor.findOne({ userId: req.user._id }).select('_id').lean();
+      hasAccess = Boolean(ownVendor && String(quote.vendorId || '') === String(ownVendor._id));
+    }
+    if (!hasAccess) throw new ApiError(403, 'You do not have access to this quote request');
+    quote.paymentStatus = paymentStatus;
+    await quote.save();
+    return res.status(200).json({ success: true, data: { paymentStatus } });
+  }
+
+  if (!status || !allowedStatuses.includes(status)) {
     throw new ApiError(400, `Status must be one of: ${allowedStatuses.join(', ')}`);
   }
 
@@ -491,7 +543,7 @@ export const updateQuoteRequest = asyncHandler(async (req, res) => {
         if (vendorCategory === 'Venue') {
           project.venueId = quote.vendorId;
         }
-      } else if (status === 'declined') {
+      } else if (status === 'declined' || status === 'cancelled_by_vendor') {
         entry.status = 'cancelled';
       } else {
         entry.status = 'requested';
@@ -500,12 +552,115 @@ export const updateQuoteRequest = asyncHandler(async (req, res) => {
     }
   }
 
+  // --- Cancellation by vendor: notify couple + clean calendar ---
+  if (status === 'cancelled_by_vendor') {
+    const projectForCancel = await WeddingProject.findById(quote.projectId);
+    if (projectForCancel) {
+      // Clear confirmed dates from the project entry
+      const cancelEntry = projectForCancel.vendors.find(
+        (item) => String(item.quoteRequestId || '') === String(quote._id)
+      );
+      if (cancelEntry && cancelEntry.confirmedStart) {
+        cancelEntry.confirmedStart = undefined;
+        cancelEntry.confirmedEnd = undefined;
+        if (String(projectForCancel.venueId || '') === String(quote.vendorId)) {
+          projectForCancel.venueId = undefined;
+        }
+        await projectForCancel.save();
+      }
+      // Notify both partners in real-time
+      const allCoupleIds = (projectForCancel.coupleUserIds || []).map(String);
+      for (const uid of allCoupleIds) {
+        emitToUser(uid, 'quote_request_updated', {
+          quoteRequestId: String(quote._id),
+          status: 'cancelled_by_vendor',
+        });
+      }
+    }
+
+    // Remove booked calendar entry from vendor
+    const vendorForCancel = await Vendor.findById(quote.vendorId);
+    if (vendorForCancel && quote.response?.scheduledStart) {
+      const cancelledDate = getCalendarDateOnly(quote.response.scheduledStart);
+      vendorForCancel.availabilityCalendar = (vendorForCancel.availabilityCalendar || []).filter((item) => {
+        const d = getCalendarDateOnly(item.date);
+        return !(d && cancelledDate && d.getTime() === cancelledDate.getTime());
+      });
+      await vendorForCancel.save();
+    }
+
+    // Persist DB notification for the couple
+    const vendorUser = await import('../models/User.js').then(m => m.default.findById(req.user._id).select('name firstName lastName').lean()).catch(() => null);
+    const vendorName = vendorUser?.name || [vendorUser?.firstName, vendorUser?.lastName].filter(Boolean).join(' ').trim() || 'Your Vendor';
+    try {
+      const notification = await Notification.create({
+        userId: quote.requesterUserId,
+        type: 'vendor_booking_cancelled',
+        fromUserId: req.user._id,
+        fromUserName: vendorName,
+        fromUserProfilePic: null,
+        metadata: {
+          quoteRequestId: String(quote._id),
+          vendorId: String(quote.vendorId),
+          preview: `${vendorName} has cancelled your booking. Please contact them for details.`,
+        },
+      });
+      emitToUser(String(quote.requesterUserId), 'notification', {
+        id: String(notification._id),
+        type: notification.type,
+        fromUserId: String(req.user._id),
+        fromUserName: vendorName,
+        vendorName: vendorName,
+        fromUserProfilePic: null,
+        conversationId: null,
+        metadata: notification.metadata,
+        read: false,
+        createdAt: notification.createdAt,
+        preview: notification.metadata?.preview || '',
+      });
+    } catch { /* notification failure should not block the response */ }
+
+    return res.status(200).json({ success: true, data: { status: 'cancelled_by_vendor' } });
+  }
+
   emitToUser(String(quote.requesterUserId), 'quote_request_updated', {
     quoteRequestId: String(quote._id),
     status: quote.status,
     scheduledStart: quote.response?.scheduledStart || null,
     scheduledEnd: quote.response?.scheduledEnd || null,
   });
+
+  // Also emit DB-backed notification for accepted status
+  if (status === 'accepted') {
+    const acceptingVendorUser = await import('../models/User.js').then(m => m.default.findById(req.user._id).select('name firstName lastName').lean()).catch(() => null);
+    const acceptorName = acceptingVendorUser?.name || [acceptingVendorUser?.firstName, acceptingVendorUser?.lastName].filter(Boolean).join(' ').trim() || 'Your Vendor';
+    try {
+      const notification = await Notification.create({
+        userId: quote.requesterUserId,
+        type: 'vendor_quote_request',
+        fromUserId: req.user._id,
+        fromUserName: acceptorName,
+        fromUserProfilePic: null,
+        metadata: {
+          quoteRequestId: String(quote._id),
+          vendorId: String(quote.vendorId),
+          preview: `${acceptorName} accepted your quote request and confirmed your booking!`,
+        },
+      });
+      emitToUser(String(quote.requesterUserId), 'notification', {
+        id: String(notification._id),
+        type: notification.type,
+        fromUserId: String(req.user._id),
+        fromUserName: acceptorName,
+        fromUserProfilePic: null,
+        conversationId: null,
+        metadata: notification.metadata,
+        read: false,
+        createdAt: notification.createdAt,
+        preview: notification.metadata?.preview || '',
+      });
+    } catch { /* silent */ }
+  }
 
   res.status(200).json({
     success: true,
@@ -562,6 +717,7 @@ export const getVendorProfile = asyncHandler(async (req, res) => {
       pricingRange: vendor.pricingRange,
       packages: vendor.packages || [],
       packageSummary: vendor.packageSummary || [],
+      portfolioImages: vendor.portfolioImages || [],
       availabilityCalendar: vendor.availabilityCalendar || [],
       businessRegistrationNumber: vendor.businessRegistrationNumber,
       socialLinks: vendor.socialLinks,
@@ -638,6 +794,7 @@ export const updateVendorProfile = asyncHandler(async (req, res) => {
       pricingRange: vendor.pricingRange,
       packages: vendor.packages,
       packageSummary: vendor.packageSummary,
+      portfolioImages: vendor.portfolioImages || [],
       availabilityCalendar: vendor.availabilityCalendar,
       approvalStatus: vendor.approvalStatus,
     },
