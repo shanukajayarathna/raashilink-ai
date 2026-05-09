@@ -2,7 +2,7 @@ import React from 'react';
 import { 
   Box, Grid, Typography, Card, CardContent, 
   Stack, Button, IconButton, useTheme, useMediaQuery,
-  LinearProgress, Divider, Avatar
+  LinearProgress, Divider, Avatar, CircularProgress
 } from '@mui/material';
 import { 
   PieChart, Pie, Cell, Tooltip, Legend 
@@ -12,6 +12,7 @@ import {
   ArrowRight, Sparkles, TrendingUp, AlertCircle
 } from 'lucide-react';
 import { motion } from 'motion/react';
+import chatService from '@/features/chat/services/chatService';
 
 const COLORS = {
   primary: '#8B1A2E',
@@ -33,6 +34,8 @@ export default function OverviewTab({ data, onSwitchTab, project, budget }: { da
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const chartWidth = isMobile ? 280 : 420;
   const chartHeight = isMobile ? 240 : 280;
+  const [aiTip, setAiTip] = React.useState('Analyzing your latest wedding budget and plan details...');
+  const [aiTipLoading, setAiTipLoading] = React.useState(false);
 
   // Build budget chart data from real expenses grouped by category, or fall back to empty
   const expenses: any[] = Array.isArray(budget?.expenses) ? budget.expenses : (Array.isArray(project?.expenses) ? project.expenses : []);
@@ -57,6 +60,58 @@ export default function OverviewTab({ data, onSwitchTab, project, budget }: { da
       due: t.dueDate ? new Date(t.dueDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'No due date',
       category: t.assignedTo || 'General',
     }));
+
+  const aiContextKey = React.useMemo(() => {
+    const spentByCategory = expenses.reduce((acc: Record<string, number>, e: any) => {
+      if (!e) return acc;
+      const cat = String(e.category || 'Others');
+      acc[cat] = (acc[cat] || 0) + Number(e.amount || 0);
+      return acc;
+    }, {});
+    return JSON.stringify({
+      weddingDate: project?.weddingDate || data?.couple?.date || null,
+      venue: typeof project?.venueId === 'object' ? (project?.venueId?.businessName || project?.venueId?.name || null) : project?.venueId || data?.couple?.venue || null,
+      totalBudget: Number(budget?.totalBudget || project?.totalBudget || 0),
+      totalSpent: Number(budget?.totalSpent || 0),
+      checklistTotal: checklist.length,
+      checklistDone: checklist.filter((t: any) => t?.completed).length,
+      expenseCount: expenses.length,
+      spentByCategory,
+    });
+  }, [budget?.totalBudget, budget?.totalSpent, checklist, data?.couple?.date, data?.couple?.venue, expenses, project?.totalBudget, project?.venueId, project?.weddingDate]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+
+    const fetchBudgetTip = async () => {
+      try {
+        setAiTipLoading(true);
+        const context = JSON.parse(aiContextKey);
+        const response = await chatService.sendAssistantMessage({
+          message:
+            'You are generating a single practical wedding budget tip. Use ONLY the provided wedding context and return one concise actionable tip in 1-2 sentences. Mention one concrete number when possible (LKR or percentage). Do not add markdown bullets. Context: ' +
+            JSON.stringify(context),
+          language: 'en',
+          history: [],
+        });
+        const reply = String(response?.data?.reply || '').trim();
+        if (!cancelled) {
+          setAiTip(reply || 'Your latest plan looks balanced. Review the top spending category this week and reallocate 5-10% to remaining high-priority tasks.');
+        }
+      } catch {
+        if (!cancelled) {
+          setAiTip('Track your top two spending categories against your remaining budget and adjust early to avoid last-minute overages.');
+        }
+      } finally {
+        if (!cancelled) setAiTipLoading(false);
+      }
+    };
+
+    fetchBudgetTip();
+    return () => {
+      cancelled = true;
+    };
+  }, [aiContextKey]);
 
   return (
     <Grid container spacing={4}>
@@ -121,9 +176,12 @@ export default function OverviewTab({ data, onSwitchTab, project, budget }: { da
                     <Sparkles size={20} />
                   </Box>
                   <Box>
-                    <Typography variant="subtitle2" sx={{ fontWeight: 800, color: COLORS.primary }}>AI Budget Tip</Typography>
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <Typography variant="subtitle2" sx={{ fontWeight: 800, color: COLORS.primary }}>AI Budget Tip</Typography>
+                      {aiTipLoading && <CircularProgress size={14} sx={{ color: COLORS.secondary }} />}
+                    </Stack>
                     <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
-                      You've allocated 31% to Venue. Consider reducing decoration budget by 15% to stay within your total goal.
+                      {aiTip}
                     </Typography>
                   </Box>
                 </Stack>
