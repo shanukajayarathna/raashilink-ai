@@ -17,16 +17,6 @@ import notificationService, { type AppNotification } from '@/features/notificati
 import { playInterestSound, playMatchSound, playMessageSound, playWeddingInviteSound } from '@/features/notifications/utils/sounds';;
 import api from '@/shared/config/axiosConfig';
 import { connectSocket } from '@/shared/hooks/useRealtimeUpdates';
-import { consumeSentPreview } from '@/shared/lib/sentMsgTracker';
-
-// Persist which conversation previews the user has already acknowledged,
-// so we don't re-fire notifications for old messages on every login.
-const getSeenPreviews = (uid: string): Record<string, string> => {
-  try { return JSON.parse(localStorage.getItem(`rl_seen_${uid}`) || '{}'); } catch { return {}; }
-};
-const saveSeenPreviews = (uid: string, map: Record<string, string>) => {
-  try { localStorage.setItem(`rl_seen_${uid}`, JSON.stringify(map)); } catch {}
-};
 
 const resolveAvatarSrc = (...sources: any[]) => {
   for (const source of sources) {
@@ -51,9 +41,6 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
   const bellRef = useRef<HTMLButtonElement>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
   const prevIdsRef = useRef<Set<string>>(new Set());
-  const convPrevRef = useRef<Record<string, string>>({});
-  const convSeeded = useRef(false);
-  const clientMsgCountRef = useRef(0);
   const activeConversationIdRef = useRef<string | null>(null);
   const [msgNotif, setMsgNotif] = useState<{ name: string; content: string; conversationId?: string } | null>(null);
   const [eventNotif, setEventNotif] = useState<{ icon: string; title: string; body: string; path?: string; color?: string } | null>(null);
@@ -117,7 +104,8 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
   const shouldSuppressMessageNotif = useCallback((conversationId?: string | null) => {
     if (location.pathname !== '/messages') return false;
     if (!conversationId) return true;
-    return activeConversationIdRef.current === conversationId;
+    // When user is on the chat screen, suppress message popups/bell inserts entirely.
+    return true;
   }, [location.pathname]);
 
   const isPathActive = useCallback((path: string) => {
@@ -138,12 +126,8 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
     if (!silent) setNotifLoading(true);
     try {
       const data = await notificationService.getAll();
-      // Preserve client-side message_received notifs already in state (added by conv poller)
-      setNotifications((prev) => {
-        const clientMsgNotifs = prev.filter((n) => n.type === 'message_received');
-        return [...clientMsgNotifs, ...data.notifications];
-      });
-      setUnreadCount(data.unreadCount + clientMsgCountRef.current);
+      setNotifications(data.notifications);
+      setUnreadCount(data.unreadCount);
       const currentIds = new Set(data.notifications.map((n) => n.id));
       const newOnes = data.notifications.filter((n) => !prevIdsRef.current.has(n.id));
       if (prevIdsRef.current.size > 0 && newOnes.length > 0) {
@@ -241,34 +225,16 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
       const conversationId = detail?.conversationId || null;
       activeConversationIdRef.current = conversationId;
 
-      // When the user opens a conversation, treat its latest preview as "seen" and
-      // clear any message notifications for that specific conversation (without
-      // forcing a full app refresh).
       if (!conversationId) return;
 
-      if (currentUserId) {
-        try {
-          const seenMap = getSeenPreviews(currentUserId);
-          const latestPreview = convPrevRef.current[conversationId] || '';
-          if (latestPreview) {
-            seenMap[conversationId] = latestPreview;
-            saveSeenPreviews(currentUserId, seenMap);
-          }
-        } catch {
-          // ignore
-        }
-      }
-
       setNotifications((prev) => {
-        let removed = 0;
         const next = prev.filter((n) => {
           const isMsg = n.type === 'message_received' && n.conversationId === conversationId;
-          if (isMsg) removed += 1;
           return !isMsg;
         });
+        const removed = prev.length - next.length;
         if (removed > 0) {
-          clientMsgCountRef.current = Math.max(0, clientMsgCountRef.current - removed);
-          setUnreadCount((c) => Math.max(0, c - removed));
+          setUnreadCount((count) => Math.max(0, count - removed));
         }
         return next;
       });
@@ -337,6 +303,9 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
     // Real-time server-pushed notifications (e.g. wedding invites)
     const onNotification = (payload: AppNotification) => {
       if (payload.type === 'message_received' && shouldSuppressMessageNotif(payload.conversationId)) {
+        if (payload.id) {
+          notificationService.markRead(payload.id).catch(() => {});
+        }
         return;
       }
       let inserted = false;
@@ -348,9 +317,6 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
       if (!inserted) return;
       setUnreadCount((c) => c + 1);
       if (payload.type === 'message_received') {
-        if (payload.conversationId && payload.preview) {
-          convPrevRef.current[payload.conversationId] = payload.preview;
-        }
         playMessageSound();
         showMsgNotif(payload.fromUserName || 'New message', payload.preview || '', payload.conversationId || undefined);
         return;
@@ -396,6 +362,9 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
       } else if (payload.type === 'mutual_match') {
         playMatchSound();
         showEventNotifRef.current('🎉', "It's a Match!", `You and ${payload.fromUserName} are now connected!`, '/messages', '#f59e0b');
+      } else if (payload.type === 'vendor_booking_cancelled') {
+        const vendorName = payload.vendorName || 'Your vendor';
+        showEventNotifRef.current('❌', 'Booking Cancelled', `${vendorName} has cancelled your booking. Please contact them for more information.`, '/wedding', '#d32f2f');
       } else {
         playInterestSound();
       }
@@ -443,36 +412,13 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
   }, [token, fetchNotifications, fetchPendingMatchCount, fetchPendingWeddingCount, shouldSuppressMessageNotif, showMsgNotif]);
 
   const handleMarkRead = async (id: string) => {
-    const notif = notifications.find((n) => n.id === id);
-    if (notif?.type === 'message_received') {
-      clientMsgCountRef.current = Math.max(0, clientMsgCountRef.current - 1);
-      // Persist the seen state so this notification doesn't re-fire on next login
-      if (notif.conversationId && currentUserId) {
-        const seenMap = getSeenPreviews(currentUserId);
-        seenMap[notif.conversationId] = notif.preview || convPrevRef.current[notif.conversationId] || '';
-        saveSeenPreviews(currentUserId, seenMap);
-      }
-    } else {
-      await notificationService.markRead(id);
-    }
+    await notificationService.markRead(id);
     setNotifications((prev) => prev.filter((n) => n.id !== id));
     setUnreadCount((c) => Math.max(0, c - 1));
   };
 
   const handleMarkAllRead = async () => {
     await notificationService.markAllRead();
-    // Persist all current previews as seen so message notifs don't re-fire on next login
-    if (currentUserId) {
-      const seenMap = { ...convPrevRef.current };
-      // Also capture any message_received notifs in state (in case first poll hasn't fired yet)
-      notifications.forEach((n) => {
-        if (n.type === 'message_received' && n.conversationId && n.preview) {
-          seenMap[n.conversationId] = n.preview;
-        }
-      });
-      saveSeenPreviews(currentUserId, seenMap);
-    }
-    clientMsgCountRef.current = 0;
     setNotifications([]);
     setUnreadCount(0);
   };
@@ -518,8 +464,6 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
       : partnerNavItems;
 
   const handleLogout = () => {
-    // Save all current previews as seen before logging out so they don't re-fire on next login
-    if (currentUserId) saveSeenPreviews(currentUserId, { ...convPrevRef.current });
     dispatch(logout());
     navigate('/');
   };
@@ -527,113 +471,6 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
   const initials = (name: string) =>
     name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2);
   useEffect(() => { showEventNotifRef.current = showEventNotif; }, [showEventNotif]);
-
-  // Poll conversations globally so message notifications fire on every page
-  useEffect(() => {
-    if (!token || !currentUserId) return;
-    // Reset seed state on every (re-)login so the localStorage check always runs fresh
-    convSeeded.current = false;
-    convPrevRef.current = {};
-    const poll = async () => {
-      try {
-        const res: any = await api.get('/chat/conversations');
-        const fresh: Array<{ id: string; title: string; otherUserId: string | null; preview: string; lastSenderId: string | null }> = res.data?.data?.items || [];
-        if (!convSeeded.current) {
-          const map: Record<string, string> = {};
-          const pendingMsgNotifs: AppNotification[] = [];
-          const seenMap = getSeenPreviews(currentUserId);
-          fresh.forEach((c) => {
-            map[c.id] = c.preview;
-            // Only notify if the last sender is someone else AND the preview
-            // is different from what the user last acknowledged (i.e. a new unseen message).
-            if (c.lastSenderId && c.lastSenderId !== currentUserId && c.preview !== seenMap[c.id]) {
-              pendingMsgNotifs.push({
-                id: `msg-${c.id}`,
-                type: 'message_received',
-                fromUserId: c.otherUserId || '',
-                fromUserName: c.title,
-                fromUserProfilePic: null,
-                conversationId: c.id,
-                read: false,
-                createdAt: new Date().toISOString(),
-                preview: c.preview,
-              });
-            }
-          });
-          convPrevRef.current = map;
-          convSeeded.current = true;
-          // For conversations that had NO new message, mark them as seen now
-          // so they never fire on the next login either.
-          if (currentUserId) {
-            const pendingIds = new Set(pendingMsgNotifs.map((n) => n.conversationId));
-            const updatedSeen = { ...seenMap };
-            Object.entries(map).forEach(([convId, preview]) => {
-              if (!pendingIds.has(convId)) updatedSeen[convId] = preview;
-            });
-            saveSeenPreviews(currentUserId, updatedSeen);
-          }
-          if (pendingMsgNotifs.length > 0) {
-            setNotifications((prev) => [...pendingMsgNotifs, ...prev]);
-            setUnreadCount((count) => count + pendingMsgNotifs.length);
-            clientMsgCountRef.current += pendingMsgNotifs.length;
-            playMessageSound();
-            showMsgNotif(pendingMsgNotifs[0].fromUserName, pendingMsgNotifs[0].preview ?? '', pendingMsgNotifs[0].conversationId ?? undefined);
-          }
-          return;
-        }
-        let notifName = '';
-        let notifContent = '';
-        let notifConvId = '';
-        let notifUserId = '';
-        fresh.forEach((c) => {
-          const known = convPrevRef.current[c.id];
-          const normalizedPreview = String(c.preview || '').trim().toLowerCase();
-          const isPlaceholderPreview =
-            normalizedPreview === 'no messages yet' ||
-            normalizedPreview === 'start the conversation!';
-
-          if (
-            known !== undefined &&
-            c.preview !== known &&
-            c.lastSenderId &&
-            c.lastSenderId !== currentUserId &&
-            !isPlaceholderPreview &&
-            !consumeSentPreview(c.id, c.preview)
-          ) {
-            notifName = c.title;
-            notifContent = c.preview;
-            notifConvId = c.id;
-            notifUserId = c.otherUserId || '';
-          }
-          convPrevRef.current[c.id] = c.preview;
-        });
-        if (notifName && !shouldSuppressMessageNotif(notifConvId)) {
-          // Add to bell as well as popup
-          const liveNotif: AppNotification = {
-            id: `msg-live-${Date.now()}`,
-            type: 'message_received',
-            fromUserId: notifUserId,
-            fromUserName: notifName,
-            fromUserProfilePic: null,
-            conversationId: notifConvId,
-            read: false,
-            createdAt: new Date().toISOString(),
-            preview: notifContent,
-          };
-          setNotifications((prev) => [liveNotif, ...prev]);
-          setUnreadCount((count) => count + 1);
-          clientMsgCountRef.current += 1;
-          playMessageSound();
-          showMsgNotif(notifName, notifContent, notifConvId);
-        }
-      } catch {
-        // silent
-      }
-    };
-    poll();
-    const interval = setInterval(poll, 5000);
-    return () => clearInterval(interval);
-  }, [token, currentUserId, showMsgNotif, shouldSuppressMessageNotif]);
 
   if (!token) return <>{children || <Outlet />}</>;
 
