@@ -222,7 +222,11 @@ export default function QuoteRequestModal({
       }
 
       setIsSuccess(true);
-      onSubmitSuccess?.();
+      // Trigger full dashboard refresh so AI Budget Tip updates in real-time
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('wedding:quote_submitted'));
+        onSubmitSuccess?.();
+      }, 500);
     } catch (err) {
       console.error('Failed to submit vendor quote request', err);
       setSubmitError((err as any)?.response?.data?.message || (err as any)?.message || 'Failed to send the quote request. Please try again.');
@@ -295,7 +299,18 @@ export default function QuoteRequestModal({
                     </TextField>
                   </Grid>
                   <Grid size={{ xs: 12, sm: 4 }}>
-                    <TextField fullWidth label="Wedding Date" type="date" value={formData.date} onChange={(e) => handleChange('date', e.target.value)} InputLabelProps={{ shrink: true }} />
+                    <TextField
+                      fullWidth
+                      label="Wedding Date"
+                      type="date"
+                      value={formData.date}
+                      onChange={(e) => !weddingDate && handleChange('date', e.target.value)}
+                      disabled={!!weddingDate}
+                      readOnly={!!weddingDate}
+                      slotProps={{ htmlInput: { readOnly: !!weddingDate } }}
+                      InputLabelProps={{ shrink: true }}
+                      helperText={weddingDate ? 'Fixed from your wedding plan' : ''}
+                    />
                   </Grid>
                   <Grid size={{ xs: 12, sm: 4 }}>
                     <TextField fullWidth label="Estimated Guests" type="number" value={formData.guestCount} onChange={(e) => handleChange('guestCount', e.target.value)} inputProps={{ min: 0 }} />
