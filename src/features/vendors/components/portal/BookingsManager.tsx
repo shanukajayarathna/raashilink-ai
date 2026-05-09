@@ -12,13 +12,24 @@ import {
   alpha,
   useTheme,
   Tooltip,
-  Badge,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow
+} from '@mui/material';
+import {
+  Backdrop,
+  CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  MenuItem,
+  Select,
+  FormControl,
+  InputLabel,
 } from '@mui/material';
 import { 
   Calendar, 
@@ -27,7 +38,6 @@ import {
   CheckCircle2, 
   Clock, 
   User, 
-  MessageSquare, 
   MoreVertical,
   Filter,
   Search,
@@ -38,6 +48,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { format } from 'date-fns';
+import vendorService from '../../services/vendorService';
 
 const COLORS = {
   primary: '#8B1A2E',
@@ -48,14 +59,20 @@ const COLORS = {
   textSecondary: '#555555',
 };
 
+const PAYMENT_STATUS_COLORS: Record<string, { color: string; bg: string }> = {
+  paid:    { color: '#2e7d32', bg: 'rgba(46,125,50,0.1)' },
+  partial: { color: COLORS.secondary, bg: alpha(COLORS.secondary, 0.1) },
+  pending: { color: '#d32f2f', bg: 'rgba(211,47,47,0.1)' },
+};
+
 interface Booking {
   id: string;
   coupleName: string;
   eventDate: string;
   venue: string;
   amount: string;
-  paymentStatus: 'Paid' | 'Partial' | 'Pending';
-  status: 'Confirmed' | 'Completed' | 'Cancelled';
+  paymentStatus: string;
+  status: string;
   email: string;
   phone: string;
   raw: any;
@@ -77,7 +94,7 @@ export default function BookingsManager({ quotes = [] }: BookingsManagerProps) {
         eventDate: isValidDate ? format(d, 'yyyy-MM-dd') : 'Date Pending',
         venue: q.venueName || q.location || 'Location Pending',
         amount: `LKR ${Number(q.response?.price || 0).toLocaleString()}`,
-        paymentStatus: 'Pending',
+        paymentStatus: q.paymentStatus || 'pending',
         status: 'Confirmed',
         email: q.contactEmail || '',
         phone: q.contactPhone || '',
@@ -86,6 +103,10 @@ export default function BookingsManager({ quotes = [] }: BookingsManagerProps) {
     });
 
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(bookings[0] || null);
+  const [cancelConfirm, setCancelConfirm] = useState<Booking | null>(null);
+  const [cancelling, setCancelling] = useState(false);
+  const [paymentUpdating, setPaymentUpdating] = useState<string | null>(null);
+  const [localPaymentStatus, setLocalPaymentStatus] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (bookings.length === 0) {
@@ -99,30 +120,80 @@ export default function BookingsManager({ quotes = [] }: BookingsManagerProps) {
     });
   }, [bookings]);
 
-  const getPaymentChip = (status: string) => {
-    const configs: any = {
-      Paid: { color: '#2e7d32', bg: 'rgba(46, 125, 50, 0.1)' },
-      Partial: { color: COLORS.secondary, bg: alpha(COLORS.secondary, 0.1) },
-      Pending: { color: '#d32f2f', bg: 'rgba(211, 47, 47, 0.1)' }
-    };
-    const config = configs[status];
+  const handlePaymentStatusChange = async (bookingId: string, newStatus: string) => {
+    setPaymentUpdating(bookingId);
+    setLocalPaymentStatus(prev => ({ ...prev, [bookingId]: newStatus }));
+    try {
+      await vendorService.updateQuoteRequest(bookingId, { paymentStatus: newStatus });
+    } catch {
+      setLocalPaymentStatus(prev => {
+        const copy = { ...prev };
+        delete copy[bookingId];
+        return copy;
+      });
+    } finally {
+      setPaymentUpdating(null);
+    }
+  };
+
+  const handleCancelBooking = async () => {
+    if (!cancelConfirm) return;
+    setCancelling(true);
+    try {
+      await vendorService.updateQuoteRequest(cancelConfirm.id, { status: 'cancelled_by_vendor' });
+      setCancelConfirm(null);
+      setSelectedBooking(null);
+      window.dispatchEvent(new CustomEvent('vendor:quote_arrived'));
+    } catch {
+      // silent — list will refresh on next poll
+    } finally {
+      setCancelling(false);
+    }
+  };
+
+  const getPaymentChip = (bookingId: string, rawStatus: string) => {
+    const ps = localPaymentStatus[bookingId] || rawStatus || 'pending';
+    const cfg = PAYMENT_STATUS_COLORS[ps] || PAYMENT_STATUS_COLORS.pending;
+    const label = ps.charAt(0).toUpperCase() + ps.slice(1);
     return (
-      <Chip 
-        label={status} 
+      <Chip
+        label={label}
         size="small"
-        sx={{ 
-          bgcolor: config.bg, 
-          color: config.color, 
-          fontWeight: 700,
-          borderRadius: '6px',
-          fontSize: '0.7rem'
-        }} 
+        sx={{ bgcolor: cfg.bg, color: cfg.color, fontWeight: 700, borderRadius: '6px', fontSize: '0.7rem' }}
       />
     );
   };
 
   return (
     <Box>
+      {/* Blur overlay while cancelling */}
+      <Backdrop open={cancelling} sx={{ zIndex: theme => theme.zIndex.modal + 1, backdropFilter: 'blur(4px)', bgcolor: 'rgba(0,0,0,0.3)' }}>
+        <CircularProgress sx={{ color: 'white' }} />
+      </Backdrop>
+
+      {/* Cancel confirmation dialog */}
+      <Dialog open={!!cancelConfirm} onClose={() => !cancelling && setCancelConfirm(null)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontFamily: 'Playfair Display', fontWeight: 700 }}>Cancel Booking?</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Are you sure you want to cancel the booking for <strong>{cancelConfirm?.coupleName}</strong>? The couple will be notified immediately and the booking will be reset.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setCancelConfirm(null)} disabled={cancelling} sx={{ textTransform: 'none' }}>
+            Keep Booking
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleCancelBooking}
+            disabled={cancelling}
+            sx={{ bgcolor: '#d32f2f', textTransform: 'none', '&:hover': { bgcolor: '#b71c1c' } }}
+          >
+            {cancelling ? <CircularProgress size={18} sx={{ color: 'white' }} /> : 'Confirm Cancellation'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Box>
           <Typography variant="h5" sx={{ fontFamily: 'Playfair Display', fontWeight: 700, color: COLORS.primary }}>
@@ -190,7 +261,6 @@ export default function BookingsManager({ quotes = [] }: BookingsManagerProps) {
                   <TableCell sx={{ fontWeight: 700 }}>Amount</TableCell>
                   <TableCell sx={{ fontWeight: 700 }}>Payment</TableCell>
                   <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
-                  <TableCell align="right" sx={{ fontWeight: 700 }}>Actions</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -223,7 +293,7 @@ export default function BookingsManager({ quotes = [] }: BookingsManagerProps) {
                       <Typography variant="body2" sx={{ fontWeight: 600 }}>{booking.amount}</Typography>
                     </TableCell>
                     <TableCell>
-                      {getPaymentChip(booking.paymentStatus)}
+                      {getPaymentChip(booking.id, booking.paymentStatus)}
                     </TableCell>
                     <TableCell>
                       <Chip 
@@ -231,20 +301,6 @@ export default function BookingsManager({ quotes = [] }: BookingsManagerProps) {
                         size="small" 
                         sx={{ bgcolor: alpha(COLORS.accent, 0.1), color: COLORS.accent, fontWeight: 700, borderRadius: '6px' }} 
                       />
-                    </TableCell>
-                    <TableCell align="right">
-                      <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
-                        <Tooltip title="Contact Couple">
-                          <IconButton size="small" sx={{ color: COLORS.primary, bgcolor: alpha(COLORS.primary, 0.05) }}>
-                            <MessageSquare size={16} />
-                          </IconButton>
-                        </Tooltip>
-                        <Tooltip title="View Details">
-                          <IconButton size="small" sx={{ color: COLORS.textSecondary, bgcolor: 'rgba(0,0,0,0.05)' }}>
-                            <ExternalLink size={16} />
-                          </IconButton>
-                        </Tooltip>
-                      </Box>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -256,7 +312,7 @@ export default function BookingsManager({ quotes = [] }: BookingsManagerProps) {
         {/* Detailed View / Contact Section */}
         <Grid size={{ xs: 12, lg: 4 }}>
           <Paper elevation={0} sx={{ p: 3, borderRadius: '20px', border: '1px solid rgba(139,26,46,0.08)', height: '100%' }}>
-            <Typography variant="h6" sx={{ fontWeight: 700, mb: 3 }}>Selected Booking</Typography>
+            <Typography variant="h6" sx={{ fontWeight: 700, mb: 3 }}>Booking Details</Typography>
             {selectedBooking ? (
               <>
                 <Box sx={{ textAlign: 'center', mb: 3 }}>
@@ -269,45 +325,66 @@ export default function BookingsManager({ quotes = [] }: BookingsManagerProps) {
                   </Typography>
                 </Box>
                 
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mb: 4 }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 2, borderRadius: '12px', bgcolor: 'rgba(0,0,0,0.02)' }}>
-                    <Phone size={18} color={COLORS.primary} />
-                    <Box>
-                      <Typography variant="caption" color="textSecondary">Phone Number</Typography>
-                      <Typography variant="body2" sx={{ fontWeight: 600 }}>{selectedBooking.phone || 'Not provided'}</Typography>
+                {/* Contact links */}
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, mb: 3 }}>
+                  {selectedBooking.phone ? (
+                    <Box component="a" href={`tel:${selectedBooking.phone}`}
+                      sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 2, borderRadius: '12px', bgcolor: 'rgba(0,0,0,0.02)', textDecoration: 'none', color: 'inherit', '&:hover': { bgcolor: alpha(COLORS.primary, 0.05) } }}>
+                      <Phone size={18} color={COLORS.primary} />
+                      <Box>
+                        <Typography variant="caption" color="textSecondary">Phone</Typography>
+                        <Typography variant="body2" sx={{ fontWeight: 600 }}>{selectedBooking.phone}</Typography>
+                      </Box>
                     </Box>
-                  </Box>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 2, borderRadius: '12px', bgcolor: 'rgba(0,0,0,0.02)' }}>
-                    <Mail size={18} color={COLORS.primary} />
-                    <Box>
-                      <Typography variant="caption" color="textSecondary">Email Address</Typography>
-                      <Typography variant="body2" sx={{ fontWeight: 600 }}>{selectedBooking.email || 'Not provided'}</Typography>
+                  ) : (
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 2, borderRadius: '12px', bgcolor: 'rgba(0,0,0,0.02)' }}>
+                      <Phone size={18} color={COLORS.textSecondary} />
+                      <Typography variant="body2" color="textSecondary">Phone not provided</Typography>
                     </Box>
-                  </Box>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 2, borderRadius: '12px', bgcolor: 'rgba(0,0,0,0.02)' }}>
-                    <MapPin size={18} color={COLORS.primary} />
-                    <Box>
-                      <Typography variant="caption" color="textSecondary">Venue</Typography>
-                      <Typography variant="body2" sx={{ fontWeight: 600 }}>{selectedBooking.venue}</Typography>
+                  )}
+                  {selectedBooking.email ? (
+                    <Box component="a" href={`mailto:${selectedBooking.email}`}
+                      sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 2, borderRadius: '12px', bgcolor: 'rgba(0,0,0,0.02)', textDecoration: 'none', color: 'inherit', '&:hover': { bgcolor: alpha(COLORS.primary, 0.05) } }}>
+                      <Mail size={18} color={COLORS.primary} />
+                      <Box>
+                        <Typography variant="caption" color="textSecondary">Email</Typography>
+                        <Typography variant="body2" sx={{ fontWeight: 600 }}>{selectedBooking.email}</Typography>
+                      </Box>
                     </Box>
-                  </Box>
+                  ) : (
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 2, borderRadius: '12px', bgcolor: 'rgba(0,0,0,0.02)' }}>
+                      <Mail size={18} color={COLORS.textSecondary} />
+                      <Typography variant="body2" color="textSecondary">Email not provided</Typography>
+                    </Box>
+                  )}
                 </Box>
 
-                <Button 
-                  variant="contained" 
-                  fullWidth 
-                  startIcon={<MessageSquare size={18} />}
-                  sx={{ 
-                    bgcolor: COLORS.primary, 
-                    borderRadius: '12px', 
-                    py: 1.5,
-                    fontWeight: 600,
-                    textTransform: 'none',
-                    '&:hover': { bgcolor: '#6b1423' }
-                  }}
-                >
-                  Send Message to Couple
+                {/* Payment Status */}
+                <FormControl fullWidth size="small" sx={{ mb: 2 }}>
+                  <InputLabel>Payment Status</InputLabel>
+                  <Select
+                    label="Payment Status"
+                    value={localPaymentStatus[selectedBooking.id] || selectedBooking.paymentStatus || 'pending'}
+                    disabled={paymentUpdating === selectedBooking.id}
+                    onChange={e => handlePaymentStatusChange(selectedBooking.id, e.target.value)}
+                  >
+                    <MenuItem value="pending">Pending</MenuItem>
+                    <MenuItem value="partial">Partial</MenuItem>
+                    <MenuItem value="paid">Paid</MenuItem>
+                  </Select>
+                </FormControl>
+
+                <Divider sx={{ my: 2 }} />
+
+                {/* Cancel Booking */}
+                <Button fullWidth variant="outlined"
+                  onClick={() => setCancelConfirm(selectedBooking)}
+                  sx={{ color: '#d32f2f', borderColor: '#d32f2f', borderRadius: '12px', textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: 'rgba(211,47,47,0.05)', borderColor: '#b71c1c' } }}>
+                  Cancel This Booking
                 </Button>
+                <Typography variant="caption" color="textSecondary" sx={{ display: 'block', textAlign: 'center', mt: 1 }}>
+                  The couple will be notified immediately.
+                </Typography>
               </>
             ) : (
               <Typography variant="body2" color="textSecondary" sx={{ textAlign: 'center', py: 4 }}>
