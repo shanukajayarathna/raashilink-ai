@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   Box,
+  Backdrop,
   Container,
   Typography,
   Stack,
@@ -16,6 +17,7 @@ import {
   ToggleButtonGroup,
   ToggleButton,
   Alert,
+  CircularProgress,
 } from '@mui/material';
 import {
   Sparkles,
@@ -454,7 +456,20 @@ export default function HoneymoonDestinations() {
 
       </Box>
 
-      {/* Full screen lock overlay removed for better exploration experience */}
+      <Backdrop
+        open={loading}
+        sx={{
+          zIndex: (theme) => theme.zIndex.modal + 2,
+          backdropFilter: 'blur(5px)',
+          backgroundColor: 'rgba(20,20,20,0.22)',
+          color: '#fff',
+          flexDirection: 'column',
+          gap: 1,
+        }}
+      >
+        <CircularProgress color="inherit" />
+        <Typography variant="body2" sx={{ fontWeight: 600 }}>Curating honeymoon options...</Typography>
+      </Backdrop>
     </Box>
   );
 }
