@@ -138,18 +138,13 @@ const weddingService = {
   },
 
   clearAllTasks: async () => {
-    try {
-      const response = await axiosInstance.put('/wedding/project', { checklist: [] });
-      return response.data;
-    } catch (err) {
-      console.warn('Bulk clear all tasks failed, falling back to individual deletes', err);
-      const res = await axiosInstance.get('/wedding/project');
-      const checklist = res.data?.data?.checklist || [];
-      // Delete in reverse to maintain indices
-      for (let i = checklist.length - 1; i >= 0; i--) {
-        await axiosInstance.delete(`/wedding/tasks/${i}`);
-      }
+    const res = await axiosInstance.get('/wedding/project');
+    const checklist = res.data?.data?.checklist || [];
+    // Delete in reverse to maintain stable indices and emit partner realtime updates.
+    for (let i = checklist.length - 1; i >= 0; i--) {
+      await axiosInstance.delete(`/wedding/tasks/${i}`);
     }
+    return { success: true };
   },
 
   clearAllExpenses: async () => {
@@ -168,18 +163,15 @@ const weddingService = {
   },
 
   deleteMultipleTasks: async (indices: number[]) => {
-    try {
-      const projectRes = await axiosInstance.get('/wedding/project');
-      const checklist = projectRes.data?.data?.checklist || [];
-      const updated = checklist.filter((_: any, idx: number) => !indices.includes(idx));
-      return await axiosInstance.put('/wedding/project', { checklist: updated });
-    } catch (err) {
-      console.warn('Bulk delete multiple tasks failed, falling back to individual deletes', err);
-      const sortedIndices = [...indices].sort((a, b) => b - a);
-      for (const idx of sortedIndices) {
-        await axiosInstance.delete(`/wedding/tasks/${idx}`);
-      }
+    const sortedUniqueIndices = [...new Set(indices)]
+      .filter((idx) => Number.isInteger(idx) && idx >= 0)
+      .sort((a, b) => b - a);
+
+    for (const idx of sortedUniqueIndices) {
+      await axiosInstance.delete(`/wedding/tasks/${idx}`);
     }
+
+    return { success: true };
   },
 
   deleteMultipleExpenses: async (indices: number[]) => {
