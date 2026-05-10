@@ -9,6 +9,9 @@ const LoginPage = lazy(() => import('@/features/auth/pages/LoginPage'));
 const RegisterPage = lazy(() => import('@/features/auth/pages/RegisterPage'));
 const ForgotPasswordPage = lazy(() => import('@/features/auth/pages/ForgotPasswordPage'));
 const DashboardRouter = lazy(() => import('@/features/dashboard/pages/DashboardRouter'));
+const FeaturesPage = lazy(() => import('@/features/marketing/pages/FeaturesPage'));
+const HowItWorksPage = lazy(() => import('@/features/marketing/pages/HowItWorksPage'));
+const AboutUsPage = lazy(() => import('@/features/marketing/pages/AboutUsPage'));
 const HoroscopeView = lazy(() => import('@/features/horoscope/pages/HoroscopeView'));
 const MatchRecommendations = lazy(() => import('@/features/matchmaking/pages/MatchRecommendations'));
 const WeddingDashboard = lazy(() => import('@/features/wedding/pages/WeddingDashboard'));
@@ -105,6 +108,9 @@ function AppShell() {
             <Route path="/register" element={<RegisterPage />} />
             <Route path="/register/horoscope-seeker" element={<RegisterPage />} />
             <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+            <Route path="/features" element={<FeaturesPage />} />
+            <Route path="/how-it-works" element={<HowItWorksPage />} />
+            <Route path="/about-us" element={<AboutUsPage />} />
             
             {/* User Routes with MainLayout */}
             <Route element={<MainLayout />}>
