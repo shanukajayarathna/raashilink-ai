@@ -80,6 +80,7 @@ export default function MessagesPage() {
   const [cancellingWedding, setCancellingWedding] = useState(false);
   const [resetDialogOpen, setResetDialogOpen] = useState(false);
   const [globalLoading, setGlobalLoading] = useState({ open: false, message: '' });
+  const selectedConversationId = selectedConv?.id || null;
 
   const mapMutualMatch = useCallback((match: any): MutualMatch => ({
     id: match.id,
@@ -107,7 +108,7 @@ export default function MessagesPage() {
       setSelectedConv((current) => {
         if (!current) return current;
         const stillExists = items.find((c) => c.id === current.id);
-        if (stillExists) return stillExists;
+        if (stillExists) return { ...current, ...stillExists };
         setMessages([]);
         setWeddingStatus('none');
         if (isMobile) setShowList(true);
@@ -342,25 +343,32 @@ export default function MessagesPage() {
   };
 
   useEffect(() => {
-    if (!selectedConv) return;
+    if (!selectedConversationId) return;
+    let isActive = true;
     setLoadingMsgs(true);
-    api.get(`/chat/${selectedConv.id}/history`)
+    api.get(`/chat/${selectedConversationId}/history`)
       .then((res: any) => {
+        if (!isActive) return;
         const fetched: Message[] = res.data.data.messages || [];
         setMessages(fetched);
         // Seed known IDs so the first poll doesn't re-fire sound
         prevMsgIdsRef.current = new Set(fetched.map((m) => m.id));
       })
       .catch(() => {})
-      .finally(() => setLoadingMsgs(false));
-  }, [selectedConv]);
+      .finally(() => {
+        if (isActive) setLoadingMsgs(false);
+      });
+    return () => {
+      isActive = false;
+    };
+  }, [selectedConversationId]);
 
   useEffect(() => {
-    selectedConvIdRef.current = selectedConv?.id || null;
-  }, [selectedConv?.id]);
+    selectedConvIdRef.current = selectedConversationId;
+  }, [selectedConversationId]);
 
   useEffect(() => {
-    const conversationId = selectedConv?.id || null;
+    const conversationId = selectedConversationId;
     window.dispatchEvent(new CustomEvent('chat:activeConversation', { detail: { conversationId } }));
     if (conversationId) {
       markConversationAsRead(conversationId);
@@ -368,14 +376,14 @@ export default function MessagesPage() {
     return () => {
       window.dispatchEvent(new CustomEvent('chat:activeConversation', { detail: { conversationId: null } }));
     };
-  }, [selectedConv?.id, markConversationAsRead]);
+  }, [selectedConversationId, markConversationAsRead]);
 
   // Poll active conversation every 5s to keep messages fresh
   useEffect(() => {
-    if (!selectedConv) return;
+    if (!selectedConversationId) return;
     const interval = setInterval(async () => {
       try {
-        const res: any = await api.get(`/chat/${selectedConv.id}/history`);
+        const res: any = await api.get(`/chat/${selectedConversationId}/history`);
         const fetched: Message[] = res.data.data.messages || [];
         const incoming = fetched.filter((m) => !prevMsgIdsRef.current.has(m.id));
         if (incoming.length === 0) return;
@@ -391,7 +399,7 @@ export default function MessagesPage() {
       }
     }, 5000);
     return () => clearInterval(interval);
-  }, [selectedConv]);
+  }, [selectedConversationId]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -828,16 +836,40 @@ export default function MessagesPage() {
             </Tooltip>
           </>
         ) : (
-          <Chip
-            icon={<Heart size={12} color="white" />}
-            label="Plan Wedding Together 💒"
-            size="small"
-            clickable
-            onClick={() => setWeddingInviteOpen(true)}
-            sx={{ bgcolor: '#8B1A2E', color: 'white', fontWeight: 700, fontSize: '0.72rem', cursor: 'pointer',
-              '&:hover': { bgcolor: '#6B1422' },
-              '& .MuiChip-icon': { color: 'white' } }}
-          />
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, py: 0.5 }}>
+            <Typography variant="caption" sx={{ fontWeight: 700, color: 'primary.main', opacity: 0.9 }}>
+              Ready to take the next step?
+            </Typography>
+            <Chip
+              icon={<Heart size={16} color="white" />}
+              label="Plan Wedding Together 💒"
+              onClick={() => setWeddingInviteOpen(true)}
+              sx={{ 
+                bgcolor: '#8B1A2E', 
+                color: 'white', 
+                fontWeight: 800, 
+                fontSize: '0.8rem', 
+                height: 36,
+                px: 1,
+                borderRadius: '10px',
+                cursor: 'pointer',
+                boxShadow: '0 4px 12px rgba(139,26,46,0.2)',
+                animation: 'pulseGlow 2s infinite',
+                transition: 'all 0.2s ease',
+                '&:hover': { 
+                  bgcolor: '#6B1422', 
+                  transform: 'scale(1.05)',
+                  boxShadow: '0 6px 16px rgba(139,26,46,0.3)'
+                },
+                '& .MuiChip-icon': { color: 'white' },
+                '@keyframes pulseGlow': {
+                  '0%': { boxShadow: '0 0 0 0 rgba(139, 26, 46, 0.6)' },
+                  '70%': { boxShadow: '0 0 0 10px rgba(139, 26, 46, 0)' },
+                  '100%': { boxShadow: '0 0 0 0 rgba(139, 26, 46, 0)' },
+                }
+              }}
+            />
+          </Box>
         )}
       </Box>
 
