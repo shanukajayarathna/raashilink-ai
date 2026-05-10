@@ -47,139 +47,9 @@ import {
 } from 'recharts';
 import { Link } from 'react-router-dom';
 
-// --- Theme Constants ---
-const COLORS = {
-  primary: '#8B1A2E',
-  secondary: '#C9A84C',
-  accent: '#1A6B72',
-  cream: '#FAF7F2',
-  white: '#FFFFFF',
-  textPrimary: '#1C1C1C',
-  textSecondary: '#555555',
-};
-
-// --- Framer Motion Components ---
-const MotionBox = motion(Box);
-const MotionTypography = motion(Typography);
-const MotionGrid = motion(Grid);
-const MotionCard = motion(Card);
-
-// --- Sub-components ---
-
-const LandingHeader = () => {
-  const [isScrolled, setIsScrolled] = useState(typeof window !== 'undefined' ? window.scrollY > 50 : false);
-
-  useEffect(() => {
-    const handleScroll = () => setIsScrolled(window.scrollY > 50);
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
-
-  return (
-    <Box
-      sx={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        zIndex: 1000,
-        transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
-        py: isScrolled ? 1 : 1.5,
-        bgcolor: isScrolled ? 'rgba(255, 255, 255, 0.95)' : 'transparent',
-        backdropFilter: isScrolled ? 'blur(12px)' : 'none',
-        borderBottom: 'none',
-        boxShadow: isScrolled ? '0 10px 30px rgba(0,0,0,0.08)' : 'none',
-      }}
-    >
-      <Container sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <Stack direction="row" spacing={1} alignItems="center" sx={{ flexGrow: 1, position: 'relative', height: 48 }}>
-          <Box
-            component="img"
-            src="/RaashiLink_Logo.png"
-            alt="RaashiLink Logo"
-            sx={{ 
-              width: 120, 
-              height: 120, 
-              objectFit: 'contain',
-              position: 'absolute',
-              left: -30,
-              top: '50%',
-              transform: 'translateY(-50%)',
-              filter: isScrolled 
-                ? 'drop-shadow(0 4px 8px rgba(0,0,0,0.1))' 
-                : 'brightness(0) invert(1) drop-shadow(0 0 15px rgba(255,255,255,0.5))',
-              transition: 'all 0.4s ease'
-            }}
-          />
-          <Typography variant="h5" sx={{ 
-            ml: '55px !important',
-            color: isScrolled ? COLORS.primary : 'white', 
-            fontWeight: 900, 
-            fontFamily: 'Playfair Display',
-            letterSpacing: '-0.5px',
-            textShadow: isScrolled ? 'none' : '0 2px 15px rgba(0,0,0,0.4)',
-            transition: 'all 0.4s ease'
-          }}>
-            RaashiLink.AI
-          </Typography>
-        </Stack>
-        <Stack direction="row" spacing={5} alignItems="center" sx={{ display: { xs: 'none', md: 'flex' } }}>
-          {['Features', 'How it Works', 'Testimonials'].map((item) => (
-            <Typography 
-              key={item} 
-              variant="body2" 
-              sx={{ 
-                color: isScrolled ? COLORS.textPrimary : 'white', 
-                fontWeight: 600, 
-                cursor: 'pointer',
-                position: 'relative',
-                textShadow: isScrolled ? 'none' : '0 1px 8px rgba(0,0,0,0.3)',
-                '&:after': {
-                  content: '""',
-                  position: 'absolute',
-                  bottom: -4,
-                  left: 0,
-                  width: 0,
-                  height: 2,
-                  bgcolor: COLORS.secondary,
-                  transition: 'width 0.3s ease'
-                },
-                '&:hover': { 
-                  color: COLORS.secondary,
-                  '&:after': { width: '100%' }
-                }
-              }}
-            >
-              {item}
-            </Typography>
-          ))}
-          <Button 
-            component={Link} 
-            to="/login" 
-            variant="contained" 
-            sx={{ 
-              bgcolor: COLORS.secondary, 
-              color: COLORS.primary, 
-              fontWeight: 800,
-              borderRadius: '12px',
-              px: 4,
-              py: 1,
-              boxShadow: isScrolled ? 'none' : '0 10px 20px rgba(201,168,76,0.3)',
-              '&:hover': {
-                bgcolor: COLORS.white,
-                color: COLORS.primary,
-                transform: 'translateY(-2px)'
-              },
-              transition: 'all 0.3s ease'
-            }}
-          >
-            Login
-          </Button>
-        </Stack>
-      </Container>
-    </Box>
-  );
-};
+import MarketingHeader from '../components/MarketingHeader';
+import MarketingFooter from '../components/MarketingFooter';
+import { MARKETING_COLORS as COLORS } from '../constants/colors';
 
 const SectionTitle = ({ title, subtitle }: { title: string; subtitle?: string }) => (
   <Box sx={{ textAlign: 'center', mb: 8 }}>
@@ -213,7 +83,7 @@ const SectionTitle = ({ title, subtitle }: { title: string; subtitle?: string })
   </Box>
 );
 
-const FloatingProfileCard = ({ name, age, match, delay, top, left, right, rotate }: any) => (
+const FloatingFeatureCard = ({ icon, title, label, delay, top, left, right, rotate }: any) => (
   <MotionBox
     initial={{ opacity: 0, scale: 0.8 }}
     animate={{ 
@@ -233,7 +103,7 @@ const FloatingProfileCard = ({ name, age, match, delay, top, left, right, rotate
       top,
       left,
       right,
-      width: 200,
+      width: 230,
       p: 2,
       bgcolor: 'white',
       borderRadius: '20px',
@@ -244,10 +114,26 @@ const FloatingProfileCard = ({ name, age, match, delay, top, left, right, rotate
     }}
   >
     <Stack direction="row" spacing={2} alignItems="center">
-      <Avatar sx={{ bgcolor: COLORS.secondary, fontWeight: 700 }}>{name[0]}</Avatar>
+      <Box sx={{ 
+        width: 44, 
+        height: 44, 
+        borderRadius: '12px', 
+        bgcolor: 'rgba(139,26,46,0.08)', 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'center', 
+        color: COLORS.primary,
+        flexShrink: 0
+      }}>
+        {icon}
+      </Box>
       <Box>
-        <Typography variant="subtitle2" sx={{ fontWeight: 800, color: COLORS.textPrimary }}>{name}, {age}</Typography>
-        <Typography variant="caption" sx={{ color: COLORS.accent, fontWeight: 600 }}>{match}% Match</Typography>
+        <Typography variant="subtitle2" sx={{ fontWeight: 800, color: COLORS.textPrimary, lineHeight: 1.2 }}>
+          {title}
+        </Typography>
+        <Typography variant="caption" sx={{ color: COLORS.secondary, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          {label}
+        </Typography>
       </Box>
     </Stack>
   </MotionBox>
@@ -486,70 +372,74 @@ const FeatureShowcase = () => {
 };
 ;
 
-const Testimonials = () => {
-  const [index, setIndex] = useState(0);
-  const reviews = [
-    { name: "Kasun & Imali", text: "RaashiLink found us the perfect match. The horoscope compatibility was spot on!", role: "Engaged Couple" },
-    { name: "Nimal Perera", text: "As a vendor, this platform has transformed how I reach premium clients in Sri Lanka.", role: "Photographer" },
-    { name: "Dilini Silva", text: "The AI chatbot helped me plan my entire budget in just one afternoon. Amazing tool!", role: "Bride-to-be" }
-  ];
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setIndex((prev) => (prev + 1) % reviews.length);
-    }, 5000);
-    return () => clearInterval(timer);
-  }, []);
-
-  return (
-    <Box sx={{ py: 12, bgcolor: COLORS.cream }}>
-      <Container maxWidth="md">
-        <SectionTitle title="Voices of Love" subtitle="Hear from the couples and vendors who have found success with RaashiLink.AI" />
-        <Box sx={{ position: 'relative', minHeight: 250 }}>
-          <AnimatePresence mode="wait">
-            <MotionBox
-              key={index}
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              transition={{ duration: 0.5 }}
-              sx={{ textAlign: 'center' }}
+const AboutUsSection = () => (
+  <Box sx={{ py: 12, bgcolor: COLORS.cream }}>
+    <Container>
+      <Grid container spacing={8} alignItems="center">
+        <Grid size={{ xs: 12, md: 6 }}>
+          <Box sx={{ position: 'relative' }}>
+            <Box
+              component="img"
+              src="https://www.yamu.lk/wp-content/uploads/2023/07/WhatsApp-Image-2023-07-10-at-3.41.05-PM.jpeg"
+              sx={{ width: '100%', borderRadius: '40px', boxShadow: '0 30px 60px rgba(0,0,0,0.15)' }}
+            />
+            <Box
+              sx={{
+                position: 'absolute',
+                bottom: -30,
+                right: -30,
+                width: 200,
+                height: 200,
+                bgcolor: COLORS.secondary,
+                borderRadius: '50%',
+                display: { xs: 'none', lg: 'flex' },
+                alignItems: 'center',
+                justifyContent: 'center',
+                p: 4,
+                textAlign: 'center',
+                border: '10px solid #FAF7F2'
+              }}
             >
-              <Avatar sx={{ width: 80, height: 80, mx: 'auto', mb: 3, bgcolor: COLORS.primary }}>
-                {reviews[index].name[0]}
-              </Avatar>
-              <Typography variant="h5" sx={{ fontStyle: 'italic', mb: 3, color: COLORS.textPrimary }}>
-                "{reviews[index].text}"
+              <Typography variant="h6" sx={{ color: COLORS.primary, fontWeight: 900, lineHeight: 1.2 }}>
+                100% Sri Lankan Built
               </Typography>
-              <Typography variant="subtitle1" sx={{ fontWeight: 700, color: COLORS.primary }}>
-                {reviews[index].name}
-              </Typography>
-              <Typography variant="caption" sx={{ color: COLORS.textSecondary }}>
-                {reviews[index].role}
-              </Typography>
-            </MotionBox>
-          </AnimatePresence>
-          <Stack direction="row" spacing={1} justifyContent="center" sx={{ mt: 4 }}>
-            {reviews.map((_, i) => (
-              <Box 
-                key={i} 
-                onClick={() => setIndex(i)}
-                sx={{ 
-                  width: 10, 
-                  height: 10, 
-                  borderRadius: '50%', 
-                  bgcolor: i === index ? COLORS.primary : COLORS.secondary,
-                  cursor: 'pointer',
-                  transition: '0.3s'
-                }} 
-              />
-            ))}
-          </Stack>
-        </Box>
-      </Container>
-    </Box>
-  );
-};
+            </Box>
+          </Box>
+        </Grid>
+        <Grid size={{ xs: 12, md: 6 }}>
+          <Typography variant="overline" sx={{ color: COLORS.secondary, fontWeight: 900, letterSpacing: 2 }}>
+            OUR STORY
+          </Typography>
+          <Typography variant="h3" sx={{ fontFamily: 'Playfair Display', fontWeight: 700, color: COLORS.primary, mt: 1, mb: 3 }}>
+            Engineering Happily Ever After with AI
+          </Typography>
+          <Typography variant="body1" sx={{ color: COLORS.textSecondary, mb: 4, lineHeight: 1.8 }}>
+            RaashiLink.AI was born from a simple yet profound question: How can we honor Sri Lanka's rich matchmaking traditions while embracing the precision of modern technology?
+          </Typography>
+          <Typography variant="body1" sx={{ color: COLORS.textSecondary, mb: 4, lineHeight: 1.8 }}>
+            Our team of engineers and astrologers came together to build a platform that doesn't just "match" profiles—it connects souls through a deep understanding of Vedic compatibility and shared life values.
+          </Typography>
+          <Button
+            component={Link}
+            to="/about-us"
+            variant="contained"
+            sx={{
+              bgcolor: COLORS.primary,
+              color: 'white',
+              px: 6,
+              py: 2,
+              borderRadius: '30px',
+              fontWeight: 700,
+              '&:hover': { bgcolor: '#6B1422' }
+            }}
+          >
+            Our Mission
+          </Button>
+        </Grid>
+      </Grid>
+    </Container>
+  </Box>
+);
 
 const ImageGallery = () => {
   const images = [
@@ -662,6 +552,9 @@ const HERO_CAROUSEL_IMAGES = [
   "https://stanburyphotography.co.uk/wp-content/uploads/2018/11/sri-lanka-destination-wedding-photographers-048-1.jpg",
 ];
 
+const MotionBox = motion(Box);
+const MotionTypography = motion(Typography);
+
 export default function LandingPage() {
   const { scrollYProgress } = useScroll();
   const heroOpacity = useTransform(scrollYProgress, [0, 0.2], [1, 0]);
@@ -678,7 +571,7 @@ export default function LandingPage() {
 
   return (
     <Box sx={{ overflowX: 'hidden' }}>
-      <LandingHeader />
+      <MarketingHeader />
       {/* Hero Section */}
       <Box
         sx={{
@@ -735,9 +628,24 @@ export default function LandingPage() {
         />
 
         {/* Floating Cards */}
-        <FloatingProfileCard name="Kavindi" age={24} match={92} delay={0.5} top="20%" left="5%" rotate={-5} />
-        <FloatingProfileCard name="Shanuka" age={28} match={88} delay={0.7} top="65%" left="10%" rotate={5} />
-        <FloatingProfileCard name="Amali" age={26} match={95} delay={0.9} top="25%" right="5%" rotate={10} />
+        <FloatingFeatureCard 
+          title="32/36 Guna Score" 
+          label="Vedic Astrology" 
+          icon={<Calculate fontSize="small" />} 
+          delay={0.5} top="20%" left="5%" rotate={-5} 
+        />
+        <FloatingFeatureCard 
+          title="SVD Personalization" 
+          label="Neural AI Engine" 
+          icon={<AutoGraph fontSize="small" />} 
+          delay={0.7} top="65%" left="10%" rotate={5} 
+        />
+        <FloatingFeatureCard 
+          title="LKR 50K Saved" 
+          label="Budget Tracker" 
+          icon={<CalendarMonth fontSize="small" />} 
+          delay={0.9} top="25%" right="5%" rotate={10} 
+        />
 
         <Container sx={{ position: 'relative', zIndex: 2, textAlign: 'center' }}>
           <MotionBox style={{ opacity: heroOpacity, scale: heroScale }}>
@@ -883,8 +791,8 @@ export default function LandingPage() {
       {/* Image Gallery */}
       <ImageGallery />
 
-      {/* Testimonials */}
-      <Testimonials />
+      {/* About Us Preview */}
+      <AboutUsSection />
 
       {/* Vendor CTA */}
       <Box sx={{ py: 12, bgcolor: COLORS.primary, color: 'white', textAlign: 'center', position: 'relative', overflow: 'hidden' }}>
@@ -915,62 +823,7 @@ export default function LandingPage() {
         </Container>
       </Box>
 
-      {/* Footer */}
-      <Box sx={{ py: 8, bgcolor: COLORS.cream, borderTop: `1px solid rgba(0,0,0,0.05)` }}>
-        <Container>
-          <Grid container spacing={8}>
-            <Grid size={{ xs: 12, md: 4 }}>
-              <Stack direction="row" spacing={-2} alignItems="center" sx={{ mb: 2 }}>
-                <Box
-                  component="img"
-                  src="/RaashiLink_Logo.png"
-                  alt="RaashiLink Logo"
-                  sx={{ width: 96, height: 96, objectFit: 'contain' }}
-                />
-                <Typography variant="h5" sx={{ color: COLORS.primary, fontWeight: 900 }}>RaashiLink.AI</Typography>
-              </Stack>
-              <Typography variant="body2" sx={{ color: COLORS.textSecondary, mb: 3 }}>
-                Intelligent matchmaking and wedding planning for the modern Sri Lankan. <br />
-                සෑම පියවරකදීම ඔබ සමඟයි.
-              </Typography>
-              <Stack direction="row" spacing={2}>
-                <IconButton size="small" sx={{ color: COLORS.primary }}><Facebook /></IconButton>
-                <IconButton size="small" sx={{ color: COLORS.primary }}><Instagram /></IconButton>
-                <IconButton size="small" sx={{ color: COLORS.primary }}><Twitter /></IconButton>
-                <IconButton size="small" sx={{ color: COLORS.primary }}><LinkedIn /></IconButton>
-              </Stack>
-            </Grid>
-            <Grid size={{ xs: 6, md: 2 }}>
-              <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 3 }}>Platform</Typography>
-              <Stack spacing={1}>
-                <Link to="#" style={{ textDecoration: 'none', color: COLORS.textSecondary, fontSize: '14px' }}>Matchmaking</Link>
-                <Link to="#" style={{ textDecoration: 'none', color: COLORS.textSecondary, fontSize: '14px' }}>Horoscope</Link>
-                <Link to="#" style={{ textDecoration: 'none', color: COLORS.textSecondary, fontSize: '14px' }}>Wedding Planning</Link>
-              </Stack>
-            </Grid>
-            <Grid size={{ xs: 6, md: 2 }}>
-              <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 3 }}>Company</Typography>
-              <Stack spacing={1}>
-                <Link to="#" style={{ textDecoration: 'none', color: COLORS.textSecondary, fontSize: '14px' }}>About Us</Link>
-                <Link to="#" style={{ textDecoration: 'none', color: COLORS.textSecondary, fontSize: '14px' }}>Contact</Link>
-                <Link to="#" style={{ textDecoration: 'none', color: COLORS.textSecondary, fontSize: '14px' }}>Privacy Policy</Link>
-              </Stack>
-            </Grid>
-            <Grid size={{ xs: 12, md: 4 }}>
-              <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 3 }}>Newsletter</Typography>
-              <Typography variant="body2" sx={{ color: COLORS.textSecondary, mb: 2 }}>Get the latest wedding trends and tips.</Typography>
-              <Stack direction="row" spacing={1}>
-                <Box component="input" placeholder="Email address" sx={{ flex: 1, p: 1.5, borderRadius: '8px', border: `1px solid ${COLORS.secondary}`, bgcolor: 'white' }} />
-                <Button variant="contained" sx={{ bgcolor: COLORS.primary }}>Join</Button>
-              </Stack>
-            </Grid>
-          </Grid>
-          <Divider sx={{ my: 6 }} />
-          <Typography variant="body2" sx={{ textAlign: 'center', color: COLORS.textSecondary }}>
-            Made with ❤️ for Sri Lanka | © 2026 RaashiLink.AI
-          </Typography>
-        </Container>
-      </Box>
+      <MarketingFooter />
     </Box>
   );
 }
