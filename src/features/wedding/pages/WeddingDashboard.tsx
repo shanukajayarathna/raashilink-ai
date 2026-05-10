@@ -420,14 +420,26 @@ export default function WeddingDashboard() {
     socket.on('wedding_invite', () => fetchData(true));    // invitee's dashboard refreshes when invite arrives
     socket.on('wedding_accepted', () => fetchData(true));  // inviter's dashboard refreshes when accepted
     socket.on('wedding_reset', () => fetchData(true));     // both dashboards refresh on dissolution
+    // Vendor accepts/declines a quote — update the booked vendors section silently
+    socket.on('quote_request_updated', () => refreshVendors());
     return () => {
       socket.off('wedding_updated', fetchDataFromPartner);
       socket.off('wedding_invite', fetchData);
       socket.off('wedding_accepted', fetchData);
       socket.off('wedding_reset', fetchData);
+      socket.off('quote_request_updated');
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, fetchDataFromPartner]);
+
+  // Listen for quote submission to refresh budget and AI tip in real-time
+  useEffect(() => {
+    const handleQuoteSubmitted = () => {
+      fetchData(true); // silent refresh so AI Budget Tip updates in real-time
+    };
+    window.addEventListener('wedding:quote_submitted', handleQuoteSubmitted);
+    return () => window.removeEventListener('wedding:quote_submitted', handleQuoteSubmitted);
+  }, [fetchData]);
 
   const handleTabChange = (_: React.SyntheticEvent, newValue: number) => {
     setActiveTab(newValue);
@@ -1189,8 +1201,8 @@ export default function WeddingDashboard() {
           transition={{ duration: 0.35, ease: [0.4, 0, 0.2, 1] }}
         >
           {activeTab === 0 && <OverviewTab data={weddingData} onSwitchTab={handleSwitchTabFromOverview} project={rawProject} budget={rawBudget} />}
-          {activeTab === 1 && <ChecklistTab readOnly={!planningAccessGranted} checklist={rawProject?.checklist || []} onChecklistChange={(updated) => setRawProject((p: any) => ({ ...p, checklist: updated }))} currentUserId={currentUserId} partnerId={isCoupled ? rawProject?.coupleUserIds?.map((u: any) => String(typeof u === 'object' ? (u?._id || u?.id || '') : u || '')).find((id: string) => id !== currentUserId) : undefined} setGlobalLoading={setGlobalLoading} />}
-          {activeTab === 2 && <VendorTab readOnly={!planningAccessGranted} vendors={rawVendors} bookedVendorIds={rawProject?.vendors || []} expenses={rawProject?.expenses || []} totalBudget={rawProject?.totalBudget || 0} onStatusChange={refreshVendors} />}
+          {activeTab === 1 && <ChecklistTab readOnly={!planningAccessGranted} checklist={rawProject?.checklist || []} onChecklistChange={(updated) => setRawProject((p: any) => ({ ...p, checklist: updated }))} currentUserId={currentUserId} partnerId={isCoupled ? rawProject?.coupleUserIds?.map((u: any) => String(typeof u === 'object' ? (u?._id || u?.id || '') : u || '')).find((id: string) => id !== currentUserId) : undefined} project={rawProject} budget={rawBudget} couple={weddingData?.couple} setGlobalLoading={setGlobalLoading} />}
+          {activeTab === 2 && <VendorTab readOnly={!planningAccessGranted} vendors={rawVendors} bookedVendorIds={rawProject?.vendors || []} expenses={rawProject?.expenses || []} totalBudget={rawProject?.totalBudget || 0} weddingDate={rawProject?.weddingDate || ''} onStatusChange={refreshVendors} />}
           {activeTab === 3 && (
             <BudgetTab 
               readOnly={!planningAccessGranted} 
