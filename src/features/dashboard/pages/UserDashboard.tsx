@@ -611,6 +611,7 @@ const VerificationSetupCard = ({
 };
 
 const WeddingProjectStatus = ({ status }: { status: any }) => {
+  const navigate = useNavigate();
   const totalBudget = Number(status.budget.total || 0);
   const spentBudget = Number(status.budget.spent || 0);
   const budgetProgress = totalBudget > 0 ? (spentBudget / totalBudget) * 100 : 0;
@@ -684,6 +685,7 @@ const WeddingProjectStatus = ({ status }: { status: any }) => {
         <Button 
           variant="text" 
           endIcon={<ArrowForward />} 
+          onClick={() => navigate('/wedding')}
           sx={{ color: COLORS.primary, fontWeight: 700, alignSelf: 'flex-start', p: 0 }}
         >
           Go to Wedding Dashboard
@@ -693,7 +695,17 @@ const WeddingProjectStatus = ({ status }: { status: any }) => {
   );
 };
 
-const VendorRecommendations = ({ vendors, loading }: { vendors: any[]; loading?: boolean }) => {
+const VendorRecommendations = ({ 
+  vendors, 
+  loading, 
+  onViewVendor, 
+  onViewAll 
+}: { 
+  vendors: any[]; 
+  loading?: boolean; 
+  onViewVendor: (id: string) => void;
+  onViewAll: () => void;
+}) => {
   if (loading) {
     return (
       <MotionPaper
@@ -729,7 +741,25 @@ const VendorRecommendations = ({ vendors, loading }: { vendors: any[]; loading?:
       <WidgetHeader title="Recommended Vendors" />
       <Stack spacing={2}>
         {vendors.length > 0 ? vendors.map((vendor) => (
-          <Box key={vendor.id} sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 1.5, borderRadius: '16px', border: '1px solid #F0F0F0', '&:hover': { bgcolor: COLORS.background } }}>
+          <Box 
+            key={vendor.id} 
+            onClick={() => onViewVendor(vendor.id)}
+            sx={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: 2, 
+              p: 1.5, 
+              borderRadius: '16px', 
+              border: '1px solid #F0F0F0', 
+              cursor: 'pointer',
+              transition: 'all 0.2s',
+              '&:hover': { 
+                bgcolor: COLORS.background,
+                transform: 'translateX(4px)',
+                boxShadow: '0 4px 12px rgba(139,26,46,0.06)'
+              } 
+            }}
+          >
             <Avatar src={vendor.photo} variant="rounded" sx={{ width: 50, height: 50 }} />
             <Box sx={{ flex: 1 }}>
               <Typography variant="subtitle2" sx={{ fontWeight: 700, lineHeight: 1.2 }}>{vendor.name}</Typography>
@@ -753,6 +783,7 @@ const VendorRecommendations = ({ vendors, loading }: { vendors: any[]; loading?:
         <Button 
           variant="text" 
           endIcon={<ArrowForward />} 
+          onClick={onViewAll}
           sx={{ color: COLORS.primary, fontWeight: 700, alignSelf: 'center', mt: 1 }}
         >
           View All Vendors
@@ -1442,7 +1473,12 @@ export default function UserDashboard() {
           <HoneymoonWidget />
         </Grid>
         <Grid size={{ xs: 12, md: 4 }}>
-          <VendorRecommendations vendors={data.vendors} loading={widgetLoading} />
+          <VendorRecommendations 
+            vendors={data.vendors} 
+            loading={widgetLoading} 
+            onViewVendor={(id) => navigate(`/vendors/${id}`)}
+            onViewAll={() => navigate('/vendors')}
+          />
         </Grid>
 
         {/* Mutual Matches — shown above account setup */}
