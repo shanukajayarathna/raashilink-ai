@@ -4,12 +4,11 @@ import {
   Stack, Button, TextField, 
   MenuItem, Select, FormControl, InputLabel,
   Chip, Divider, Pagination,
-  Tooltip, IconButton
+  Tooltip, IconButton, Dialog, DialogTitle, DialogContent, DialogActions, Backdrop, CircularProgress
 } from '@mui/material';
 import { 
-  Search, MapPin, CheckCircle2, Star, Info, Send
-} from 'lucide-react';
-import { motion } from 'motion/react';
+  Search, MapPin, CheckCircle2, Star, Info, Send, Phone, Mail
+} from 'lucide-react';import { motion } from 'motion/react';
 import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import weddingService from '../services/weddingService';
@@ -57,10 +56,11 @@ interface VendorTabProps {
   bookedVendorIds?: any[];  // project.vendors entries with status
   expenses?: any[];         // project.expenses for budget filtering
   totalBudget?: number;     // project.totalBudget for fallback filtering
+  weddingDate?: string;
   onStatusChange?: () => void | Promise<void>;
   readOnly?: boolean;
 }
-export default function VendorTab({ vendors = [], bookedVendorIds = [], expenses = [], totalBudget = 0, onStatusChange, readOnly }: VendorTabProps) {
+export default function VendorTab({ vendors = [], bookedVendorIds = [], expenses = [], totalBudget = 0, weddingDate = '', onStatusChange, readOnly }: VendorTabProps) {
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('All');
@@ -69,6 +69,7 @@ export default function VendorTab({ vendors = [], bookedVendorIds = [], expenses
    const [isQuoteModalOpen, setIsQuoteModalOpen] = useState(false);
   const [selectedVendor, setSelectedVendor] = useState<any>(null);
   const [updatingStatus, setUpdatingStatus] = useState<string | null>(null);
+  const [cancelConfirm, setCancelConfirm] = useState<{ vendorId: string; name: string } | null>(null);
   const [localBookedVendorIds, setLocalBookedVendorIds] = useState<any[]>(Array.isArray(bookedVendorIds) ? bookedVendorIds : []);
   const vendorSectionRef = useRef<HTMLDivElement>(null);
   const { user } = useSelector((state: RootState) => state.auth);
@@ -79,6 +80,15 @@ export default function VendorTab({ vendors = [], bookedVendorIds = [], expenses
 
   const safeVendors = Array.isArray(vendors) ? vendors.filter(Boolean) : [];
   const safeExpenses = Array.isArray(expenses) ? expenses.filter(Boolean) : [];
+  const normalizedWeddingDate = React.useMemo(() => {
+    if (!weddingDate) return '';
+    const d = new Date(weddingDate);
+    return isNaN(d.getTime()) ? '' : d.toISOString().split('T')[0];
+  }, [weddingDate]);
+  const remainingWeddingBudget = React.useMemo(() => {
+    const spentSoFar = safeExpenses.reduce((sum: number, e: any) => sum + Number(e?.amount || 0), 0);
+    return Math.max(0, Number(totalBudget || 0) - spentSoFar);
+  }, [safeExpenses, totalBudget]);
 
   // Build status map from project.vendors
   const statusMap: Record<string, { status: string; quotedAmount: number; selectedPackageName?: string; confirmedStart?: string; confirmedEnd?: string }> = {};
@@ -238,6 +248,31 @@ export default function VendorTab({ vendors = [], bookedVendorIds = [], expenses
                             <Typography variant="caption" sx={{ fontWeight: 600 }}>Sent to Vendor Portal</Typography>
                           </Box>
                         )}
+                        {/* Contact info */}
+                        {(vendor.contactPhone || vendor.contactEmail) && (
+                          <Stack direction="column" spacing={0.3} sx={{ mt: 1 }}>
+                            {vendor.contactPhone && (
+                              <Box
+                                component="a"
+                                href={`tel:${vendor.contactPhone}`}
+                                sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: COLORS.accent, textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}
+                              >
+                                <Phone size={12} />
+                                <Typography variant="caption" sx={{ fontWeight: 600 }}>{vendor.contactPhone}</Typography>
+                              </Box>
+                            )}
+                            {vendor.contactEmail && (
+                              <Box
+                                component="a"
+                                href={`mailto:${vendor.contactEmail}`}
+                                sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: COLORS.accent, textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}
+                              >
+                                <Mail size={12} />
+                                <Typography variant="caption" sx={{ fontWeight: 600 }}>{vendor.contactEmail}</Typography>
+                              </Box>
+                            )}
+                          </Stack>
+                        )}
                       </Box>
                       <Tooltip title={entry?.status === 'requested' ? "The vendor has received your request in their portal and will respond with a quote soon." : "Vendor Status"}>
                         <Chip 
@@ -248,16 +283,21 @@ export default function VendorTab({ vendors = [], bookedVendorIds = [], expenses
                       </Tooltip>
                     </Stack>
                     <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
-                      {entry?.status !== 'cancelled' && (
+                      {entry?.status === 'requested' && (
                         <Button
                           size="small"
                           variant="outlined"
                           disabled={updatingStatus === String(vendor._id) || readOnly}
-                          onClick={() => handleStatusChange(String(vendor._id), 'cancelled')}
+                          onClick={() => setCancelConfirm({ vendorId: String(vendor._id), name: vendor.businessName || vendor.name || 'this vendor' })}
                           sx={{ color: COLORS.error, borderColor: COLORS.error, fontSize: '0.75rem', textTransform: 'none', fontWeight: 700 }}
                         >
                           Cancel
                         </Button>
+                      )}
+                      {entry?.status === 'booked' && (
+                        <Typography variant="caption" sx={{ color: COLORS.textSecondary, fontStyle: 'italic', mt: 0.5 }}>
+                          Booking confirmed — contact vendor via phone/email to cancel
+                        </Typography>
                       )}
                     </Stack>
                     {entry?.quotedAmount > 0 && (
@@ -426,21 +466,55 @@ export default function VendorTab({ vendors = [], bookedVendorIds = [], expenses
           packages: selectedVendor.packages || selectedVendor.packageSummary || [],
           packageSummary: selectedVendor.packageSummary || [],
         } : null}
-        weddingDate={(() => {
-          const dVal = user?.weddingProject?.weddingDate || '';
-          if (!dVal) return '';
-          const d = new Date(dVal);
-          return isNaN(d.getTime()) ? '' : d.toISOString().split('T')[0];
-        })()}
+        weddingDate={normalizedWeddingDate}
         userPhone={user?.phone || ''}
         userEmail={user?.email || ''}
         userName={user?.name || user?.firstName || ''}
-        remainingBudget={Math.max(0, totalBudget - localBookedVendorIds.reduce((sum: number, bv: any) => sum + Number(bv?.quotedAmount || 0), 0))}
+        remainingBudget={remainingWeddingBudget}
         onSubmitSuccess={() => {
           setIsQuoteModalOpen(false);
           onStatusChange?.();
         }}
       />
+
+      <Dialog open={!!cancelConfirm} onClose={() => updatingStatus === null && setCancelConfirm(null)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontWeight: 800, color: COLORS.error }}>Cancel Quote Request?</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary">
+            Are you sure you want to cancel your quote request for <strong>{cancelConfirm?.name}</strong>?
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Button onClick={() => setCancelConfirm(null)} disabled={updatingStatus !== null}>No</Button>
+          <Button
+            variant="contained"
+            color="error"
+            disabled={updatingStatus !== null}
+            onClick={async () => {
+              if (!cancelConfirm) return;
+              await handleStatusChange(cancelConfirm.vendorId, 'cancelled');
+              setCancelConfirm(null);
+            }}
+          >
+            Yes, Cancel
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Backdrop
+        open={updatingStatus !== null}
+        sx={{
+          zIndex: (theme) => theme.zIndex.modal + 2,
+          backdropFilter: 'blur(5px)',
+          backgroundColor: 'rgba(20,20,20,0.25)',
+          color: '#fff',
+          flexDirection: 'column',
+          gap: 1,
+        }}
+      >
+        <CircularProgress color="inherit" />
+        <Typography variant="body2" sx={{ fontWeight: 600 }}>Updating quote request...</Typography>
+      </Backdrop>
     </Box>
   );
 }
