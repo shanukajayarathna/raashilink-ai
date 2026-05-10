@@ -7,23 +7,9 @@ import { getRealtimePlanetarySnapshot } from './realtimeAstro.service.js';
 const SINHALA_UNICODE_RE = /[\u0D80-\u0DFF]/;
 const TAMIL_UNICODE_RE = /[\u0B80-\u0BFF]/;
 
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-3.5-turbo';
-const GROQ_API_KEY = process.env.GROQ_API_KEY;
-const GROQ_MODEL = process.env.GROQ_MODEL;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
 const AI_PROVIDER = (process.env.AI_PROVIDER || 'auto').toLowerCase();
-
-let _openAiClient = null;
-function getOpenAiClient() {
-  if (_openAiClient) return _openAiClient;
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (apiKey) {
-    _openAiClient = new OpenAI({ apiKey });
-  }
-  return _openAiClient;
-}
 
 let _groqClient = null;
 function getGroqClient() {
@@ -198,15 +184,12 @@ function buildUserPrompt(message, language) {
 function getActiveProvider() {
   const provider = (process.env.AI_PROVIDER || 'auto').toLowerCase();
   const hasGemini = !!process.env.GEMINI_API_KEY;
-  const hasOpenAi = !!process.env.OPENAI_API_KEY;
   const hasGroq = !!process.env.GROQ_API_KEY;
 
   if (provider === 'gemini') return hasGemini ? 'gemini' : 'fallback';
-  if (provider === 'openai') return hasOpenAi ? 'openai' : 'fallback';
   if (provider === 'groq') return hasGroq ? 'groq' : 'fallback';
   if (hasGemini) return 'gemini';
   if (hasGroq) return 'groq';
-  if (hasOpenAi) return 'openai';
   return 'fallback';
 }
 
@@ -221,32 +204,6 @@ function buildGeminiTranscript(systemPrompt, history = [], userMessage = '', lan
 
   const base = systemPrompt || SYSTEM_PROMPTS[language] || SYSTEM_PROMPTS.en;
   return `${base}\n\nConversation history:\n${renderedHistory}\n\nUser: ${userMessage}\nAssistant:`;
-}
-
-async function generateOpenAIReply({ user, message, language }) {
-  if (!OPENAI_API_KEY) {
-    throw new Error('OpenAI API key not configured');
-  }
-
-  const payload = {
-    model: OPENAI_MODEL,
-    messages: [
-      { role: 'system', content: buildSystemPrompt(user, language) },
-      { role: 'user', content: buildUserPrompt(message, language) },
-    ],
-    temperature: 0.8,
-    max_tokens: 500,
-  };
-
-  const response = await axios.post('https://api.openai.com/v1/chat/completions', payload, {
-    headers: {
-      Authorization: `Bearer ${OPENAI_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    timeout: 30000,
-  });
-
-  return response.data?.choices?.[0]?.message?.content?.trim() || '';
 }
 
 async function generateGroqReply({ user, message, language }) {
@@ -377,26 +334,35 @@ export async function generateAssistantReply({ user, message, language = 'en' })
     const maybeLocal = buildLocalHoroscopeAnswer({ user, message, language });
     if (maybeLocal) return maybeLocal;
 
-    const provider = getActiveProvider();
-
-    if (provider === 'openai') {
-      return await generateOpenAIReply({ user, message, language });
+    // Ordered list of providers to try: Gemini then Groq
+    const providers = ['gemini', 'groq'];
+    
+    const forced = (process.env.AI_PROVIDER || '').toLowerCase();
+    if (forced && providers.includes(forced)) {
+      providers.splice(providers.indexOf(forced), 1);
+      providers.unshift(forced);
     }
 
-    if (provider === 'groq') {
-      return await generateGroqReply({ user, message, language });
-    }
-
-    if (provider === 'gemini') {
-      return await generateGeminiReply({ user, message, language });
+    for (const provider of providers) {
+      try {
+        if (provider === 'gemini' && process.env.GEMINI_API_KEY) {
+          return await generateGeminiReply({ user, message, language });
+        }
+        if (provider === 'groq' && process.env.GROQ_API_KEY) {
+          return await generateGroqReply({ user, message, language });
+        }
+      } catch (err) {
+        logger.warn(`AI Provider ${provider} failed or out of credits. Falling back...`, { 
+          error: err.message,
+          user: user?._id 
+        });
+        continue; 
+      }
     }
 
     return fallbackReply(user, language);
   } catch (error) {
-    logger.error('Assistant service failed', {
-      message: error.message,
-      provider: getActiveProvider(),
-    });
+    logger.error('Critical failure in generateAssistantReply', { error: error.message });
     return fallbackReply(user, language);
   }
 }
@@ -450,52 +416,6 @@ function buildLocalHoroscopeAnswer({ user, message, language }) {
   return parts.join(' ');
 }
 
-async function streamOpenAiChat(systemPrompt, history, userMessage, language = 'en', res) {
-  const client = getOpenAiClient();
-  if (!client) {
-    throw new Error('OpenAI client not initialized');
-  }
-
-  try {
-    const trimmedHistory = history.slice(-12);
-    const messages = [
-      { role: 'system', content: systemPrompt || SYSTEM_PROMPTS[language] || SYSTEM_PROMPTS.en },
-      ...trimmedHistory,
-      { role: 'user', content: userMessage }
-    ];
-
-    setSseHeaders(res);
-
-    const stream = await client.chat.completions.create({
-      model: OPENAI_MODEL,
-      messages,
-      max_tokens: 400,
-      temperature: 0.7,
-      stream: true
-    });
-
-    for await (const chunk of stream) {
-      const content = chunk.choices[0]?.delta?.content;
-      if (content) {
-        res.write(`data: ${content}\n\n`);
-      }
-    }
-
-    res.write('data: [DONE]\n\n');
-    res.end();
-  } catch (error) {
-    logger.error('Stream chat failed', { message: error.message });
-    if (!res.headersSent) {
-      res.status(500).json({
-        success: false,
-        message: 'Stream failed: ' + error.message
-      });
-    } else {
-      res.end();
-    }
-  }
-}
-
 async function streamGeminiChat(systemPrompt, history, userMessage, language = 'en', res) {
   const client = getGeminiClient();
   if (!client) {
@@ -541,9 +461,85 @@ async function streamGeminiChat(systemPrompt, history, userMessage, language = '
   }
 }
 
-async function streamChat({ user, history, userMessage, language = 'en', res }) {
-  const provider = getActiveProvider();
+async function streamChatWithFallback({ user, history, userMessage, language, res }) {
+  const providers = ['gemini', 'groq'];
+  const forced = (process.env.AI_PROVIDER || '').toLowerCase();
+  if (forced && providers.includes(forced)) {
+    providers.splice(providers.indexOf(forced), 1);
+    providers.unshift(forced);
+  }
 
+  const systemPrompt = buildSystemPrompt(user, language);
+
+  for (const provider of providers) {
+    try {
+      if (provider === 'gemini' && process.env.GEMINI_API_KEY) {
+        return await streamGeminiChat(systemPrompt, Array.isArray(history) ? history : [], userMessage, language, res);
+      }
+      if (provider === 'groq' && process.env.GROQ_API_KEY) {
+        const client = getGroqClient();
+        if (!client) continue;
+
+        if (language === 'si' || language === 'ta') {
+          setSseHeaders(res);
+          const fullText = await generateGroqReply({ user, message: userMessage, language });
+          if (fullText) {
+            const chunkSize = 700;
+            for (let i = 0; i < fullText.length; i += chunkSize) {
+              res.write(`data: ${fullText.slice(i, i + chunkSize)}\n\n`);
+            }
+          }
+          res.write('data: [DONE]\n\n');
+          res.end();
+          return;
+        }
+
+        // Default to Groq streaming if not Sinhala/Tamil
+        const trimmedHistory = (Array.isArray(history) ? history : []).slice(-12);
+        const messages = [
+          { role: 'system', content: systemPrompt },
+          ...trimmedHistory,
+          { role: 'user', content: userMessage },
+        ];
+
+        setSseHeaders(res);
+        const stream = await client.chat.completions.create({
+          model: getGroqModel(),
+          messages,
+          max_tokens: 600,
+          temperature: 0.7,
+          stream: true,
+        });
+
+        for await (const chunk of stream) {
+          const content = chunk.choices[0]?.delta?.content;
+          if (content) res.write(`data: ${content}\n\n`);
+        }
+
+        res.write('data: [DONE]\n\n');
+        res.end();
+        return;
+      }
+    } catch (err) {
+      if (res.headersSent && !res.writableEnded) {
+        logger.error(`Streaming failed mid-request for ${provider}`, { error: err.message });
+        res.end();
+        return;
+      }
+      logger.warn(`Streaming AI Provider ${provider} failed. Falling back...`, { error: err.message });
+      continue;
+    }
+  }
+
+  if (!res.headersSent) {
+    setSseHeaders(res);
+    res.write(`data: ${fallbackReply(user, language)}\n\n`);
+    res.write('data: [DONE]\n\n');
+    res.end();
+  }
+}
+
+export async function streamChat({ user, history, userMessage, language = 'en', res }) {
   const maybeLocal = buildLocalHoroscopeAnswer({ user, message: userMessage, language });
   if (maybeLocal) {
     setSseHeaders(res);
@@ -553,77 +549,7 @@ async function streamChat({ user, history, userMessage, language = 'en', res }) 
     return;
   }
 
-  if (provider === 'gemini') {
-    const systemPrompt = buildSystemPrompt(user, language);
-    return streamGeminiChat(systemPrompt, Array.isArray(history) ? history : [], userMessage, language, res);
-  }
-
-  if (provider === 'openai') {
-    const systemPrompt = buildSystemPrompt(user, language);
-    return streamOpenAiChat(systemPrompt, Array.isArray(history) ? history : [], userMessage, language, res);
-  }
-
-  if (provider === 'groq') {
-    const systemPrompt = buildSystemPrompt(user, language);
-    const client = getGroqClient();
-    if (!client) throw new Error('Groq client not initialized');
-
-    try {
-      // For Sinhala/Tamil, avoid partial stream outputs in Latin script by using non-stream + rewrite enforcement.
-      if (language === 'si' || language === 'ta') {
-        setSseHeaders(res);
-        const fullText = await generateGroqReply({ user, message: userMessage, language });
-        if (fullText) {
-          // Send in chunks so proxies/clients don't cut large single SSE frames.
-          const chunkSize = 700;
-          for (let i = 0; i < fullText.length; i += chunkSize) {
-            res.write(`data: ${fullText.slice(i, i + chunkSize)}\n\n`);
-          }
-        }
-        res.write('data: [DONE]\n\n');
-        res.end();
-        return;
-      }
-
-      const trimmedHistory = (Array.isArray(history) ? history : []).slice(-12);
-      const messages = [
-        { role: 'system', content: systemPrompt },
-        ...trimmedHistory,
-        { role: 'user', content: userMessage },
-      ];
-
-      setSseHeaders(res);
-
-      const stream = await client.chat.completions.create({
-        model: getGroqModel(),
-        messages,
-        max_tokens: 600,
-        temperature: 0.7,
-        stream: true,
-      });
-
-      for await (const chunk of stream) {
-        const content = chunk.choices[0]?.delta?.content;
-        if (content) {
-          res.write(`data: ${content}\n\n`);
-        }
-      }
-
-      res.write('data: [DONE]\n\n');
-      res.end();
-      return;
-    } catch (error) {
-      logger.error('Groq stream chat failed', { message: error.message });
-      if (!res.headersSent) {
-        res.status(500).json({ success: false, message: 'Stream failed: ' + error.message });
-      } else {
-        res.end();
-      }
-      return;
-    }
-  }
-
-  throw new Error('No AI provider is configured');
+  return streamChatWithFallback({ user, history, userMessage, language, res });
 }
 
 export default {
