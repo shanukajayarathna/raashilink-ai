@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useMemo } from 'react';
+import React, { Suspense, lazy, useMemo, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Provider, useSelector } from 'react-redux';
 import { Box, CircularProgress, CssBaseline, ThemeProvider } from '@mui/material';
@@ -92,6 +92,16 @@ const AdminProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   return <>{children}</>;
 };
 
+function ScrollToTop() {
+  const { pathname } = useLocation();
+
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [pathname]);
+
+  return null;
+}
+
 function AppShell() {
   const mode = useSelector((state: RootState) => state.ui.theme);
   const theme = useMemo(() => createAppTheme(mode), [mode]);
@@ -100,6 +110,7 @@ function AppShell() {
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <Router>
+        <ScrollToTop />
         <Suspense fallback={<RouteFallback />}>
           <Routes>
             {/* Public Routes */}
