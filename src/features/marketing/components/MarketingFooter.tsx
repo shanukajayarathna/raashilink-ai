@@ -23,20 +23,39 @@ export default function MarketingFooter() {
   ];
 
   return (
-    <Box sx={{ bgcolor: COLORS.cream, pt: { xs: 7, md: 8 }, pb: { xs: 4, md: 5 }, borderTop: '1px solid rgba(0,0,0,0.06)' }}>
+    <Box sx={{ bgcolor: COLORS.cream, pt: { xs: 6, md: 6 }, pb: { xs: 4, md: 4 }, borderTop: '1px solid rgba(0,0,0,0.06)' }}>
       <Container maxWidth="lg">
-        <Grid container spacing={{ xs: 4, md: 5 }} alignItems="flex-start">
+        <Grid 
+          container 
+          spacing={4} 
+          alignItems="flex-start"
+          sx={{ flexWrap: { xs: 'wrap', md: 'nowrap' } }}
+        >
           {/* Brand & Social Column - Left */}
-          <Grid item xs={12} md={3.5}>
+          <Grid xs={12} md={3} sx={{ minWidth: { md: '250px' } }}>
             <Stack spacing={2.25}>
-              <Stack direction="row" spacing={1.5} alignItems="center">
+              <Stack direction="row" spacing={1} alignItems="center" sx={{ position: 'relative', height: 48 }}>
                 <Box
                   component="img"
                   src="/RaashiLink_Logo.png"
                   alt="RaashiLink Logo"
-                  sx={{ width: 64, height: 64, objectFit: 'contain', ml: -1.5 }}
+                  sx={{ 
+                    width: 100, 
+                    height: 100, 
+                    objectFit: 'contain', 
+                    position: 'absolute',
+                    left: -25,
+                    top: '50%',
+                    transform: 'translateY(-50%)'
+                  }}
                 />
-                <Typography variant="h5" sx={{ color: COLORS.primary, fontWeight: 900, letterSpacing: -0.5 }}>
+                <Typography variant="h5" sx={{ 
+                  ml: '50px !important',
+                  color: COLORS.primary, 
+                  fontWeight: 900, 
+                  fontFamily: 'Playfair Display',
+                  letterSpacing: '-0.5px'
+                }}>
                   RaashiLink.AI
                 </Typography>
               </Stack>
@@ -73,10 +92,10 @@ export default function MarketingFooter() {
           </Grid>
 
           {/* Links Section - Middle */}
-          <Grid item xs={12} md={4.5}>
-            <Grid container spacing={2} justifyContent="flex-start">
+          <Grid xs={12} md={4.5} sx={{ minWidth: { md: '300px' } }}>
+            <Grid container spacing={4} justifyContent="flex-start">
               {/* Platform Links */}
-              <Grid item xs={6}>
+              <Grid xs={6}>
                 <Typography variant="subtitle2" sx={{ fontWeight: 900, color: COLORS.textPrimary, mb: 2, display: 'block', letterSpacing: 1, textTransform: 'uppercase' }}>
                   Platform
                 </Typography>
@@ -106,14 +125,15 @@ export default function MarketingFooter() {
               </Grid>
 
               {/* Company Links */}
-              <Grid item xs={6}>
+              <Grid xs={6}>
                 <Typography variant="subtitle2" sx={{ fontWeight: 900, color: COLORS.textPrimary, mb: 2, display: 'block', letterSpacing: 1, textTransform: 'uppercase' }}>
                   Company
                 </Typography>
                 <Stack spacing={1.5}>
                   {[
-                    { label: 'Find a Match', path: '/register' },
-                    { label: 'Vendor Sign Up', path: '/register' },
+                    { label: 'Find a Match', path: '/register?role=partner' },
+                    { label: 'Vendor Sign Up', path: '/register?role=vendor' },
+                    { label: 'Horoscope Seeker', path: '/register?role=horoscope_seeker' },
                     { label: 'Login', path: '/login' }
                   ].map((link) => (
                     <Typography 
@@ -138,8 +158,8 @@ export default function MarketingFooter() {
           </Grid>
 
           {/* Newsletter Column - Right */}
-          <Grid item xs={12} md={4} sx={{ display: 'flex', justifyContent: { xs: 'flex-start', md: 'flex-end' } }}>
-            <Box sx={{ width: '100%', maxWidth: 380, bgcolor: 'rgba(139,26,46,0.04)', p: 3, borderRadius: '20px', border: '1px solid rgba(139,26,46,0.08)' }}>
+          <Grid xs={12} md={4.5} sx={{ display: 'flex', justifyContent: { xs: 'flex-start', md: 'flex-end' }, minWidth: { md: '350px' } }}>
+            <Box sx={{ width: '100%', bgcolor: 'rgba(139,26,46,0.04)', p: 3, borderRadius: '20px', border: '1px solid rgba(139,26,46,0.08)' }}>
               <Typography variant="subtitle1" sx={{ fontWeight: 900, color: COLORS.primary, mb: 1, letterSpacing: -0.5 }}>
                 Stay Updated
               </Typography>
@@ -185,7 +205,7 @@ export default function MarketingFooter() {
           </Grid>
         </Grid>
 
-        <Divider sx={{ my: { xs: 4, md: 5 }, opacity: 0.08 }} />
+        <Divider sx={{ my: { xs: 3, md: 3.5 }, opacity: 0.08 }} />
 
         <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems="center" spacing={2}>
           <Typography variant="caption" sx={{ color: COLORS.textSecondary, fontWeight: 500 }}>
