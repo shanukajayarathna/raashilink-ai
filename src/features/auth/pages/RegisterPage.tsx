@@ -142,51 +142,59 @@ const RegisterPage = () => {
   const [errorDetails, setErrorDetails] = useState<string[]>([]);
   const [fieldErrors, setFieldErrors] = useState<{[key: string]: string}>({});
 
-    // Form Data
-    const [formData, setFormData] = useState({
-      // Step 1
-      role: isHoroscopeOnlyPath ? 'horoscope_seeker' : '',
-      // Step 2
-      firstName: '',
-      lastName: '',
-      gender: '',
-      seekingGender: '',
-      email: '',
-      phone: '',
-      password: '',
-      confirmPassword: '',
-      profilePic: null as string | null,
-      // Role Specific
-      partnerName: '',
-      weddingDate: '',
-      budget: '',
-      businessName: '',
-      businessCategory: '',
-      portfolioUrl: '',
-      businessRegistrationNumber: '',
-      socialLinks: {
-        facebook: '',
-        instagram: '',
-        linkedin: '',
-        twitter: '',
-        website: '',
-      },
-      documents: [] as Array<{ type: string; url: string; fileName: string }>,
-      // Step 3 (Partner only)
-      dob: '',
-      tob: '',
-      pob: '',
-      unknownTime: false,
-      // Step 4 (Partner only)
-      personality: [3, 3, 3, 3, 3, 3, 3, 3, 3, 3],
-      // Final Step
-      visibility: 'Everyone',
-      religion: '',
-      ethnicity: '',
-      locationRadius: 50,
-      terms: false,
-      otp: ['', '', '', '', '', '']
-    });
+  const [formData, setFormData] = useState({
+    // Step 1
+    role: isHoroscopeOnlyPath ? 'horoscope_seeker' : '',
+    // Step 2
+    firstName: '',
+    lastName: '',
+    gender: '',
+    seekingGender: '',
+    email: '',
+    phone: '',
+    password: '',
+    confirmPassword: '',
+    profilePic: null as string | null,
+    // Role Specific
+    partnerName: '',
+    weddingDate: '',
+    budget: '',
+    businessName: '',
+    businessCategory: '',
+    portfolioUrl: '',
+    businessRegistrationNumber: '',
+    socialLinks: {
+      facebook: '',
+      instagram: '',
+      linkedin: '',
+      twitter: '',
+      website: '',
+    },
+    documents: [] as Array<{ type: string; url: string; fileName: string }>,
+    // Step 3 (Partner only)
+    dob: '',
+    tob: '',
+    pob: '',
+    unknownTime: false,
+    // Step 4 (Partner only)
+    personality: [3, 3, 3, 3, 3, 3, 3, 3, 3, 3],
+    // Final Step
+    visibility: 'Everyone',
+    religion: '',
+    ethnicity: '',
+    locationRadius: 50,
+    terms: false,
+    otp: ['', '', '', '', '', '']
+  });
+
+  // Handle role selection from URL query params
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const roleParam = params.get('role');
+    if (roleParam && ['partner', 'couple', 'vendor', 'horoscope_seeker'].includes(roleParam)) {
+      setFormData(prev => ({ ...prev, role: roleParam }));
+    }
+  }, [location.search]);
 
   useEffect(() => {
     if (isHoroscopeOnlyPath) {
