@@ -151,8 +151,8 @@ export default function FeaturesPage() {
       <MarketingHeader />
       <PageHero title="Platform Features" />
 
-      <Container sx={{ py: { xs: 10, md: 12 } }}>
-        <Stack spacing={2} sx={{ textAlign: 'center', mb: { xs: 6, md: 8 } }}>
+      <Container sx={{ py: { xs: 6, md: 8 } }}>
+        <Stack spacing={2} sx={{ textAlign: 'center', mb: { xs: 4, md: 5 } }}>
           <Typography variant="overline" sx={{ color: COLORS.secondary, letterSpacing: 2, fontWeight: 800 }}>
             PRODUCT CAPABILITIES
           </Typography>
@@ -167,10 +167,10 @@ export default function FeaturesPage() {
 
         <Grid container spacing={3}>
           {featureList.map((f) => (
-            <Grid item xs={12} sm={6} md={4} key={f.title}>
+            <Grid size={{ xs: 12, sm: 4, md: 4 }} key={f.title} sx={{ display: 'flex' }}>
               <Card
                 sx={{
-                  height: '100%',
+                  flex: 1,
                   borderRadius: '20px',
                   border: '1px solid rgba(0,0,0,0.06)',
                   boxShadow: '0 8px 24px rgba(16,24,40,0.06)',
@@ -178,7 +178,7 @@ export default function FeaturesPage() {
                   '&:hover': { transform: 'translateY(-4px)', boxShadow: '0 16px 30px rgba(16,24,40,0.12)' },
                 }}
               >
-                <CardContent sx={{ p: 3.25, minHeight: 300, display: 'flex', flexDirection: 'column' }}>
+                <CardContent sx={{ p: 3, flex: 1, display: 'flex', flexDirection: 'column' }}>
                   <Box
                     sx={{
                       width: 52,
@@ -214,10 +214,47 @@ export default function FeaturesPage() {
           ))}
         </Grid>
 
-        <Divider sx={{ my: { xs: 8, md: 10 } }} />
+        {/* Sri Lankan Wedding Photo Banner */}
+        <Box
+          sx={{
+            mt: { xs: 5, md: 6 },
+            borderRadius: '24px',
+            overflow: 'hidden',
+            position: 'relative',
+            height: { xs: 200, md: 300 },
+          }}
+        >
+          <Box
+            component="img"
+            src="https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&w=1400&q=80"
+            alt="Sri Lankan wedding ceremony"
+            sx={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+          />
+          <Box
+            sx={{
+              position: 'absolute',
+              inset: 0,
+              background: 'linear-gradient(to right, rgba(139,26,46,0.72) 0%, rgba(139,26,46,0.15) 60%, transparent 100%)',
+              display: 'flex',
+              alignItems: 'center',
+              pl: { xs: 3, md: 6 },
+            }}
+          >
+            <Box sx={{ maxWidth: 400 }}>
+              <Typography variant="h5" sx={{ color: 'white', fontFamily: 'Playfair Display', fontWeight: 700, mb: 1.5, lineHeight: 1.4 }}>
+                Bringing Together Sri Lankan Traditions &amp; Modern Technology
+              </Typography>
+              <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.88)', lineHeight: 1.7 }}>
+                Every feature is designed with Sri Lankan marriage customs, astrology, and cultural expectations at its core.
+              </Typography>
+            </Box>
+          </Box>
+        </Box>
+
+        <Divider sx={{ my: { xs: 4, md: 5 } }} />
 
         <Grid container spacing={4} alignItems="stretch">
-          <Grid item xs={12} md={7}>
+          <Grid size={{ xs: 12, md: 7 }}>
             <Typography variant="h5" sx={{ fontFamily: 'Playfair Display', fontWeight: 700, color: COLORS.primary, mb: 3 }}>
               Platform Standards
             </Typography>
@@ -242,7 +279,7 @@ export default function FeaturesPage() {
             </Stack>
           </Grid>
 
-          <Grid item xs={12} md={5}>
+          <Grid size={{ xs: 12, md: 5 }}>
             <Card
               sx={{
                 borderRadius: '18px',
@@ -275,12 +312,12 @@ export default function FeaturesPage() {
         </Grid>
       </Container>
 
-      <Box sx={{ py: { xs: 10, md: 12 }, bgcolor: COLORS.primary, color: 'white' }}>
+      <Box sx={{ py: { xs: 6, md: 8 }, bgcolor: COLORS.primary, color: 'white' }}>
         <Container maxWidth="md" sx={{ textAlign: 'center' }}>
           <Typography variant="h3" sx={{ fontFamily: 'Playfair Display', mb: 2.5 }}>
             Ready to explore the full journey?
           </Typography>
-          <Typography variant="body1" sx={{ mb: 5, opacity: 0.86 }}>
+          <Typography variant="body1" sx={{ mb: 3, opacity: 0.86 }}>
             Create your account and move from compatibility checks to real conversations and wedding planning,
             all inside one platform.
           </Typography>
