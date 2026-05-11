@@ -50,9 +50,9 @@ export default function AboutUsPage() {
       <MarketingHeader />
       <PageHero title="About Us" />
 
-      <Container sx={{ py: { xs: 10, md: 12 } }}>
+      <Container sx={{ py: { xs: 6, md: 8 } }}>
         <Grid container spacing={{ xs: 4, md: 7 }} alignItems="stretch">
-          <Grid item xs={12} md={6}>
+          <Grid size={{ xs: 12, md: 6 }}>
             <Stack spacing={2}>
               <Typography variant="overline" sx={{ color: COLORS.secondary, fontWeight: 900, letterSpacing: 2 }}>
                 PROJECT CONTEXT
@@ -78,44 +78,51 @@ export default function AboutUsPage() {
             </Stack>
           </Grid>
 
-          <Grid item xs={12} md={6}>
-            <Card sx={{ borderRadius: '24px', border: '1px solid rgba(0,0,0,0.06)', boxShadow: '0 12px 30px rgba(16,24,40,0.08)', height: '100%' }}>
-              <CardContent sx={{ p: { xs: 3, md: 4 }, height: '100%' }}>
-                <Typography variant="h6" sx={{ fontWeight: 800, color: COLORS.primary, mb: 2 }}>
-                  Project Statement
-                </Typography>
-                <Typography variant="body2" sx={{ color: COLORS.textSecondary, lineHeight: 1.8, mb: 2 }}>
-                  RaashiLink.AI demonstrates how data-driven recommendations, secure communication, and cultural logic
-                  can be combined into a coherent digital journey for modern Sri Lankan users.
-                </Typography>
-                <Divider sx={{ my: 2 }} />
-                <Stack spacing={1.5}>
-                  <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
-                    • Developed by: KGST Jayarathna
+          <Grid size={{ xs: 12, md: 6 }}>
+            <Box sx={{ borderRadius: '24px', overflow: 'hidden', height: { xs: 260, md: '100%' }, minHeight: { md: 380 }, position: 'relative' }}>
+              <Box
+                component="img"
+                src="https://images.unsplash.com/photo-1606800052052-a08af7148866?auto=format&fit=crop&w=900&q=80"
+                alt="Traditional Sri Lankan wedding decorations"
+                sx={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+              />
+              <Box
+                sx={{
+                  position: 'absolute',
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  background: 'linear-gradient(to top, rgba(139,26,46,0.82) 0%, transparent 100%)',
+                  p: { xs: 2.5, md: 3 },
+                }}
+              >
+                <Stack spacing={0.75}>
+                  <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.9)', fontWeight: 700 }}>
+                    Developed by: KGST Jayarathna
                   </Typography>
-                  <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
-                    • Supervisor: Ms. Sanuli Weerasinghe
+                  <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.9)', fontWeight: 700 }}>
+                    Supervisor: Ms. Sanuli Weerasinghe
                   </Typography>
-                  <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
-                    • Domain support: Horoscope specialists (Horana)
+                  <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.9)', fontWeight: 700 }}>
+                    Domain support: Horoscope specialists (Horana)
                   </Typography>
                 </Stack>
-              </CardContent>
-            </Card>
+              </Box>
+            </Box>
           </Grid>
         </Grid>
 
-        <Divider sx={{ my: { xs: 8, md: 10 } }} />
+        <Divider sx={{ my: { xs: 4, md: 5 } }} />
 
-        <Typography variant="h4" sx={{ textAlign: 'center', fontFamily: 'Playfair Display', fontWeight: 700, color: COLORS.primary, mb: 6 }}>
+        <Typography variant="h4" sx={{ textAlign: 'center', fontFamily: 'Playfair Display', fontWeight: 700, color: COLORS.primary, mb: 4 }}>
           Core Principles
         </Typography>
 
         <Grid container spacing={3} alignItems="stretch">
           {values.map((value) => (
-            <Grid item xs={12} md={4} key={value.title}>
-              <Card sx={{ borderRadius: '20px', border: '1px solid rgba(0,0,0,0.06)', boxShadow: '0 8px 22px rgba(16,24,40,0.06)', height: '100%' }}>
-                <CardContent sx={{ p: 3.2, minHeight: 220, display: 'flex', flexDirection: 'column' }}>
+            <Grid size={{ xs: 12, md: 4 }} key={value.title} sx={{ display: 'flex' }}>
+              <Card sx={{ flex: 1, borderRadius: '20px', border: '1px solid rgba(0,0,0,0.06)', boxShadow: '0 8px 22px rgba(16,24,40,0.06)' }}>
+                <CardContent sx={{ p: 3.2, display: 'flex', flexDirection: 'column' }}>
                   <Typography variant="h6" sx={{ fontWeight: 800, color: COLORS.primary, mb: 1.25 }}>
                     {value.title}
                   </Typography>
@@ -127,6 +134,31 @@ export default function AboutUsPage() {
             </Grid>
           ))}
         </Grid>
+
+        {/* Sri Lankan Wedding Visual */}
+        <Box sx={{ mt: { xs: 4, md: 5 }, borderRadius: '24px', overflow: 'hidden', position: 'relative', height: { xs: 180, md: 240 } }}>
+          <Box
+            component="img"
+            src="https://images.unsplash.com/photo-1465495976277-4387d4b0b4c6?auto=format&fit=crop&w=1400&q=80"
+            alt="Sri Lankan wedding flowers and ceremony"
+            sx={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+          />
+          <Box
+            sx={{
+              position: 'absolute',
+              inset: 0,
+              background: 'rgba(139,26,46,0.45)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              textAlign: 'center',
+            }}
+          >
+            <Typography variant="h5" sx={{ color: 'white', fontFamily: 'Playfair Display', fontWeight: 700, px: 3, maxWidth: 600, lineHeight: 1.5 }}>
+              Rooted in Sri Lankan Culture, Built for the Digital Generation
+            </Typography>
+          </Box>
+        </Box>
       </Container>
 
       <MarketingFooter />
