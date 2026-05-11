@@ -55,25 +55,44 @@ export default function HowItWorksPage() {
       <MarketingHeader />
       <PageHero title="How It Works" />
 
-      <Container sx={{ py: { xs: 10, md: 12 } }}>
-        <Stack spacing={2} sx={{ textAlign: 'center', mb: { xs: 6, md: 8 } }}>
-          <Typography variant="overline" sx={{ color: COLORS.secondary, letterSpacing: 2, fontWeight: 800 }}>
-            END-TO-END FLOW
-          </Typography>
-          <Typography variant="h4" sx={{ fontFamily: 'Playfair Display', fontWeight: 700, color: COLORS.primary }}>
-            From First Match To Wedding Execution
-          </Typography>
-          <Typography variant="body1" sx={{ color: COLORS.textSecondary, maxWidth: 860, mx: 'auto' }}>
-            RaashiLink.AI guides users through a practical sequence: discover compatibility, build trust, collaborate,
-            and execute wedding decisions with less friction.
-          </Typography>
-        </Stack>
+      <Container sx={{ py: { xs: 6, md: 8 } }}>
+        {/* Sri Lankan Wedding Visual Intro */}
+        <Grid container spacing={4} alignItems="center" sx={{ mb: { xs: 4, md: 6 } }}>
+          <Grid size={{ xs: 12, md: 6 }}>
+            <Box sx={{ borderRadius: '24px', overflow: 'hidden', height: { xs: 240, md: 380 } }}>
+              <Box
+                component="img"
+                src="https://images.unsplash.com/photo-1583939003579-730e3918a45a?auto=format&fit=crop&w=800&q=80"
+                alt="Traditional Sri Lankan wedding ceremony"
+                sx={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+              />
+            </Box>
+          </Grid>
+          <Grid size={{ xs: 12, md: 6 }}>
+            <Stack spacing={2}>
+              <Typography variant="overline" sx={{ color: COLORS.secondary, letterSpacing: 2, fontWeight: 800 }}>
+                END-TO-END FLOW
+              </Typography>
+              <Typography variant="h4" sx={{ fontFamily: 'Playfair Display', fontWeight: 700, color: COLORS.primary }}>
+                From First Match To Wedding Execution
+              </Typography>
+              <Typography variant="body1" sx={{ color: COLORS.textSecondary, lineHeight: 1.85 }}>
+                RaashiLink.AI guides users through a practical sequence: discover compatibility, build trust, collaborate,
+                and execute wedding decisions with less friction.
+              </Typography>
+              <Typography variant="body1" sx={{ color: COLORS.textSecondary, lineHeight: 1.85 }}>
+                Designed specifically for Sri Lankan users, the platform integrates horoscope compatibility, AI recommendations,
+                and cultural traditions into every step of the journey.
+              </Typography>
+            </Stack>
+          </Grid>
+        </Grid>
 
         <Grid container spacing={3}>
           {steps.map((step, idx) => (
-            <Grid item xs={12} md={6} key={step.title}>
-              <Card sx={{ height: '100%', borderRadius: '20px', border: '1px solid rgba(0,0,0,0.06)', boxShadow: '0 8px 24px rgba(16,24,40,0.06)' }}>
-                <CardContent sx={{ p: 3.25, height: '100%', display: 'flex', gap: 2 }}>
+            <Grid size={{ xs: 12, md: 6 }} key={step.title} sx={{ display: 'flex' }}>
+              <Card sx={{ flex: 1, borderRadius: '20px', border: '1px solid rgba(0,0,0,0.06)', boxShadow: '0 8px 24px rgba(16,24,40,0.06)' }}>
+                <CardContent sx={{ p: 3, flex: 1, display: 'flex', gap: 2 }}>
                   <Box
                     sx={{
                       width: 46,
@@ -106,7 +125,7 @@ export default function HowItWorksPage() {
           ))}
         </Grid>
 
-        <Box sx={{ mt: { xs: 8, md: 10 }, p: { xs: 3, md: 4 }, bgcolor: COLORS.cream, borderRadius: '20px', border: '1px solid rgba(0,0,0,0.05)' }}>
+        <Box sx={{ mt: { xs: 4, md: 5 }, p: { xs: 3, md: 4 }, bgcolor: COLORS.cream, borderRadius: '20px', border: '1px solid rgba(0,0,0,0.05)' }}>
           <Typography variant="h6" sx={{ fontWeight: 800, mb: 1, color: COLORS.primary }}>
             Why this workflow works
           </Typography>
@@ -116,7 +135,7 @@ export default function HowItWorksPage() {
           </Typography>
         </Box>
 
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} justifyContent="center" sx={{ mt: 6 }}>
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} justifyContent="center" sx={{ mt: 4 }}>
           <Button component={Link} to="/register" variant="contained" sx={{ bgcolor: COLORS.secondary, color: COLORS.primary, fontWeight: 800, px: 5, py: 1.3, borderRadius: '28px' }}>
             Start Your Journey
           </Button>
