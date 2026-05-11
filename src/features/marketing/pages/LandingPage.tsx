@@ -202,6 +202,7 @@ const FeatureShowcase = () => {
     {
       title: "AI Horoscope Engine",
       description: "Advanced Vedic algorithms calculating birth charts with precision.",
+      path: '/features',
       component: (
         <Box sx={{ width: '100%', height: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <MotionBox
@@ -230,6 +231,7 @@ const FeatureShowcase = () => {
     {
       title: "Smart Matchmaking",
       description: "Beyond stars — we match based on personality, lifestyle, and shared values.",
+      path: '/how-it-works',
       component: (
         <Box sx={{ width: '100%', height: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <Box sx={{ textAlign: 'center' }}>
@@ -258,6 +260,7 @@ const FeatureShowcase = () => {
     {
       title: "Wedding Planning Hub",
       description: "Manage your budget, checklist, and vendors in one beautiful dashboard.",
+      path: '/features',
       component: (
         <Box sx={{ width: '100%', height: 300 }}>
           <ResponsiveContainer width="100%" height="100%">
@@ -320,12 +323,19 @@ const FeatureShowcase = () => {
                     {features[activeTab].description}
                   </Typography>
                   <Button 
+                    component={Link}
+                    to={features[activeTab].path}
                     variant="outlined" 
                     sx={{ 
                       borderColor: COLORS.primary, 
                       color: COLORS.primary,
                       borderRadius: '24px',
-                      px: 4
+                      px: 4,
+                      fontWeight: 700,
+                      '&:hover': {
+                        bgcolor: COLORS.primary,
+                        color: 'white'
+                      }
                     }}
                   >
                     Learn More
@@ -808,6 +818,8 @@ export default function LandingPage() {
             <CheckCircle sx={{ color: COLORS.secondary }} /> <Typography variant="body2">Zero Commission</Typography>
           </Stack>
           <Button 
+            component={Link}
+            to="/register?role=vendor"
             variant="contained" 
             sx={{ 
               bgcolor: COLORS.secondary, 
@@ -815,7 +827,8 @@ export default function LandingPage() {
               fontWeight: 700, 
               px: 6, 
               py: 2, 
-              borderRadius: '30px' 
+              borderRadius: '30px',
+              '&:hover': { bgcolor: 'white' }
             }}
           >
             Join as Vendor
