@@ -177,6 +177,7 @@ const HoroscopeView = () => {
   const { user } = useSelector((state: RootState) => state.auth);
   const isHoroscopeSeeker = user?.profileType === 'horoscope_seeker' || user?.userType === 'horoscope_seeker';
   const [liveTime, setLiveTime] = useState(() => new Date());
+  const todayDateString = new Date().toISOString().split('T')[0];
   const language = useSelector((state: RootState) => state.ui.language);
   const texts = HOROSCOPE_TEXT[language];
   const { myChart, compatibility, isLoading, isCalculating, error } = useSelector((state: RootState) => state.horoscope);
@@ -213,6 +214,9 @@ const HoroscopeView = () => {
   const [verifying, setVerifying] = useState(false);
   const lastAutoFetchKeyRef = useRef('');
   const compatibilityResultsRef = useRef<HTMLDivElement>(null);
+  const preventTimeWheelChange = (event: React.WheelEvent<HTMLInputElement>) => {
+    event.currentTarget.blur();
+  };
 
   const chartSummary = myChart?.summary;
   const chartDetails = myChart?.details;
@@ -540,6 +544,11 @@ const HoroscopeView = () => {
       return;
     }
 
+    if (birthForm.birthDate >= todayDateString) {
+      setBirthFormError('Birth date must be before today.');
+      return;
+    }
+
     setBirthFormError(null);
     setBirthFeedback(null);
     setIsSavingBirthDetails(true);
@@ -667,6 +676,7 @@ const HoroscopeView = () => {
                 value={birthForm.birthDate}
                 onChange={(event) => setBirthForm((current) => ({ ...current, birthDate: event.target.value }))}
                 InputLabelProps={{ shrink: true }}
+                inputProps={{ max: todayDateString }}
                 fullWidth
               />
 
@@ -693,10 +703,11 @@ const HoroscopeView = () => {
                 value={birthForm.birthTime}
                 onChange={(event) => setBirthForm((current) => ({ ...current, birthTime: event.target.value }))}
                 InputLabelProps={{ shrink: true }}
+                inputProps={{ step: 60, onWheel: preventTimeWheelChange }}
                 disabled={!birthForm.knowsBirthTime}
                 helperText={
                   birthForm.knowsBirthTime
-                    ? texts.enterBirthTimeHelp
+                    ? `${texts.enterBirthTimeHelp} Tip: Use the clock picker or keyboard arrow keys for precise time selection.`
                     : texts.approximateTimeHelp
                 }
                 fullWidth
@@ -2152,6 +2163,7 @@ const HoroscopeView = () => {
               value={birthForm.birthDate}
               onChange={(event) => setBirthForm((current) => ({ ...current, birthDate: event.target.value }))}
               InputLabelProps={{ shrink: true }}
+              inputProps={{ max: todayDateString }}
               fullWidth
             />
 
@@ -2178,10 +2190,11 @@ const HoroscopeView = () => {
               value={birthForm.birthTime}
               onChange={(event) => setBirthForm((current) => ({ ...current, birthTime: event.target.value }))}
               InputLabelProps={{ shrink: true }}
+              inputProps={{ step: 60, onWheel: preventTimeWheelChange }}
               disabled={!birthForm.knowsBirthTime}
               helperText={
                 birthForm.knowsBirthTime
-                  ? texts.enterBirthTimeHelp
+                  ? `${texts.enterBirthTimeHelp} Tip: Use the clock picker or keyboard arrow keys for precise time selection.`
                   : texts.approximateTimeHelp
               }
               fullWidth
