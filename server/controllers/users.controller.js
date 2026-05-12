@@ -39,6 +39,21 @@ function generateOtp() {
   return String(Math.floor(100000 + Math.random() * 900000));
 }
 
+function normalizeIsoDateInput(value) {
+  const dateText = String(value || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateText)) return null;
+
+  const parsed = new Date(`${dateText}T00:00:00.000Z`);
+  if (Number.isNaN(parsed.getTime())) return null;
+  if (parsed.toISOString().split('T')[0] !== dateText) return null;
+
+  return { dateText, date: parsed };
+}
+
+function getTodayIsoDate() {
+  return new Date().toISOString().split('T')[0];
+}
+
 async function createOtp({ identifier, channel, purpose }) {
   const code = generateOtp();
   const codeHash = await bcrypt.hash(code, 10);
@@ -568,12 +583,20 @@ export const updateProfile = asyncHandler(async (req, res) => {
       throw new ApiError(400, 'Birth date and birth place are required to update horoscope details.');
     }
 
+    const parsedBirthDate = normalizeIsoDateInput(birthDate);
+    if (!parsedBirthDate) {
+      throw new ApiError(400, 'Please provide a valid birth date.');
+    }
+    if (parsedBirthDate.dateText >= getTodayIsoDate()) {
+      throw new ApiError(400, 'Birth date must be before today.');
+    }
+
     if (knowsBirthTime && !providedBirthTime) {
       throw new ApiError(400, 'Please provide your birth time or mark it as unknown.');
     }
 
     const placeOfBirth = await resolveBirthPlace(birthPlace);
-    updates['birthData.dateOfBirth'] = new Date(birthDate);
+    updates['birthData.dateOfBirth'] = parsedBirthDate.date;
     updates['birthData.timeOfBirth'] = knowsBirthTime ? providedBirthTime : '12:00';
     updates['birthData.placeOfBirth'] = placeOfBirth;
     updates['birthData.knownBirthTime'] = knowsBirthTime;
