@@ -306,6 +306,10 @@ const RegisterPage = () => {
       : phoneHasInput && !phoneIsValid
         ? 'Enter 9 mobile digits after +94, or type 0771234567'
         : 'Sri Lankan mobile only';
+  const todayDateString = new Date().toISOString().split('T')[0];
+  const preventTimeWheelChange = (event: React.WheelEvent<HTMLInputElement>) => {
+    event.currentTarget.blur();
+  };
 
   const handleProfilePicChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -440,6 +444,11 @@ const RegisterPage = () => {
         newFieldErrors.dob = 'Required';
         return 'Date of birth is required.';
       }
+      if (formData.dob >= todayDateString) {
+        newFieldErrors.dob = 'Must be before today';
+        setFieldErrors(newFieldErrors);
+        return 'Date of birth must be before today.';
+      }
       if (!formData.pob) {
         newFieldErrors.pob = 'Required';
         return 'Place of birth is required.';
@@ -458,6 +467,11 @@ const RegisterPage = () => {
       if (!formData.weddingDate) {
         newFieldErrors.weddingDate = 'Required';
         return 'Wedding date is required.';
+      }
+      if (formData.weddingDate < todayDateString) {
+        newFieldErrors.weddingDate = 'Must be today or later';
+        setFieldErrors(newFieldErrors);
+        return 'Wedding date must be today or a future date.';
       }
     }
 
@@ -878,9 +892,9 @@ const RegisterPage = () => {
       <Grid container spacing={4}>
         <Grid size={{ xs: 12, md: 6 }}>
           <Stack spacing={3}>
-            <TextField fullWidth type="date" label="Date of Birth" InputLabelProps={{ shrink: true }} value={formData.dob} onChange={(e) => setFormData({ ...formData, dob: e.target.value })} InputProps={{ startAdornment: <InputAdornment position="start"><CalendarMonth /></InputAdornment> }} sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} error={!!fieldErrors.dob} helperText={fieldErrors.dob} />
+            <TextField fullWidth type="date" label="Date of Birth" InputLabelProps={{ shrink: true }} value={formData.dob} onChange={(e) => setFormData({ ...formData, dob: e.target.value })} InputProps={{ startAdornment: <InputAdornment position="start"><CalendarMonth /></InputAdornment> }} inputProps={{ max: todayDateString }} sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} error={!!fieldErrors.dob} helperText={fieldErrors.dob} />
             <Box>
-              <TextField fullWidth type="time" label="Time of Birth" disabled={formData.unknownTime} InputLabelProps={{ shrink: true }} value={formData.tob} onChange={(e) => setFormData({ ...formData, tob: e.target.value })} InputProps={{ startAdornment: <InputAdornment position="start"><AccessTime /></InputAdornment> }} sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} error={!!fieldErrors.tob} helperText={fieldErrors.tob} />
+              <TextField fullWidth type="time" label="Time of Birth" disabled={formData.unknownTime} InputLabelProps={{ shrink: true }} value={formData.tob} onChange={(e) => setFormData({ ...formData, tob: e.target.value })} InputProps={{ startAdornment: <InputAdornment position="start"><AccessTime /></InputAdornment> }} inputProps={{ step: 60, onWheel: preventTimeWheelChange }} sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} error={!!fieldErrors.tob} helperText={fieldErrors.tob || 'Tip: Use the clock picker or keyboard arrow keys for precise time selection.'} />
               <FormControlLabel control={<Checkbox checked={formData.unknownTime} onChange={(e) => setFormData({ ...formData, unknownTime: e.target.checked })} />} label="I don't know my exact birth time" />
               {formData.unknownTime && (
                 <Alert severity="warning" sx={{ mt: 1.5, borderRadius: '12px' }}>
@@ -1063,7 +1077,7 @@ const RegisterPage = () => {
           <TextField fullWidth label="Partner's Name" value={formData.partnerName} onChange={(e) => setFormData({ ...formData, partnerName: e.target.value })} sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} error={!!fieldErrors.partnerName} helperText={fieldErrors.partnerName} />
         </Grid>
         <Grid size={{ xs: 12, sm: 6 }}>
-          <TextField fullWidth type="date" label="Planned Wedding Date" InputLabelProps={{ shrink: true }} value={formData.weddingDate} onChange={(e) => setFormData({ ...formData, weddingDate: e.target.value })} sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} error={!!fieldErrors.weddingDate} helperText={fieldErrors.weddingDate} />
+          <TextField fullWidth type="date" label="Planned Wedding Date" InputLabelProps={{ shrink: true }} value={formData.weddingDate} onChange={(e) => setFormData({ ...formData, weddingDate: e.target.value })} inputProps={{ min: todayDateString }} sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} error={!!fieldErrors.weddingDate} helperText={fieldErrors.weddingDate} />
         </Grid>
         <Grid size={{ xs: 12, sm: 6 }}>
           <FormControl fullWidth sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }}>
