@@ -100,6 +100,9 @@ export default function EditProfile() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [birthPlaceSuggestions, setBirthPlaceSuggestions] = useState<string[]>([]);
   const [loadingBirthPlaceSuggestions, setLoadingBirthPlaceSuggestions] = useState(false);
+  const preventTimeWheelChange = (event: React.WheelEvent<HTMLInputElement>) => {
+    event.currentTarget.blur();
+  };
 
   // Contact & security state
   const [contactInfo, setContactInfo] = useState({ email: '', phone: '' });
@@ -538,6 +541,8 @@ export default function EditProfile() {
                     value={formData.birthTime}
                     onChange={(e) => handleChange('birthTime', e.target.value)}
                     InputLabelProps={{ shrink: true }}
+                    inputProps={{ step: 60, onWheel: preventTimeWheelChange }}
+                    helperText="Tip: Use the clock picker or keyboard arrow keys for precise time selection."
                   />
                 </Grid>
                 <Grid size={{ xs: 12, sm: 4 }}>
