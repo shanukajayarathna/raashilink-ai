@@ -14,6 +14,21 @@ function ensureObjectId(id, field) {
   }
 }
 
+function normalizeIsoDateInput(value) {
+  const dateText = String(value || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateText)) return null;
+
+  const parsed = new Date(`${dateText}T00:00:00.000Z`);
+  if (Number.isNaN(parsed.getTime())) return null;
+  if (parsed.toISOString().split('T')[0] !== dateText) return null;
+
+  return { dateText, date: parsed };
+}
+
+function getTodayIsoDate() {
+  return new Date().toISOString().split('T')[0];
+}
+
 function notifyPartner(project, currentUserId, type = null) {
   if (!Array.isArray(project.coupleUserIds) || project.coupleUserIds.length < 2) return;
   const partnerId = project.coupleUserIds.find((id) => String(id) !== String(currentUserId));
@@ -149,9 +164,22 @@ export const getProject = asyncHandler(async (req, res) => {
 export const updateProject = asyncHandler(async (req, res) => {
   const project = await getOrCreateProject(req.user._id);
   const allowed = ['weddingDate', 'venueId', 'totalBudget'];
+  const todayIsoDate = getTodayIsoDate();
 
   for (const key of allowed) {
     if (req.body?.[key] !== undefined) {
+      if (key === 'weddingDate') {
+        const parsedWeddingDate = normalizeIsoDateInput(req.body[key]);
+        if (!parsedWeddingDate) {
+          throw new ApiError(400, 'Please provide a valid wedding date.');
+        }
+        if (parsedWeddingDate.dateText < todayIsoDate) {
+          throw new ApiError(400, 'Wedding date must be today or later.');
+        }
+        project[key] = parsedWeddingDate.date;
+        continue;
+      }
+
       project[key] = req.body[key];
     }
   }
