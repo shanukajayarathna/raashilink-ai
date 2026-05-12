@@ -125,6 +125,7 @@ function buildWeddingDashboardData(project: any, budgetSummary: any, vendorsPayl
 export default function WeddingDashboard() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const todayDateString = new Date().toISOString().split('T')[0];
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -757,13 +758,18 @@ export default function WeddingDashboard() {
             fullWidth type="date" label="Wedding Date" value={setupDate}
             onChange={(e) => setSetupDate(e.target.value)}
             InputLabelProps={{ shrink: true }}
-            inputProps={{ min: new Date().toISOString().split('T')[0] }}
+            inputProps={{ min: todayDateString }}
           />
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setSetupDateOpen(false)} disabled={savingSetup}>Cancel</Button>
           <Button variant="contained" disabled={!setupDate || savingSetup}
             onClick={async () => {
+              if (setupDate < todayDateString) {
+                setError('Wedding date must be today or a future date.');
+                return;
+              }
+
               setGlobalLoading({ open: true, message: 'Saving Wedding Date...' });
               try {
                 await weddingService.updateProject({ weddingDate: setupDate });
