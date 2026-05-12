@@ -139,6 +139,21 @@ function parseJsonArray(value, fallback = []) {
   return fallback;
 }
 
+function normalizeIsoDateInput(value) {
+  const dateText = String(value || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateText)) return null;
+
+  const parsed = new Date(`${dateText}T00:00:00.000Z`);
+  if (Number.isNaN(parsed.getTime())) return null;
+  if (parsed.toISOString().split('T')[0] !== dateText) return null;
+
+  return { dateText, date: parsed };
+}
+
+function getTodayIsoDate() {
+  return new Date().toISOString().split('T')[0];
+}
+
 function normalizeRegistrationPayload(raw = {}) {
   const payload = {
     ...raw,
@@ -223,10 +238,15 @@ async function buildHoroscope(formData) {
     return undefined;
   }
 
+  const parsedBirthDate = normalizeIsoDateInput(formData.dob);
+  if (!parsedBirthDate) {
+    return undefined;
+  }
+
   const placeOfBirth = await resolveBirthPlace(formData.pob);
 
   return {
-    dateOfBirth: new Date(formData.dob),
+    dateOfBirth: parsedBirthDate.date,
     timeOfBirth: formData.unknownTime ? '12:00' : formData.tob || '12:00',
     placeOfBirth,
     knownBirthTime: !formData.unknownTime,
@@ -286,6 +306,7 @@ function buildPersonalInfo(input) {
 
 function validateRegistrationInput(input) {
   const missingFields = [];
+  const todayIsoDate = getTodayIsoDate();
 
   if (!REGISTRATION_ROLES.includes(input.role)) {
     throw new ApiError(400, 'Invalid registration role');
@@ -340,6 +361,14 @@ function validateRegistrationInput(input) {
     if (partnerMissing.length > 0) {
       throw new ApiError(400, 'Birth details are required for partner registration', partnerMissing);
     }
+
+    const parsedDob = normalizeIsoDateInput(input.dob);
+    if (!parsedDob) {
+      throw new ApiError(400, 'Enter a valid date of birth', ['Date of birth format is invalid']);
+    }
+    if (parsedDob.dateText >= todayIsoDate) {
+      throw new ApiError(400, 'Date of birth must be before today', ['Select a birth date before today']);
+    }
   }
 
   if (input.role === 'horoscope_seeker') {
@@ -352,6 +381,14 @@ function validateRegistrationInput(input) {
     if (horoscopeMissing.length > 0) {
       throw new ApiError(400, 'Birth details are required for horoscope seeker registration', horoscopeMissing);
     }
+
+    const parsedDob = normalizeIsoDateInput(input.dob);
+    if (!parsedDob) {
+      throw new ApiError(400, 'Enter a valid date of birth', ['Date of birth format is invalid']);
+    }
+    if (parsedDob.dateText >= todayIsoDate) {
+      throw new ApiError(400, 'Date of birth must be before today', ['Select a birth date before today']);
+    }
   }
 
   if (input.role === 'couple') {
@@ -362,6 +399,14 @@ function validateRegistrationInput(input) {
     }
     if (coupleMissing.length > 0) {
       throw new ApiError(400, 'Wedding details are required for couple registration', coupleMissing);
+    }
+
+    const parsedWeddingDate = normalizeIsoDateInput(input.weddingDate);
+    if (!parsedWeddingDate) {
+      throw new ApiError(400, 'Select a valid wedding date', ['Wedding date format is invalid']);
+    }
+    if (parsedWeddingDate.dateText < todayIsoDate) {
+      throw new ApiError(400, 'Wedding date must be today or later', ['Select today or a future wedding date']);
     }
   }
 
@@ -674,9 +719,9 @@ export const register = asyncHandler(async (req, res) => {
   // Parse and validate weddingDate if provided
   let parsedWeddingDate = undefined;
   if (role === 'couple' && weddingDate) {
-    const dateObj = new Date(weddingDate);
-    if (!isNaN(dateObj.getTime())) {
-      parsedWeddingDate = dateObj;
+    const parsed = normalizeIsoDateInput(weddingDate);
+    if (parsed) {
+      parsedWeddingDate = parsed.date;
     }
   }
 
