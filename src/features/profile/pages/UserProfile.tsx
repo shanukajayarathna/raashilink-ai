@@ -314,6 +314,9 @@ export default function UserProfile() {
   const [loadingLocationSuggestions, setLoadingLocationSuggestions] = useState(false);
   const [birthPlaceSuggestions, setBirthPlaceSuggestions] = useState<string[]>([]);
   const [loadingBirthPlaceSuggestions, setLoadingBirthPlaceSuggestions] = useState(false);
+  const preventTimeWheelChange = (event: React.WheelEvent<HTMLInputElement>) => {
+    event.currentTarget.blur();
+  };
   const [exportingData, setExportingData] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -1593,6 +1596,8 @@ export default function UserProfile() {
                             value={editData.birthTime || ''}
                             onChange={(e) => setEditData({ ...editData, birthTime: e.target.value })}
                             InputLabelProps={{ shrink: true }}
+                            inputProps={{ step: 60, onWheel: preventTimeWheelChange }}
+                            helperText="Tip: Use the clock picker or keyboard arrow keys for precise time selection."
                             sx={{ mt: 0.5 }}
                           />
                         ) : (
