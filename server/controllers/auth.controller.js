@@ -1,5 +1,6 @@
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
+import { OAuth2Client } from 'google-auth-library';
 import User from '../models/User.js';
 import Vendor from '../models/Vendor.js';
 import AuthOtp from '../models/AuthOtp.js';
@@ -9,6 +10,8 @@ import authenticate from '../middleware/auth.js';
 import logger from '../utils/logger.js';
 import { COMMON_SRI_LANKAN_LOCATIONS, resolveBirthPlace, suggestBirthPlaces } from '../utils/birthLocation.js';
 import { storeVendorDocuments } from '../services/vendorDocumentStorage.service.js';
+
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 const REGISTRATION_ROLES = ['partner', 'couple', 'vendor', 'horoscope_seeker'];
 const BIRTH_REQUIRED_ROLES = new Set(['partner', 'horoscope_seeker']);
@@ -224,11 +227,15 @@ function sanitizeUser(user) {
           placeOfBirth: user.birthData.placeOfBirth || null,
         }
       : undefined,
+    horoscopeData: user.horoscopeData || undefined,
+    personality: user.personality || undefined,
+    personalityAnswers: user.personalityAnswers || undefined,
     profilePic,
     photos: profilePic ? [{ url: profilePic, isMain: true }] : [],
     verification: {
       emailVerified: Boolean(user.verification?.emailVerified),
       phoneVerified: Boolean(user.verification?.phoneVerified),
+      hasPassword: Boolean(user.passwordHash),
     },
   };
 }
@@ -317,8 +324,11 @@ function validateRegistrationInput(input) {
   if (!input.lastName?.trim()) missingFields.push('Enter your last name');
   if (!input.email?.trim()) missingFields.push('Enter your email address');
   if (!input.phone?.trim()) missingFields.push('Enter your phone number');
-  if (!input.password) missingFields.push('Create a password');
-  if (!input.confirmPassword) missingFields.push('Confirm your password');
+  // Skip password validation for Google sign-ups unless they explicitly provided a password
+  if (!input.isGoogleSignup || input.password) {
+    if (!input.password && !input.isGoogleSignup) missingFields.push('Create a password');
+    if (input.password && !input.confirmPassword) missingFields.push('Confirm your password');
+  }
 
   if (missingFields.length > 0) {
     throw new ApiError(400, 'Registration details are incomplete.', missingFields);
@@ -334,12 +344,15 @@ function validateRegistrationInput(input) {
     ]);
   }
 
-  if (input.password !== input.confirmPassword) {
-    throw new ApiError(400, 'Passwords do not match', ['Password and confirm password must match']);
-  }
+  // Validate password matching if a password is being set
+  if (!input.isGoogleSignup || input.password) {
+    if (input.password && input.password !== input.confirmPassword) {
+      throw new ApiError(400, 'Passwords do not match', ['Password and confirm password must match']);
+    }
 
-  if (String(input.password).length < 8) {
-    throw new ApiError(400, 'Password must be at least 8 characters', ['Password must be at least 8 characters']);
+    if (input.password && String(input.password).length < 8) {
+      throw new ApiError(400, 'Password must be at least 8 characters', ['Password must be at least 8 characters']);
+    }
   }
 
   if (input.role !== 'horoscope_seeker' && !input.terms) {
@@ -436,19 +449,12 @@ const AUTH_USER_SELECT = [
   'role',
   'userType',
   'profileType',
-  'personalInfo.firstName',
-  'personalInfo.lastName',
-  'personalInfo.phone',
-  'personalInfo.gender',
-  'personalInfo.location',
-  'personalInfo.profilePic',
-  'personalInfo.photos',
-  'birthData.dateOfBirth',
-  'birthData.timeOfBirth',
-  'birthData.placeOfBirth',
-  'birthData.knownBirthTime',
-  'verification.emailVerified',
-  'verification.phoneVerified',
+  'personalInfo',
+  'birthData',
+  'horoscopeData',
+  'personality',
+  'personalityAnswers',
+  'verification',
 ].join(' ');
 
 async function findUserByIdentifier(identifier) {
@@ -595,23 +601,30 @@ export const getBirthPlaceSuggestions = asyncHandler(async (req, res) => {
 });
 
 export const requestRegistrationOtp = asyncHandler(async (req, res) => {
-  const { email, phone } = req.body ?? {};
-  const otpTarget = phone?.trim() ? phone : email;
+  const { email, phone, isGoogleSignup } = req.body ?? {};
+  const normalizedPhone = phone ? normalizePhone(phone) : '';
+  const normalizedEmail = email ? String(email).trim().toLowerCase() : '';
+  const otpTarget = normalizedPhone || normalizedEmail;
 
   if (!otpTarget) {
     throw new ApiError(400, 'Email or phone is required to send OTP');
   }
 
-  const existingEmail = email ? await User.findOne({ email: email.toLowerCase() }).lean() : null;
-  if (existingEmail) {
+  const existingEmail = normalizedEmail ? await User.findOne({ email: normalizedEmail }).lean() : null;
+  if (existingEmail && !isGoogleSignup) {
     throw new ApiError(409, 'An account already exists for this email');
   }
 
-  const normalizedPhone = phone ? normalizePhone(phone) : '';
   const existingPhone = normalizedPhone
     ? await User.findOne({ 'personalInfo.phone': normalizedPhone }).lean()
     : null;
-  if (existingPhone) {
+  const sameGoogleUserPhone = Boolean(
+    isGoogleSignup &&
+    existingEmail &&
+    existingPhone &&
+    String(existingEmail._id) === String(existingPhone._id)
+  );
+  if (existingPhone && !sameGoogleUserPhone) {
     throw new ApiError(409, 'An account already exists for this phone number');
   }
 
@@ -648,7 +661,7 @@ export const register = asyncHandler(async (req, res) => {
     email,
     phone,
     password,
-    profilePic,
+    isGoogleSignup,
     religion,
     ethnicity,
     pob,
@@ -666,7 +679,7 @@ export const register = asyncHandler(async (req, res) => {
   } = payload;
 
   const existingEmail = await User.findOne({ email: email.toLowerCase() });
-  if (existingEmail) {
+  if (existingEmail && !isGoogleSignup) {
     throw new ApiError(409, 'An account already exists for this email');
   }
 
@@ -674,11 +687,17 @@ export const register = asyncHandler(async (req, res) => {
   const existingPhone = normalizedPhone
     ? await User.findOne({ 'personalInfo.phone': normalizedPhone })
     : null;
-  if (existingPhone) {
+  const sameGoogleUserPhone = Boolean(
+    isGoogleSignup &&
+    existingEmail &&
+    existingPhone &&
+    String(existingEmail._id) === String(existingPhone._id)
+  );
+  if (existingPhone && !sameGoogleUserPhone) {
     throw new ApiError(409, 'An account already exists for this phone number');
   }
 
-  const passwordHash = await bcrypt.hash(password, 10);
+  const passwordHash = password ? await bcrypt.hash(password, 10) : null;
   const normalizedRole = role === 'vendor' ? 'vendor' : 'user';
   const normalizedUserType =
     normalizedRole === 'user'
@@ -696,9 +715,8 @@ export const register = asyncHandler(async (req, res) => {
   };
 
   const submittedOtp = Array.isArray(otp) ? otp.join('') : String(otp || '').trim();
-
   if (submittedOtp.length === 6) {
-    const registrationTarget = normalizedPhone || email;
+    const registrationTarget = normalizedPhone || email.toLowerCase();
     const registrationChannel = normalizedPhone ? 'phone' : 'email';
 
     await verifyOtpCode({
@@ -716,20 +734,14 @@ export const register = asyncHandler(async (req, res) => {
     }
   }
 
-  // Parse and validate weddingDate if provided
   let parsedWeddingDate = undefined;
   if (role === 'couple' && weddingDate) {
     const parsed = normalizeIsoDateInput(weddingDate);
-    if (parsed) {
-      parsedWeddingDate = parsed.date;
-    }
+    if (parsed) parsedWeddingDate = parsed.date;
   }
 
   const normalizedPersonalityAnswers = normalizePersonalityAnswers(personality);
-
-  const user = await User.create({
-    email: email.toLowerCase(),
-    passwordHash,
+  const baseUserUpdate = {
     role: normalizedRole,
     userType: normalizedUserType,
     personalInfo: buildPersonalInfo(payload),
@@ -753,7 +765,14 @@ export const register = asyncHandler(async (req, res) => {
     privacySettings: {
       visibility: visibility || 'Everyone',
     },
-    verification,
+    verification: isGoogleSignup
+      ? {
+          emailVerified: true,
+          emailVerifiedAt: new Date(),
+          phoneVerified: verification.phoneVerified,
+          phoneVerifiedAt: verification.phoneVerifiedAt,
+        }
+      : verification,
     weddingProject:
       role === 'couple'
         ? {
@@ -772,9 +791,28 @@ export const register = asyncHandler(async (req, res) => {
             verificationStatus: 'pending',
           }
         : undefined,
-  });
+  };
 
-  // Create Vendor document if role is vendor
+  let user;
+  if (isGoogleSignup && existingEmail) {
+    user = await User.findByIdAndUpdate(
+      existingEmail._id,
+      {
+        ...baseUserUpdate,
+        passwordHash: passwordHash || existingEmail.passwordHash,
+        onboardingComplete: true,
+      },
+      { new: true }
+    );
+  } else {
+    user = await User.create({
+      email: email.toLowerCase(),
+      passwordHash,
+      ...baseUserUpdate,
+      onboardingComplete: !isGoogleSignup,
+    });
+  }
+
   if (role === 'vendor') {
     const baseApiUrl = `${req.protocol}://${req.get('host')}`;
     const socialLinksObj = {};
@@ -868,10 +906,12 @@ export const login = asyncHandler(async (req, res) => {
   }
 
   let isValid = false;
-  for (const candidate of passwordCandidates) {
-    if (await bcrypt.compare(candidate, user.passwordHash)) {
-      isValid = true;
-      break;
+  if (user.passwordHash) {
+    for (const candidate of passwordCandidates) {
+      if (await bcrypt.compare(candidate, user.passwordHash)) {
+        isValid = true;
+        break;
+      }
     }
   }
 
@@ -987,6 +1027,83 @@ export const resetPassword = asyncHandler(async (req, res) => {
     message: 'Password reset successfully.',
   });
 });
+
+// ─── Google OAuth ─────────────────────────────────────────────────────────────
+
+export const googleAuth = asyncHandler(async (req, res) => {
+  const { credential } = req.body;
+  if (!credential) throw new ApiError(400, 'Google credential is required.');
+
+  const ticket = await googleClient.verifyIdToken({
+    idToken: credential,
+    audience: process.env.GOOGLE_CLIENT_ID,
+  });
+
+  const payload = ticket.getPayload();
+  if (!payload?.email) throw new ApiError(400, 'Invalid Google token.');
+
+  const { sub: googleId, email, given_name: firstName = '', family_name: lastName = '', picture: profilePic = '' } = payload;
+
+  // Find by googleId or email
+  let user = await User.findOne({ $or: [{ googleId }, { email }] });
+
+  if (user) {
+    // Link Google account if not already linked
+    if (!user.googleId) {
+      user.googleId = googleId;
+      await user.save();
+    }
+    const token = buildToken(user);
+    logger.info(`Google login: ${email}`);
+    return res.status(200).json({
+      success: true,
+      message: 'Logged in with Google.',
+      data: {
+        token,
+        onboardingComplete: user.onboardingComplete,
+        user: {
+          ...sanitizeUser(user),
+          onboardingComplete: user.onboardingComplete,
+        },
+      },
+    });
+  }
+
+  // New Google user — create with minimal info; onboarding required
+  user = new User({
+    email,
+    googleId,
+    onboardingComplete: false,
+    role: 'user',
+    userType: 'partner',
+    personalInfo: {
+      firstName: firstName || 'User',
+      lastName: lastName || '',
+      profilePic,
+    },
+    verification: { emailVerified: true, emailVerifiedAt: new Date() },
+  });
+  await user.save();
+
+  const token = buildToken(user);
+  logger.info(`New Google signup: ${email}`);
+  res.status(201).json({
+    success: true,
+    message: 'Google sign-up successful. Please complete your profile.',
+    data: {
+      token,
+      onboardingComplete: false,
+      user: {
+        ...sanitizeUser(user),
+        onboardingComplete: false,
+      },
+    },
+  });
+});
+
+// ─── Complete Onboarding (after Google sign-in) ───────────────────────────────
+
+
 
 export default {
   requestRegistrationOtp,

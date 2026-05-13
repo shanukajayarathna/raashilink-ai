@@ -54,7 +54,11 @@ const authService = {
     return response.data?.data || [];
   },
 
-  requestRegistrationOtp: async (payload: any) => {
+  requestRegistrationOtp: async (payload: any): Promise<{
+    success: boolean;
+    message?: string;
+    devOtp?: string;
+  }> => {
     const response = await axiosInstance.post('/auth/request-registration-otp', payload);
     return response.data;
   },
@@ -149,6 +153,17 @@ const authService = {
     const response = await axiosInstance.post('/auth/reset-password', resetData);
     return response.data;
   },
+
+  /**
+   * Sign in / sign up with Google credential (ID token from @react-oauth/google).
+   * @param {string} credential - Google ID token.
+   * @returns {Promise<object>} - { token, onboardingComplete, user }
+   */
+  googleAuth: async (credential: string) => {
+    const response = await axiosInstance.post('/auth/google', { credential });
+    return response.data;
+  },
+
 };
 
 export default authService;

@@ -11,6 +11,7 @@ import {
   refreshToken,
   forgotPassword,
   resetPassword,
+  googleAuth,
 } from '../../controllers/auth.controller.js';
 
 const router = Router();
@@ -25,5 +26,6 @@ router.post('/logout', logout);
 router.post('/refresh-token', ...refreshToken);
 router.post('/forgot-password', forgotPassword);
 router.post('/reset-password', resetPassword);
+router.post('/google', googleAuth);
 
 export default router;

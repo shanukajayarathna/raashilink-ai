@@ -25,10 +25,12 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
-import { setCredentials } from '@/features/auth/store/authSlice';
+import { GoogleLogin } from '@react-oauth/google';
+import { setCredentials, googleLogin } from '@/features/auth/store/authSlice';
 import { setLoading, showToast } from '@/app/store/uiSlice';
 import authService from '@/features/auth/services/authService';
 import MandalaBackground from '@/components/MandalaBackground';
+import { AppDispatch } from '@/app/store/store';
 
 // --- Design Constants ---
 const COLORS = {
@@ -50,7 +52,7 @@ const normalizeLoginPassword = (value: string) => stripInvisibleChars(String(val
 
 const LoginPage = () => {
   const navigate = useNavigate();
-  const dispatch = useDispatch();
+  const dispatch = useDispatch<AppDispatch>();
   
   // Form State
   const [formData, setFormData] = useState({ email: '', password: '' });
@@ -368,22 +370,153 @@ const LoginPage = () => {
                       <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>or</Typography>
                     </Divider>
 
-                    <Button
-                      fullWidth
-                      variant="outlined"
-                      startIcon={<Google />}
-                      disabled
-                      sx={{ 
-                        py: 1.5,
-                        borderRadius: '12px',
-                        borderColor: '#ddd',
-                        color: COLORS.textPrimary,
-                        fontWeight: 600,
-                        '&:hover': { borderColor: COLORS.primary, bgcolor: 'rgba(139,26,46,0.02)' }
-                      }}
-                    >
-                      Google Login Coming Soon
-                    </Button>
+                    <Box sx={{ width: '100%' }}>
+                      <Box
+                        sx={{
+                          position: 'relative',
+                          width: '100%',
+                          height: 52,
+                          borderRadius: '12px',
+                          overflow: 'hidden',
+                          transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+                          '& .google-visual-button': {
+                            transition: 'background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, color 0.2s ease',
+                          },
+                          '& .google-visual-button .MuiButton-startIcon': {
+                            transition: 'transform 0.2s ease',
+                          },
+                          '&:hover': {
+                            transform: 'translateY(-1px)',
+                          },
+                          '&:hover .google-visual-button': {
+                            borderColor: 'rgba(139,26,46,0.55)',
+                            bgcolor: 'rgba(250,247,242,1)',
+                            boxShadow: '0 8px 20px rgba(139,26,46,0.16)',
+                            color: '#6B1424',
+                          },
+                          '&:hover .google-visual-button .MuiButton-startIcon': {
+                            transform: 'scale(1.06)',
+                          },
+                          '&:focus-within .google-visual-button': {
+                            borderColor: 'rgba(139,26,46,0.6)',
+                            boxShadow: '0 0 0 3px rgba(139,26,46,0.14)',
+                          },
+                        }}
+                      >
+                        <Button
+                          className="google-visual-button"
+                          fullWidth
+                          variant="outlined"
+                          startIcon={<Google />}
+                          sx={{
+                            position: 'absolute',
+                            inset: 0,
+                            zIndex: 1,
+                            pointerEvents: 'none',
+                            borderRadius: '12px',
+                            textTransform: 'none',
+                            fontWeight: 700,
+                            borderColor: 'rgba(139,26,46,0.28)',
+                            color: COLORS.primary,
+                            bgcolor: 'rgba(250,247,242,0.95)',
+                            boxShadow: '0 3px 10px rgba(139,26,46,0.08)',
+                            '& .MuiButton-startIcon': {
+                              color: '#DB4437',
+                            },
+                          }}
+                        >
+                          Continue with Google
+                        </Button>
+
+                        <Box
+                          sx={{
+                            position: 'absolute',
+                            inset: 0,
+                            zIndex: 2,
+                            opacity: 0.01,
+                            ...(isLoading ? { pointerEvents: 'none' } : null),
+                            '& > div': {
+                              width: '100% !important',
+                              height: '100%',
+                            },
+                            '& iframe': {
+                              width: '100% !important',
+                              height: '100% !important',
+                            },
+                          }}
+                        >
+                          <GoogleLogin
+                        onSuccess={async (credentialResponse) => {
+                          if (!credentialResponse.credential) return;
+                          dispatch(setLoading(true));
+                          try {
+                            const result = await dispatch(googleLogin(credentialResponse.credential)).unwrap();
+                            
+                            // Wait briefly for auth state to update
+                            await new Promise(resolve => setTimeout(resolve, 300));
+
+                            // Redirect based on onboarding status
+                            if (result.onboardingComplete === false) {
+                              navigate('/register', { 
+                                state: { 
+                                  from: 'google',
+                                  googleData: {
+                                    ...result.user,
+                                    profilePic: result.user?.profilePic || result.user?.personalInfo?.profilePic
+                                  } 
+                                } 
+                              });
+                              return;
+                            }
+
+                            // Redirect to dashboard or role-specific path
+                            const role = result.user?.role;
+                            const userType = result.user?.userType;
+                            const targetPath =
+                              role === 'admin' ? '/admin' :
+                              role === 'vendor' ? '/vendor' :
+                              userType === 'horoscope_seeker' ? '/horoscope' :
+                              '/dashboard';
+                            navigate(targetPath, { replace: true });
+                          } catch (err: any) {
+                            const message = typeof err === 'string' 
+                              ? err 
+                              : err?.message || err?.response?.data?.message || 'Google sign-in failed.';
+                            setError(message);
+                            dispatch(showToast({ type: 'error', message }));
+                            console.error('Google login error:', err);
+                          } finally {
+                            dispatch(setLoading(false));
+                          }
+                        }}
+                        onError={() => {
+                          const message = 'Google sign-in was cancelled or failed.';
+                          setError(message);
+                          dispatch(showToast({ type: 'error', message }));
+                        }}
+                        useOneTap={false}
+                        theme="outline"
+                        size="large"
+                        shape="rectangular"
+                        text="continue_with"
+                        width="100%"
+                        logo_alignment="left"
+                      />
+                        </Box>
+                      </Box>
+
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          display: 'block',
+                          mt: 1,
+                          textAlign: 'center',
+                          color: COLORS.textSecondary,
+                        }}
+                      >
+                        Fast, secure sign-in with your Google account.
+                      </Typography>
+                    </Box>
 
                     <Box sx={{ textAlign: 'center', mt: 2 }}>
                       <Typography variant="body2" sx={{ color: COLORS.textSecondary, mb: 1, fontWeight: 600 }}>

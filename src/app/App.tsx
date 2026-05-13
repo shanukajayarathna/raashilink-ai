@@ -2,6 +2,7 @@ import React, { Suspense, lazy, useMemo, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Provider, useSelector } from 'react-redux';
 import { Box, CircularProgress, CssBaseline, ThemeProvider } from '@mui/material';
+import { GoogleOAuthProvider } from '@react-oauth/google';
 import { store, RootState } from '@/app/store/store';
 const MainLayout = lazy(() => import('@/shared/components/layout/MainLayout'));
 const LandingPage = lazy(() => import('@/features/marketing/pages/LandingPage'));
@@ -119,6 +120,7 @@ function AppShell() {
             <Route path="/register" element={<RegisterPage />} />
             <Route path="/register/horoscope-seeker" element={<RegisterPage />} />
             <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+
             <Route path="/features" element={<FeaturesPage />} />
             <Route path="/how-it-works" element={<HowItWorksPage />} />
             <Route path="/about-us" element={<AboutUsPage />} />
@@ -162,9 +164,11 @@ function AppShell() {
 
 export default function App() {
   return (
-    <Provider store={store}>
-      <AppShell />
-    </Provider>
+    <GoogleOAuthProvider clientId={import.meta.env.VITE_GOOGLE_CLIENT_ID || ''}>
+      <Provider store={store}>
+        <AppShell />
+      </Provider>
+    </GoogleOAuthProvider>
   );
 }
 

@@ -7,6 +7,7 @@ interface AuthState {
   token: string | null;
   role: 'user' | 'vendor' | 'admin' | null;
   isAuthenticated: boolean;
+  onboardingComplete: boolean;
   loading: boolean;
   error: string | null;
 }
@@ -47,6 +48,8 @@ function sanitizeCachedUser(user: any) {
     email: user.email || '',
     phone: user.phone || user.personalInfo?.phone || '',
     role: user.role || null,
+    userType: user.userType || null,
+    onboardingComplete: user.onboardingComplete !== false,
     profileType: user.profileType || null,
     location: user.location || user.personalInfo?.location || 'Sri Lanka',
     age: user.age ?? user.personalInfo?.age ?? null,
@@ -73,6 +76,9 @@ function sanitizeCachedUser(user: any) {
           placeOfBirth: user.birthData.placeOfBirth || null,
         }
       : undefined,
+    horoscopeData: user.horoscopeData || undefined,
+    personality: user.personality || undefined,
+    personalityAnswers: Array.isArray(user.personalityAnswers) ? user.personalityAnswers : undefined,
     ethnicity: user.ethnicity || user.personalInfo?.ethnicity || '',
     height: user.height || user.personalInfo?.height || '',
     profilePic,
@@ -163,6 +169,7 @@ const initialState: AuthState = {
   token: localStorage.getItem('token'),
   role: cachedUser?.role || null,
   isAuthenticated: !!localStorage.getItem('token'),
+  onboardingComplete: cachedUser?.onboardingComplete !== false,
   loading: false,
   error: null,
 };
@@ -183,6 +190,26 @@ export const loginUser = createAsyncThunk(
     }
   }
 );
+
+/**
+ * Async thunk for Google OAuth sign-in.
+ */
+export const googleLogin = createAsyncThunk(
+  'auth/googleLogin',
+  async (credential: string, { rejectWithValue }) => {
+    try {
+      const data = await authService.googleAuth(credential);
+      localStorage.setItem('token', data.data.token);
+      if (data.data.onboardingComplete !== false) {
+        persistCachedUser(data.data.user);
+      }
+      return data.data;
+    } catch (error: any) {
+      return rejectWithValue(error.response?.data?.message || 'Google sign-in failed');
+    }
+  }
+);
+
 
 /**
  * Async thunk for user registration.
@@ -240,7 +267,7 @@ const authSlice = createSlice({
     /**
      * Set user credentials and session.
      */
-    setCredentials: (state, action: PayloadAction<{ user: any; token: string; role: any }>) => {
+    setCredentials: (state, action: PayloadAction<{ user: any; token: string; role: any; onboardingComplete?: boolean }>) => {
       const mergedUser = { ...(state.user || {}), ...(action.payload.user || {}) };
       persistCachedUser(mergedUser);
       const normalizedUser = normalizeUserForState(mergedUser);
@@ -248,6 +275,7 @@ const authSlice = createSlice({
       state.token = action.payload.token;
       state.role = action.payload.role || normalizedUser?.role || null;
       state.isAuthenticated = true;
+      state.onboardingComplete = action.payload.onboardingComplete !== false;
       localStorage.setItem('token', action.payload.token);
     },
     /**
@@ -319,7 +347,26 @@ const authSlice = createSlice({
       .addCase(fetchProfile.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload as string;
-      });
+      })
+      // Google Login
+      .addCase(googleLogin.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(googleLogin.fulfilled, (state, action) => {
+        state.loading = false;
+        state.isAuthenticated = true;
+        state.token = action.payload.token;
+        state.onboardingComplete = action.payload.onboardingComplete !== false;
+        const normalizedUser = normalizeUserForState(action.payload.user);
+        state.user = normalizedUser;
+        state.role = action.payload.user?.role || null;
+      })
+      .addCase(googleLogin.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as string;
+      })
+
   },
 });
 

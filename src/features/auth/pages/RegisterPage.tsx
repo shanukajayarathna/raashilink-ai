@@ -130,6 +130,8 @@ const RegisterPage = () => {
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const cameFromLogin = location.state?.from === 'login';
   const isHoroscopeOnlyPath = location.pathname === '/register/horoscope-seeker';
+  const googleData = (location.state as any)?.from === 'google' ? (location.state as any)?.googleData || null : null;
+  const isGoogleSignup = !!googleData?.email;
   const backTarget = cameFromLogin ? '/login' : '/';
   const backLabel = cameFromLogin ? 'Back to Login' : 'Back to Home';
   
@@ -146,15 +148,15 @@ const RegisterPage = () => {
     // Step 1
     role: isHoroscopeOnlyPath ? 'horoscope_seeker' : '',
     // Step 2
-    firstName: '',
-    lastName: '',
+    firstName: googleData?.firstName || '',
+    lastName: googleData?.lastName || '',
     gender: '',
     seekingGender: '',
-    email: '',
+    email: googleData?.email || '',
     phone: '',
     password: '',
     confirmPassword: '',
-    profilePic: null as string | null,
+    profilePic: googleData?.profilePic || null,
     // Role Specific
     partnerName: '',
     weddingDate: '',
@@ -182,7 +184,6 @@ const RegisterPage = () => {
     visibility: 'Everyone',
     religion: '',
     ethnicity: '',
-    locationRadius: 50,
     terms: false,
     otp: ['', '', '', '', '', '']
   });
@@ -201,6 +202,12 @@ const RegisterPage = () => {
       setFormData((prev) => ({ ...prev, role: 'horoscope_seeker' }));
     }
   }, [isHoroscopeOnlyPath]);
+
+  useEffect(() => {
+    if (!isGoogleSignup) {
+      sessionStorage.removeItem('googleSignupData');
+    }
+  }, [isGoogleSignup]);
 
   const [showPassword, setShowPassword] = useState(false);
   const [selectedProfileImageFile, setSelectedProfileImageFile] = useState<File | null>(null);
@@ -226,12 +233,13 @@ const RegisterPage = () => {
 
       setAvailability((prev) => ({ ...prev, checking: true }));
       try {
+        // For Google signups skip email check (email belongs to their temp user record) but still check phone
         const response = await authService.checkAvailability(
-          formData.email || undefined,
+          isGoogleSignup ? undefined : (formData.email || undefined),
           formData.phone || undefined
         );
         setAvailability({
-          emailAvailable: response?.emailAvailable ?? null,
+          emailAvailable: isGoogleSignup ? null : (response?.emailAvailable ?? null),
           phoneAvailable: response?.phoneAvailable ?? null,
           checking: false,
         });
@@ -406,6 +414,7 @@ const RegisterPage = () => {
         if (!formData.lastName) newFieldErrors.lastName = 'Required';
         if (!formData.email) newFieldErrors.email = 'Required';
         if (!formData.phone) newFieldErrors.phone = 'Required';
+        setFieldErrors(newFieldErrors);
         return 'First name, last name, email, and phone number are required.';
       }
       if (!/\S+@\S+\.\S+/.test(formData.email)) {
@@ -416,8 +425,8 @@ const RegisterPage = () => {
         newFieldErrors.phone = 'Invalid Sri Lankan mobile number';
         return 'Please enter a valid Sri Lankan mobile number.';
       }
-      // Check availability
-      if (availability.emailAvailable === false) {
+      // Check availability — skip for Google signups (email belongs to their temp user record)
+      if (!isGoogleSignup && availability.emailAvailable === false) {
         newFieldErrors.email = 'Already registered';
         return 'This email is already registered. Please use a different email.';
       }
@@ -425,17 +434,23 @@ const RegisterPage = () => {
         newFieldErrors.phone = 'Already registered';
         return 'This phone number is already registered. Please use a different number.';
       }
-      if (!formData.password || formData.password.length < 8) {
-        newFieldErrors.password = 'Must be at least 8 characters';
-        return 'Password must be at least 8 characters.';
+      if (!isGoogleSignup || formData.password) {
+        if (!formData.password && !isGoogleSignup) {
+          newFieldErrors.password = 'Required';
+          return 'Password is required.';
+        }
+        if (formData.password && formData.password.length < 8) {
+          newFieldErrors.password = 'Must be at least 8 characters';
+          return 'Password must be at least 8 characters.';
+        }
+        if (formData.password !== formData.confirmPassword) {
+          newFieldErrors.confirmPassword = 'Passwords do not match';
+          return 'Passwords do not match.';
+        }
       }
       if (formData.role === 'partner' && !formData.gender) {
         newFieldErrors.gender = 'Required for matchmaking';
         return 'Please select your gender.';
-      }
-      if (formData.password !== formData.confirmPassword) {
-        newFieldErrors.confirmPassword = 'Passwords do not match';
-        return 'Passwords do not match.';
       }
     }
 
@@ -508,7 +523,11 @@ const RegisterPage = () => {
   };
 
   const handleSendOtp = async () => {
-    const basicValidation = ['firstName', 'lastName', 'email', 'phone', 'password'].every(
+    const requiredFields = isGoogleSignup 
+      ? ['firstName', 'lastName', 'email', 'phone']
+      : ['firstName', 'lastName', 'email', 'phone', 'password'];
+    
+    const basicValidation = requiredFields.every(
       (field) => Boolean((formData as any)[field])
     );
 
@@ -525,7 +544,9 @@ const RegisterPage = () => {
       const response = await authService.requestRegistrationOtp({
         email: formData.email,
         phone: `+94${normalizedPhoneInput}`,
+        isGoogleSignup,
       });
+
       setOtpRequested(true);
       dispatch(showToast({
         type: 'success',
@@ -550,6 +571,8 @@ const RegisterPage = () => {
     setErrorDetails([]);
     dispatch(setLoading(true));
     try {
+      const otpValue = formData.otp.join('');
+
       // Clean up form data before sending to backend
       const cleanedData: Record<string, unknown> = {
         role: formData.role,
@@ -559,14 +582,18 @@ const RegisterPage = () => {
         seekingGender: formData.seekingGender || undefined,
         email: formData.email.toLowerCase().trim(),
         phone: `+94${normalizedPhoneInput}`,
-        password: formData.password,
-        confirmPassword: formData.confirmPassword,
+        password: isGoogleSignup
+          ? (formData.password ? formData.password : undefined)
+          : formData.password,
+        confirmPassword: isGoogleSignup
+          ? (formData.confirmPassword ? formData.confirmPassword : undefined)
+          : formData.confirmPassword,
         terms: formData.terms,
         visibility: formData.visibility,
         religion: formData.religion.trim(),
         ethnicity: formData.ethnicity.trim(),
-        locationRadius: formData.locationRadius,
         otp: formData.otp,
+        isGoogleSignup: isGoogleSignup,
         ...(formData.profilePic && { profilePic: formData.profilePic }),
       };
 
@@ -763,10 +790,26 @@ const RegisterPage = () => {
 
       <Grid container spacing={3}>
         <Grid size={{ xs: 12, sm: 6 }}>
-          <TextField fullWidth label="First Name" value={formData.firstName} onChange={(e) => setFormData({ ...formData, firstName: e.target.value })} sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} error={!!fieldErrors.firstName} helperText={fieldErrors.firstName} />
+          <TextField 
+            fullWidth 
+            label="First Name" 
+            value={formData.firstName} 
+            onChange={(e) => setFormData({ ...formData, firstName: e.target.value })} 
+            helperText={fieldErrors.firstName}
+            sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} 
+            error={!!fieldErrors.firstName} 
+          />
         </Grid>
         <Grid size={{ xs: 12, sm: 6 }}>
-          <TextField fullWidth label="Last Name" value={formData.lastName} onChange={(e) => setFormData({ ...formData, lastName: e.target.value })} sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} error={!!fieldErrors.lastName} helperText={fieldErrors.lastName} />
+          <TextField 
+            fullWidth 
+            label="Last Name" 
+            value={formData.lastName} 
+            onChange={(e) => setFormData({ ...formData, lastName: e.target.value })} 
+            helperText={fieldErrors.lastName}
+            sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} 
+            error={!!fieldErrors.lastName} 
+          />
         </Grid>
         {formData.role === 'partner' && (
           <Grid size={{ xs: 12, sm: 6 }}>
@@ -809,10 +852,12 @@ const RegisterPage = () => {
             label="Email Address" 
             type="email" 
             value={formData.email} 
-            onChange={(e) => setFormData({ ...formData, email: e.target.value })} 
+            onChange={(e) => !isGoogleSignup && setFormData({ ...formData, email: e.target.value })} 
+            disabled={isGoogleSignup}
             InputProps={{ 
               startAdornment: <InputAdornment position="start"><MailOutline /></InputAdornment>,
-              endAdornment: formData.email && (
+              readOnly: isGoogleSignup,
+              endAdornment: !isGoogleSignup && formData.email && (
                 <InputAdornment position="end">
                   {availability.checking ? (
                     <CircularProgress size={20} />
@@ -826,7 +871,7 @@ const RegisterPage = () => {
             }} 
             sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }}
             error={!!fieldErrors.email}
-            helperText={fieldErrors.email || (availability.emailAvailable === false ? '❌ Already registered' : availability.emailAvailable === true ? '✓ Available' : '')}
+            helperText={isGoogleSignup ? 'From your Google account' : fieldErrors.email}
           />
         </Grid>
         <Grid size={{ xs: 12 }}>
@@ -861,14 +906,44 @@ const RegisterPage = () => {
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 6 }}>
-          <TextField fullWidth label="Password" type={showPassword ? 'text' : 'password'} value={formData.password} onChange={(e) => setFormData({ ...formData, password: e.target.value })} InputProps={{ startAdornment: <InputAdornment position="start"><LockOutlined /></InputAdornment>, endAdornment: <InputAdornment position="end"><IconButton onClick={() => setShowPassword(!showPassword)}>{showPassword ? <VisibilityOff /> : <Visibility />}</IconButton></InputAdornment> }} sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} error={!!fieldErrors.password} helperText={fieldErrors.password} />
+          <TextField 
+            fullWidth 
+            label={isGoogleSignup ? "Password (Optional)" : "Password"} 
+            type={showPassword ? 'text' : 'password'} 
+            value={formData.password} 
+            onChange={(e) => setFormData({ ...formData, password: e.target.value })} 
+            InputProps={{ 
+              startAdornment: <InputAdornment position="start"><LockOutlined /></InputAdornment>, 
+              endAdornment: <InputAdornment position="end"><IconButton onClick={() => setShowPassword(!showPassword)}>{showPassword ? <VisibilityOff /> : <Visibility />}</IconButton></InputAdornment> 
+            }} 
+            sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} 
+            error={!!fieldErrors.password} 
+            helperText={fieldErrors.password || (isGoogleSignup ? 'Optional: Set a password to log in without Google later.' : '')} 
+          />
           <Box sx={{ mt: 1 }}>
             <LinearProgress variant="determinate" value={passwordStrength} sx={{ height: 6, borderRadius: 3, bgcolor: '#eee', '& .MuiLinearProgress-bar': { bgcolor: passwordStrength < 50 ? '#F44336' : passwordStrength < 100 ? '#FFC107' : '#4CAF50' } }} />
             <Typography variant="caption" sx={{ color: COLORS.textSecondary }}>Strength: {passwordStrength < 50 ? 'Weak' : passwordStrength < 100 ? 'Medium' : 'Strong'}</Typography>
           </Box>
         </Grid>
         <Grid size={{ xs: 12, sm: 6 }}>
-          <TextField fullWidth label="Confirm Password" type="password" value={formData.confirmPassword} onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })} InputProps={{ startAdornment: <InputAdornment position="start"><LockOutlined /></InputAdornment>, endAdornment: formData.confirmPassword && ( <InputAdornment position="end"> {passwordMatch ? <CheckCircle sx={{ color: '#4CAF50' }} /> : <HighlightOff sx={{ color: '#F44336' }} />} </InputAdornment> ) }} sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} error={!!fieldErrors.confirmPassword} helperText={fieldErrors.confirmPassword || (formData.confirmPassword ? (passwordMatch ? '✓ Passwords match' : '✗ Passwords do not match') : '')} />
+          <TextField 
+            fullWidth 
+            label={isGoogleSignup ? "Confirm Password (Optional)" : "Confirm Password"} 
+            type="password" 
+            value={formData.confirmPassword} 
+            onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })} 
+            InputProps={{ 
+              startAdornment: <InputAdornment position="start"><LockOutlined /></InputAdornment>, 
+              endAdornment: formData.confirmPassword && ( 
+                <InputAdornment position="end"> 
+                  {passwordMatch ? <CheckCircle sx={{ color: '#4CAF50' }} /> : <HighlightOff sx={{ color: '#F44336' }} />} 
+                </InputAdornment> 
+              ) 
+            }} 
+            sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} 
+            error={!!fieldErrors.confirmPassword} 
+            helperText={fieldErrors.confirmPassword || (formData.confirmPassword ? (passwordMatch ? '✓ Passwords match' : '✗ Passwords do not match') : '')} 
+          />
         </Grid>
       </Grid>
     </MotionBox>
@@ -1337,10 +1412,7 @@ const RegisterPage = () => {
                 <MenuItem key={option} value={option}>{option}</MenuItem>
               ))}
             </TextField>
-            <Box>
-              <Typography variant="caption">Location Radius: {formData.locationRadius}km</Typography>
-              <Slider value={formData.locationRadius} onChange={(_, v) => setFormData({ ...formData, locationRadius: v as number })} min={5} max={200} sx={{ color: COLORS.accent }} />
-            </Box>
+
           </Stack>
         </Grid>
         <Grid size={{ xs: 12, md: 6 }}>
@@ -1447,7 +1519,7 @@ const RegisterPage = () => {
                 </Step>
               ))}
             </Stepper>
-            <LinearProgress variant="determinate" value={((activeStep + 1) / steps.length) * 100} sx={{ mt: 4, height: 4, borderRadius: 2, bgcolor: '#eee', '& .MuiLinearProgress-bar': { bgcolor: COLORS.secondary } }} />
+            <LinearProgress variant="determinate" value={((activeStep + 1) / steps.length) * 100} sx={{ mt: 4, height: 4, borderRadius: 2, bgcolor: 'rgba(139,26,46,0.08)', '& .MuiLinearProgress-bar': { bgcolor: COLORS.secondary } }} />
           </Box>
 
           <AnimatePresence mode="wait">
@@ -1458,7 +1530,7 @@ const RegisterPage = () => {
                 animate={{ opacity: 1, scale: 1 }}
                 sx={{ textAlign: 'center', py: 8 }}
               >
-                <CheckCircle sx={{ fontSize: 80, color: '#4CAF50', mb: 3 }} />
+                <CheckCircle sx={{ fontSize: 80, color: '#388E3C', mb: 3 }} />
                 <Typography variant="h4" sx={{ fontFamily: 'Playfair Display', fontWeight: 700, mb: 2 }}>Registration Complete!</Typography>
                 <Typography variant="body1" sx={{ color: COLORS.textSecondary }}>Welcome to the family. Redirecting you now...</Typography>
               </MotionBox>
@@ -1483,10 +1555,11 @@ const RegisterPage = () => {
                   </Alert>
                 )}
 
-                <Stack 
-                  direction="row" 
-                  spacing={2} 
-                  justifyContent={activeStep === 0 ? "flex-end" : "space-between"} 
+                <Stack
+                  direction={{ xs: 'column', sm: 'row' }}
+                  spacing={2}
+                  justifyContent={activeStep === 0 ? 'flex-end' : 'space-between'}
+                  alignItems={{ xs: 'stretch', sm: 'center' }}
                   sx={{ mt: 8 }}
                 >
                   {activeStep > 0 && (
@@ -1498,6 +1571,40 @@ const RegisterPage = () => {
                     >
                       Back
                     </Button>
+                  )}
+                  {isGoogleSignup && (
+                    <Box
+                      sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 1.5,
+                        px: 2,
+                        py: 1,
+                        borderRadius: '16px',
+                        bgcolor: 'rgba(139,26,46,0.04)',
+                        border: '1px solid rgba(139,26,46,0.15)',
+                        maxWidth: { xs: '100%', sm: 320 },
+                        flex: { xs: '1 1 auto', sm: '0 1 auto' },
+                      }}
+                    >
+                      <Avatar 
+                        src={googleData?.profilePic} 
+                        sx={{ 
+                          width: 28, 
+                          height: 28, 
+                          flexShrink: 0,
+                          border: `1px solid ${COLORS.secondary}`
+                        }} 
+                      />
+                      <Box sx={{ minWidth: 0, lineHeight: 1.2 }}>
+                        <Typography variant="caption" sx={{ display: 'block', fontWeight: 800, color: COLORS.primary, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                          Linked via Google
+                        </Typography>
+                        <Typography variant="caption" sx={{ display: 'block', color: COLORS.textSecondary, fontWeight: 600 }} noWrap>
+                          {googleData?.email}
+                        </Typography>
+                      </Box>
+                    </Box>
                   )}
                   <Button
                     variant="contained"
@@ -1530,7 +1637,7 @@ const RegisterPage = () => {
               startIcon={<ArrowBack />}
               sx={{
                 color: COLORS.textPrimary,
-                borderColor: '#ddd',
+                borderColor: 'rgba(139,26,46,0.15)',
                 borderRadius: '14px',
                 textTransform: 'none',
                 px: 3,
