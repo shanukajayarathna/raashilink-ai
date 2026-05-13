@@ -1206,7 +1206,7 @@ export default function WeddingDashboard() {
           exit={{ opacity: 0, y: -10 }}
           transition={{ duration: 0.35, ease: [0.4, 0, 0.2, 1] }}
         >
-          {activeTab === 0 && <OverviewTab data={weddingData} onSwitchTab={handleSwitchTabFromOverview} project={rawProject} budget={rawBudget} />}
+          {activeTab === 0 && <OverviewTab data={weddingData} onSwitchTab={handleSwitchTabFromOverview} project={rawProject} budget={rawBudget} readOnly={!planningAccessGranted} />}
           {activeTab === 1 && <ChecklistTab readOnly={!planningAccessGranted} checklist={rawProject?.checklist || []} onChecklistChange={(updated) => setRawProject((p: any) => ({ ...p, checklist: updated }))} currentUserId={currentUserId} partnerId={isCoupled ? rawProject?.coupleUserIds?.map((u: any) => String(typeof u === 'object' ? (u?._id || u?.id || '') : u || '')).find((id: string) => id !== currentUserId) : undefined} project={rawProject} budget={rawBudget} couple={weddingData?.couple} setGlobalLoading={setGlobalLoading} />}
           {activeTab === 2 && <VendorTab readOnly={!planningAccessGranted} vendors={rawVendors} bookedVendorIds={rawProject?.vendors || []} expenses={rawProject?.expenses || []} totalBudget={rawProject?.totalBudget || 0} weddingDate={rawProject?.weddingDate || ''} onStatusChange={refreshVendors} />}
           {activeTab === 3 && (
