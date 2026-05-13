@@ -142,6 +142,7 @@ export default function MatchRecommendations() {
 
   useEffect(() => {
     const onAppRefresh = () => {
+      fetchMatches(true);
       refreshMutualMatches();
       fetchPending();
     };
@@ -152,6 +153,13 @@ export default function MatchRecommendations() {
   }, [refreshMutualMatches, fetchPending]);
 
   useRealtimeUpdates({
+    onProfileUpdated: (data) => {
+      if (data?.userId) {
+        fetchMatches(true);
+        refreshMutualMatches();
+        fetchPending();
+      }
+    },
     onInterestReceived: (data) => {
       if (data.senderCard) {
         // Directly push the card into pendingReceived — no API round-trip needed

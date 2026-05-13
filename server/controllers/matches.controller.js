@@ -263,6 +263,35 @@ function buildSearchableText(candidate) {
     .toLowerCase();
 }
 
+function resolvePrivacySettings(user = {}) {
+  const privacy = user?.privacySettings || user?.privacy || {};
+  return {
+    showHoroscope: privacy.showHoroscope !== false,
+    showPhone: privacy.showPhone === true,
+    whoCanMessage: privacy.whoCanMessage || 'Matches Only',
+    whoCanSeePhotos: privacy.whoCanSeePhotos || 'Matches Only',
+  };
+}
+
+function canViewerSeePhotos(user, { mutualMatch = false } = {}) {
+  const { whoCanSeePhotos } = resolvePrivacySettings(user);
+  if (whoCanSeePhotos === 'Everyone') return true;
+  if (whoCanSeePhotos === 'Matches Only') return mutualMatch;
+  if (whoCanSeePhotos === 'Profile Viewers') return true;
+  return false;
+}
+
+function canViewerSeeHoroscope(user, { mutualMatch = false } = {}) {
+  const privacy = resolvePrivacySettings(user);
+  return privacy.showHoroscope;
+}
+
+function canViewerSeePhone(user, viewer, { mutualMatch = false } = {}) {
+  const privacy = resolvePrivacySettings(user);
+  const viewerPhoneVerified = Boolean(viewer?.verification?.phoneVerified);
+  return privacy.showPhone && mutualMatch && viewerPhoneVerified;
+}
+
 function ensureObjectId(id, field) {
   if (!mongoose.Types.ObjectId.isValid(id)) {
     throw new ApiError(400, `Invalid ${field}`);
@@ -299,6 +328,9 @@ async function persistMatch(userAId, userBId, compatibility, mutualInterest = fa
 
 function buildCard(user, compatibility, mutualMatch) {
   const fullName = user.name || [profileField(user, 'firstName'), profileField(user, 'lastName')].filter(Boolean).join(' ').trim() || 'Member';
+  const showPhotos = canViewerSeePhotos(user, { mutualMatch });
+  const showHoroscope = canViewerSeeHoroscope(user, { mutualMatch });
+
   return {
     id: String(user._id),
     name: fullName,
@@ -309,13 +341,17 @@ function buildCard(user, compatibility, mutualMatch) {
     education: normalizeDisplayValue(user.lifestyle?.educationLevel),
     score: compatibility.overallScore,
     band: compatibility.bandLabel,
-    img: mainPhoto(user),
+    img: showPhotos ? mainPhoto(user) : null,
     isOnline: true,
     bio: normalizeDisplayValue(user.bio || profileField(user, 'bio'), 'Not provided'),
     compatibility,
     mutualMatch,
-    moonSign: user.horoscopeData?.moonSign || user.horoscopeData?.rashi || user.horoscope?.moonSign || user.horoscope?.rashi || 'Pending',
-    ascendant: user.horoscopeData?.ascendant || user.horoscope?.ascendant || 'Pending',
+    moonSign: showHoroscope
+      ? user.horoscopeData?.moonSign || user.horoscopeData?.rashi || user.horoscope?.moonSign || user.horoscope?.rashi || 'Pending'
+      : 'Hidden',
+    ascendant: showHoroscope
+      ? user.horoscopeData?.ascendant || user.horoscope?.ascendant || 'Pending'
+      : 'Hidden',
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
   };
@@ -323,6 +359,9 @@ function buildCard(user, compatibility, mutualMatch) {
 
 function buildDetail(user, compatibility, mutualMatch, currentUser = null) {
   const fullName = user.name || [profileField(user, 'firstName'), profileField(user, 'lastName')].filter(Boolean).join(' ').trim() || 'Member';
+  const showPhotos = canViewerSeePhotos(user, { mutualMatch });
+  const showHoroscope = canViewerSeeHoroscope(user, { mutualMatch });
+  const showPhone = canViewerSeePhone(user, currentUser, { mutualMatch });
   const hobbies = Array.isArray(user.lifestyle?.hobbies) ? user.lifestyle.hobbies.filter(Boolean) : [];
   const currentNakshatra = currentUser?.horoscopeData?.nakshatra || currentUser?.horoscope?.nakshatra;
   const otherNakshatra = user.horoscopeData?.nakshatra || user.horoscope?.nakshatra;
@@ -375,12 +414,19 @@ function buildDetail(user, compatibility, mutualMatch, currentUser = null) {
       { subject: 'Family-Oriented', A: Math.round((user.lifestyle?.familyValues ?? 0.5) * 100), fullMark: 100 },
       { subject: 'Modern', A: Math.round((1 - (user.personality?.neuroticism ?? 0.5)) * 100), fullMark: 100 },
     ],
-    horoscope: {
-      rashi: user.horoscopeData?.rashi || user.horoscopeData?.moonSign || user.horoscope?.rashi || user.horoscope?.moonSign || 'Pending',
-      nakshatra: user.horoscopeData?.nakshatra || user.horoscope?.nakshatra || 'Pending',
-      gana: user.horoscopeData?.gana || deriveGanaFromNakshatra(user.horoscopeData?.nakshatra || user.horoscope?.nakshatra) || 'Pending',
-      ascendant: user.horoscopeData?.ascendant || user.horoscopeData?.moonSign || user.horoscope?.moonSign || 'Pending',
-    },
+    horoscope: showHoroscope
+      ? {
+          rashi: user.horoscopeData?.rashi || user.horoscopeData?.moonSign || user.horoscope?.rashi || user.horoscope?.moonSign || 'Pending',
+          nakshatra: user.horoscopeData?.nakshatra || user.horoscope?.nakshatra || 'Pending',
+          gana: user.horoscopeData?.gana || deriveGanaFromNakshatra(user.horoscopeData?.nakshatra || user.horoscope?.nakshatra) || 'Pending',
+          ascendant: user.horoscopeData?.ascendant || user.horoscopeData?.moonSign || user.horoscope?.moonSign || 'Pending',
+        }
+      : {
+          rashi: 'Hidden',
+          nakshatra: 'Hidden',
+          gana: 'Hidden',
+          ascendant: 'Hidden',
+        },
     lifestyle: {
       hobbies,
       interests: Array.isArray(user.lifestyle?.languages) ? user.lifestyle.languages.filter(Boolean) : [],
@@ -390,17 +436,20 @@ function buildDetail(user, compatibility, mutualMatch, currentUser = null) {
       smoking: normalizeDisplayValue(user.lifestyle?.smoking),
       drinking: normalizeDisplayValue(user.lifestyle?.drinking),
     },
-    photos: (user.personalInfo?.photos || user.photos || []).filter((p) => p?.url).map((p) => p.url),
-    profileImage: mainPhoto(user),
+    photos: showPhotos
+      ? (user.personalInfo?.photos || user.photos || []).filter((p) => p?.url).map((p) => p.url)
+      : [],
+    profileImage: showPhotos ? mainPhoto(user) : null,
+    phone: showPhone ? (profileField(user, 'phone') || '') : '',
     mutualMatch,
     explanation: compatibility.explanation,
-    poruthamComparison: {
+    poruthamComparison: showHoroscope ? {
       self: selfPorutham,
       other: otherPorutham,
       sameRajju: isKnown(selfPorutham.rajju) && isKnown(otherPorutham.rajju) && selfPorutham.rajju === otherPorutham.rajju,
       sameNadi: isKnown(selfPorutham.nadi) && isKnown(otherPorutham.nadi) && selfPorutham.nadi === otherPorutham.nadi,
       sameYoni: isKnown(selfPorutham.yoni) && isKnown(otherPorutham.yoni) && selfPorutham.yoni === otherPorutham.yoni,
-    },
+    } : null,
   };
 }
 
@@ -522,9 +571,15 @@ export const getRecommendations = asyncHandler(async (req, res) => {
         'personalInfo.gender',
         'personalInfo.location',
         'personalInfo.bio',
+        'personalInfo.phone',
         'personalInfo.height',
         'personalInfo.profilePic',
         'personalInfo.photos',
+        'privacySettings.showHoroscope',
+        'privacySettings.showPhone',
+        'privacySettings.whoCanMessage',
+        'privacySettings.whoCanSeePhotos',
+        'verification.phoneVerified',
         'personality.openness',
         'personality.conscientiousness',
         'personality.extraversion',
@@ -686,6 +741,12 @@ export const getMatchDetail = asyncHandler(async (req, res) => {
     'personalInfo.bio',
     'personalInfo.tagline',
     'personalInfo.photos',
+    'personalInfo.phone',
+    'privacySettings.showHoroscope',
+    'privacySettings.showPhone',
+    'privacySettings.whoCanMessage',
+    'privacySettings.whoCanSeePhotos',
+    'verification.phoneVerified',
     'lifestyle.professionType',
     'lifestyle.careerAmbitions',
     'lifestyle.educationLevel',
