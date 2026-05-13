@@ -7,6 +7,7 @@ import {
   Radio, Checkbox, Select, MenuItem, 
   InputLabel, Drawer, useTheme, useMediaQuery,
   Skeleton, Alert, Badge, Divider, Chip, Card, CardContent, Paper
+  , Pagination
 } from '@mui/material';
 import { 
   Search, Filter, X, SlidersHorizontal, 
@@ -253,7 +254,7 @@ export default function VendorMarketplace() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [activeCategory, setActiveCategory] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [isFilterOpen, setIsFilterOpen] = useState(false);
@@ -269,6 +270,7 @@ export default function VendorMarketplace() {
   const [selectedDistricts, setSelectedDistricts] = useState<string[]>([]);
   const [availableOnly, setAvailableOnly] = useState(false);
   const [rawProject, setRawProject] = useState<any>(null);
+  const [page, setPage] = useState(1);
 
   const { token, user } = useSelector((state: RootState) => state.auth);
 
@@ -351,6 +353,7 @@ export default function VendorMarketplace() {
   };
 
   const handleResetFilters = () => {
+    setSearchQuery('');
     setMinRating('0');
     setSelectedDistricts([]);
     setAvailableOnly(false);
@@ -436,6 +439,27 @@ export default function VendorMarketplace() {
     return matchesCategory && matchesSearch && matchesRating && matchesPrice && matchesDistrict && matchesAvailability;
   });
 
+  const PAGE_SIZE = 12;
+  const totalVendorPages = Math.max(1, Math.ceil(filteredVendors.length / PAGE_SIZE));
+  const pagedVendors = filteredVendors.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  const activeFilterCount = [
+    searchQuery.trim().length > 0,
+    parseFloat(minRating) > 0,
+    selectedDistricts.length > 0,
+    availableOnly,
+  ].filter(Boolean).length;
+
+  useEffect(() => {
+    setPage(1);
+  }, [activeCategory, searchQuery, minRating, selectedDistricts, availableOnly]);
+
+  useEffect(() => {
+    if (page > totalVendorPages) {
+      setPage(totalVendorPages);
+    }
+  }, [page, totalVendorPages]);
+
   return (
     <Box sx={{ bgcolor: COLORS.cream, minHeight: '100vh', pb: 10, position: 'relative' }}>
       <Box>
@@ -452,17 +476,6 @@ export default function VendorMarketplace() {
               </Typography>
             </Box>
             <Stack direction="row" spacing={2} sx={{ width: { xs: '100%', md: 'auto' } }}>
-              <TextField 
-                fullWidth 
-                placeholder="Search vendors..." 
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                InputProps={{ 
-                  startAdornment: <Search size={18} style={{ marginRight: 10, color: COLORS.textSecondary }} />,
-                  sx: { borderRadius: 4, bgcolor: `${COLORS.cream}50` }
-                }}
-                sx={{ minWidth: { md: 350 } }}
-              />
               <Button 
                 variant="outlined" 
                 startIcon={<SlidersHorizontal size={18} />}
@@ -473,7 +486,7 @@ export default function VendorMarketplace() {
                   color: COLORS.textPrimary, 
                   borderColor: 'divider', 
                   fontWeight: 700,
-                  display: { md: 'none' }
+                  display: { xs: 'inline-flex', md: 'none' }
                 }}
               >
                 Filters
@@ -512,7 +525,7 @@ export default function VendorMarketplace() {
         </Container>
       </Box>
 
-      <Container maxWidth="xl" sx={{ mt: 6 }}>
+      <Container maxWidth="xl" sx={{ mt: 1.5 }}>
         {activeCategory !== 'all' && categoryBudgetGuidance.limit && (
           <Alert 
             severity="success" 
@@ -527,40 +540,36 @@ export default function VendorMarketplace() {
             </Typography>
           </Alert>
         )}
-        <Grid container spacing={4}>
-          {/* Sidebar Filter (Desktop) */}
-          {!isMobile && (
-            <Grid size={{ md: 3 }}>
-              <Box sx={{ 
-                position: 'sticky', 
-                top: 100, 
-                zIndex: 10,
-                alignSelf: 'flex-start'
-              }}>
-                <Paper sx={{ 
-                  p: 3, 
-                  borderRadius: 5, 
-                  bgcolor: 'white', 
-                  border: '1px solid', 
-                  borderColor: 'divider',
-                  boxShadow: '0 4px 20px rgba(0,0,0,0.04)' 
-                }}>
-                  <FilterSidebar 
-                    minRating={minRating}
-                    setMinRating={setMinRating}
-                    selectedDistricts={selectedDistricts}
-                    setSelectedDistricts={setSelectedDistricts}
-                    availableOnly={availableOnly}
-                    setAvailableOnly={setAvailableOnly}
-                    onReset={handleResetFilters}
-                  />
-                </Paper>
-              </Box>
-            </Grid>
-          )}
+        {!isMobile && (
+          <Paper
+            sx={{
+              p: { xs: 2, md: 2.5 },
+              mb: 3,
+              borderRadius: 5,
+              bgcolor: 'white',
+              border: '1px solid',
+              borderColor: 'divider',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.04)'
+            }}
+          >
+            <FilterSidebar
+              searchQuery={searchQuery}
+              setSearchQuery={setSearchQuery}
+              activeFilterCount={activeFilterCount}
+              minRating={minRating}
+              setMinRating={setMinRating}
+              selectedDistricts={selectedDistricts}
+              setSelectedDistricts={setSelectedDistricts}
+              availableOnly={availableOnly}
+              setAvailableOnly={setAvailableOnly}
+              onReset={handleResetFilters}
+            />
+          </Paper>
+        )}
 
+        <Grid container spacing={4}>
           {/* Vendor Grid */}
-          <Grid size={{ xs: 12, md: 9 }}>
+          <Grid size={{ xs: 12 }}>
             {!planningAccessGranted && !planningCheckLoading && (
               <Alert 
                 severity="info" 
@@ -590,20 +599,37 @@ export default function VendorMarketplace() {
             )}
             {loading ? (
               <Grid container spacing={3}>
-                {[...Array(6)].map((_, i) => (
-                  <Grid size={{ xs: 12, sm: 6, lg: 4 }} key={i}>
+                {[...Array(PAGE_SIZE)].map((_, i) => (
+                  <Grid size={{ xs: 12, sm: 6, lg: 3 }} key={i}>
                     <Skeleton variant="rectangular" height={450} sx={{ borderRadius: 6 }} />
                   </Grid>
                 ))}
               </Grid>
             ) : filteredVendors.length > 0 ? (
-              <Grid container spacing={3}>
-                {filteredVendors.map((vendor, i) => (
-                  <Grid size={{ xs: 12, sm: 6, lg: 4 }} key={vendor.id}>
-                    <VendorCard vendor={vendor} onRequestQuote={handleRequestQuote} disabled={!planningAccessGranted} />
-                  </Grid>
-                ))}
-              </Grid>
+              <>
+                <Grid container spacing={3}>
+                  {pagedVendors.map((vendor, i) => (
+                    <Grid size={{ xs: 12, sm: 6, lg: 3 }} key={vendor.id}>
+                      <VendorCard vendor={vendor} onRequestQuote={handleRequestQuote} disabled={!planningAccessGranted} />
+                    </Grid>
+                  ))}
+                </Grid>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} justifyContent="space-between" alignItems="center" sx={{ mt: 4 }}>
+                  <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600 }}>
+                    Showing {pagedVendors.length} of {filteredVendors.length} vendors
+                  </Typography>
+                  {totalVendorPages > 1 && (
+                    <Pagination
+                      count={totalVendorPages}
+                      page={page}
+                      onChange={(_, value) => setPage(value)}
+                      color="primary"
+                      shape="rounded"
+                      siblingCount={0}
+                    />
+                  )}
+                </Stack>
+              </>
             ) : (
               <Box sx={{ textAlign: 'center', py: 12 }}>
                 <AlertCircle size={64} color={COLORS.textSecondary} style={{ marginBottom: 24, opacity: 0.5 }} />
@@ -625,12 +651,15 @@ export default function VendorMarketplace() {
         onClose={() => setIsFilterOpen(false)}
         PaperProps={{ sx: { borderRadius: '24px 24px 0 0', maxHeight: '90vh' } }}
       >
-        <Box sx={{ p: 4 }}>
+        <Box sx={{ p: 3 }}>
           <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 4 }}>
             <Typography variant="h6" sx={{ fontWeight: 800, color: COLORS.primary }}>Filters</Typography>
             <IconButton onClick={() => setIsFilterOpen(false)}><X size={24} /></IconButton>
           </Stack>
           <FilterSidebar 
+            searchQuery={searchQuery}
+            setSearchQuery={setSearchQuery}
+            activeFilterCount={activeFilterCount}
             minRating={minRating}
             setMinRating={setMinRating}
             selectedDistricts={selectedDistricts}
@@ -676,65 +705,139 @@ export default function VendorMarketplace() {
 // --- Helper Components ---
 
 function FilterSidebar({ 
+  searchQuery, setSearchQuery, activeFilterCount,
   minRating, setMinRating, 
   selectedDistricts, setSelectedDistricts, availableOnly, setAvailableOnly, onReset 
 }: any) {
+  const ratingOptions = [
+    { value: '4.5', label: '4.5+ ★' },
+    { value: '4', label: '4.0+ ★' },
+    { value: '3', label: '3.0+ ★' },
+  ];
+
   return (
-    <Stack spacing={4}>
-
-      <Divider />
-
+    <Stack spacing={2.5}>
       <Box>
-        <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 2, color: COLORS.textPrimary }}>Minimum Rating</Typography>
-        <RadioGroup value={minRating} onChange={(e) => setMinRating(e.target.value)}>
-          <FormControlLabel value="4.5" control={<Radio sx={{ color: COLORS.primary, '&.Mui-checked': { color: COLORS.primary } }} />} label="4.5+ ★ (Excellent)" />
-          <FormControlLabel value="4" control={<Radio sx={{ color: COLORS.primary, '&.Mui-checked': { color: COLORS.primary } }} />} label="4.0+ ★ (Very Good)" />
-          <FormControlLabel value="3" control={<Radio sx={{ color: COLORS.primary, '&.Mui-checked': { color: COLORS.primary } }} />} label="3.0+ ★ (Good)" />
-        </RadioGroup>
-      </Box>
+        <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }}>
+          <Typography variant="subtitle1" sx={{ fontWeight: 800, color: COLORS.primary }}>
+            Search & Filters
+          </Typography>
+          <Chip
+            size="small"
+            label={activeFilterCount === 0 ? 'No filters' : `${activeFilterCount} active`}
+            sx={{
+              fontWeight: 700,
+              bgcolor: activeFilterCount > 0 ? `${COLORS.secondary}22` : 'grey.100',
+              color: activeFilterCount > 0 ? COLORS.primary : 'text.secondary',
+            }}
+          />
+        </Stack>
 
-      <Divider />
-
-      <Box>
-        <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 2, color: COLORS.textPrimary }}>District</Typography>
-        <FormControl fullWidth size="small">
-          <Select
-            multiple
-            value={selectedDistricts}
-            onChange={(e) => setSelectedDistricts(typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value)}
-            renderValue={(selected) => (
-              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                {selected.map((value: any) => (
-                  <Chip key={value} label={value} size="small" />
-                ))}
-              </Box>
-            )}
-            sx={{ borderRadius: 3 }}
-          >
-            {DISTRICTS.map((name) => (
-              <MenuItem key={name} value={name}>{name}</MenuItem>
-            ))}
-          </Select>
-        </FormControl>
-      </Box>
-
-      <Divider />
-
-      <Box>
-        <FormControlLabel
-          control={<Checkbox checked={availableOnly} onChange={(e) => setAvailableOnly(e.target.checked)} sx={{ color: COLORS.primary, '&.Mui-checked': { color: COLORS.primary } }} />}
-          label={<Typography variant="body2" sx={{ fontWeight: 600 }}>Available on my wedding date</Typography>}
+        <TextField
+          fullWidth
+          size="small"
+          label="Search vendors"
+          placeholder="Name, category, location"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <Search size={16} />
+              </InputAdornment>
+            ),
+          }}
+          sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2.5 } }}
         />
       </Box>
 
-      <Button 
-        fullWidth 
-        variant="text" 
-        onClick={onReset}
-        sx={{ color: COLORS.textSecondary, fontWeight: 700, textTransform: 'none' }}
-      >
-        Reset All Filters
-      </Button>
+      <Grid container spacing={2} alignItems="flex-start">
+        <Grid size={{ xs: 12, md: 6, lg: 5 }}>
+          <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary', mb: 0.75, display: 'block' }}>
+            District
+          </Typography>
+          <FormControl fullWidth size="small">
+            <Select
+              multiple
+              value={selectedDistricts}
+              onChange={(e) => setSelectedDistricts(typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value)}
+              renderValue={(selected) => (
+                <Box sx={{ display: 'flex', flexWrap: 'nowrap', alignItems: 'center', gap: 0.5, overflow: 'hidden' }}>
+                  {(selected as string[]).slice(0, 2).map((value: any) => (
+                    <Chip key={value} label={value} size="small" />
+                  ))}
+                  {(selected as string[]).length > 2 && (
+                    <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                      +{(selected as string[]).length - 2}
+                    </Typography>
+                  )}
+                </Box>
+              )}
+              sx={{ borderRadius: 2.5 }}
+            >
+              {DISTRICTS.map((name) => (
+                <MenuItem key={name} value={name}>{name}</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        </Grid>
+
+        <Grid size={{ xs: 12, md: 6, lg: 4 }}>
+          <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary', mb: 0.75, display: 'block' }}>
+            Minimum Rating
+          </Typography>
+          <RadioGroup
+            row
+            value={minRating}
+            onChange={(e) => setMinRating(e.target.value)}
+            sx={{ gap: 1, flexWrap: 'wrap' }}
+          >
+            {ratingOptions.map((option) => (
+              <Chip
+                key={option.value}
+                label={option.label}
+                size="small"
+                onClick={() => setMinRating(option.value)}
+                color={minRating === option.value ? 'secondary' : 'default'}
+                variant={minRating === option.value ? 'filled' : 'outlined'}
+                sx={{ fontWeight: 700, borderRadius: 2 }}
+              />
+            ))}
+          </RadioGroup>
+        </Grid>
+
+        <Grid size={{ xs: 12, lg: 3 }}>
+          <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary', mb: 0.75, display: 'block' }}>
+            Availability
+          </Typography>
+          <FormControlLabel
+            sx={{ m: 0, alignItems: 'center' }}
+            control={
+              <Checkbox
+                checked={availableOnly}
+                onChange={(e) => setAvailableOnly(e.target.checked)}
+                sx={{ color: COLORS.primary, '&.Mui-checked': { color: COLORS.primary }, p: 0.75, mr: 0.5 }}
+              />
+            }
+            label={<Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.84rem' }}>Available on my date</Typography>}
+          />
+        </Grid>
+      </Grid>
+
+      <Divider />
+
+      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'center' }}>
+        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+          Tip: Use category tabs + filters together for faster results.
+        </Typography>
+        <Button 
+          variant="text" 
+          onClick={onReset}
+          sx={{ color: COLORS.textSecondary, fontWeight: 700, textTransform: 'none', px: 1.5, alignSelf: { xs: 'flex-start', sm: 'auto' } }}
+        >
+          Reset All Filters
+        </Button>
+      </Stack>
     </Stack>
   );
 }
