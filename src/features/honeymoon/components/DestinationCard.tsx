@@ -8,21 +8,19 @@ import {
   Chip,
   Stack,
   Button,
-  IconButton,
-  Rating,
-  useTheme,
+  Tooltip,
   alpha,
 } from '@mui/material';
 import {
-  Heart,
   ArrowRight,
   MapPin,
-  Thermometer,
   Waves,
   Utensils,
   Sparkles,
   Sun,
   Camera,
+  Phone,
+  Mail,
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
@@ -50,6 +48,8 @@ interface DestinationCardProps {
     description: string;
     matchScore: number;
     highlights: { icon: string; label: string }[];
+    contactPhone?: string;
+    contactEmail?: string;
   };
   index: number;
 }
@@ -63,9 +63,7 @@ const iconMap: { [key: string]: React.ReactNode } = {
 };
 
 export default function DestinationCard({ destination, index }: DestinationCardProps) {
-  const theme = useTheme();
   const navigate = useNavigate();
-  const [isSaved, setIsSaved] = React.useState(false);
 
   return (
     <motion.div
@@ -112,25 +110,6 @@ export default function DestinationCard({ destination, index }: DestinationCardP
         </Box>
 
         {/* Save Button */}
-        <IconButton
-          onClick={(e) => {
-            e.stopPropagation();
-            setIsSaved(!isSaved);
-          }}
-          sx={{
-            position: 'absolute',
-            top: 16,
-            right: 16,
-            zIndex: 2,
-            bgcolor: 'white',
-            color: isSaved ? COLORS.primary : COLORS.textSecondary,
-            '&:hover': { bgcolor: alpha(COLORS.white, 0.9) },
-            boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-          }}
-        >
-          <Heart size={20} fill={isSaved ? COLORS.primary : 'none'} />
-        </IconButton>
-
         {/* Image Section */}
         <Box sx={{ position: 'relative', height: 240, overflow: 'hidden' }}>
           <CardMedia
@@ -187,7 +166,7 @@ export default function DestinationCard({ destination, index }: DestinationCardP
               />
             ))}
             <Chip
-              label={`From USD ${destination.budget.toLocaleString()}`}
+              label={`From LKR ${destination.budget.toLocaleString()}`}
               size="small"
               sx={{
                 bgcolor: alpha(COLORS.secondary, 0.1),
@@ -213,6 +192,28 @@ export default function DestinationCard({ destination, index }: DestinationCardP
           <Typography variant="body2" sx={{ color: COLORS.textSecondary, mb: 2, lineHeight: 1.6, height: 40, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
             {destination.description}
           </Typography>
+
+          {/* Contact Information */}
+          {(destination.contactPhone || destination.contactEmail) && (
+            <Stack sx={{ mb: 2.5, p: 1.5, bgcolor: alpha(COLORS.primary, 0.03), borderRadius: 2, gap: 0.8 }}>
+              {destination.contactPhone && (
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <Phone size={14} color={COLORS.primary} />
+                  <Typography variant="caption" sx={{ fontWeight: 600, color: COLORS.textPrimary }}>
+                    {destination.contactPhone}
+                  </Typography>
+                </Stack>
+              )}
+              {destination.contactEmail && (
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <Mail size={14} color={COLORS.primary} />
+                  <Typography variant="caption" sx={{ fontWeight: 600, color: COLORS.textPrimary, wordBreak: 'break-all' }}>
+                    {destination.contactEmail}
+                  </Typography>
+                </Stack>
+              )}
+            </Stack>
+          )}
 
           <Stack direction="row" spacing={2} sx={{ mb: 3 }}>
             {destination.highlights.slice(0, 4).map((highlight, i) => (
@@ -245,6 +246,4 @@ export default function DestinationCard({ destination, index }: DestinationCardP
     </motion.div>
   );
 }
-
-import { Tooltip } from '@mui/material';
 

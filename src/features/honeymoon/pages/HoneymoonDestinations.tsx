@@ -21,8 +21,6 @@ import {
 } from '@mui/material';
 import {
   Sparkles,
-  Heart,
-  Calendar,
   Wallet,
   Map as MapIcon,
   LayoutGrid,
@@ -63,9 +61,9 @@ const VIBES = [
 ];
 
 const BUDGET_TIERS = [
-  { id: 'budget', title: 'Budget', range: 'USD 1,000-2,500', icon: <Wallet size={24} /> },
-  { id: 'mid', title: 'Mid-range', range: 'USD 2,500-5,000', icon: <Wallet size={24} /> },
-  { id: 'luxury', title: 'Luxury', range: 'USD 5,000+', icon: <Sparkles size={24} /> },
+  { id: 'budget', title: 'Budget', range: 'LKR 100,000 - 250,000', icon: <Wallet size={24} /> },
+  { id: 'mid', title: 'Mid-range', range: 'LKR 250,000 - 500,000', icon: <Wallet size={24} /> },
+  { id: 'luxury', title: 'Luxury', range: 'LKR 500,000+', icon: <Sparkles size={24} /> },
 ];
 
 const DURATIONS = [
@@ -86,27 +84,26 @@ function mapDestinationCard(destination: any, index: number) {
   const activityTags = Array.isArray(destination?.activityTags) ? destination.activityTags.filter(Boolean) : [];
   const highlights = Array.isArray(destination?.highlights) ? destination.highlights : [];
   const type = mapDestinationType(activityTags);
-  const budgetLookup: Record<string, number> = {
-    budget: 1500,
-    'mid-range': 3200,
-    luxury: 6000,
-  };
+  const priceRange = destination?.priceRangeLKR || { min: 150000, max: 300000 };
+  const avgPrice = Math.floor((priceRange.min + priceRange.max) / 2);
 
   return {
     id: String(destination?._id || destination?.id || index + 1),
     name: destination?.region || destination?.country || 'Romantic Escape',
     region: destination?.region || 'Scenic Region',
     country: destination?.country || 'Sri Lanka',
-    image: destination?.images?.[0] || FALLBACK_DESTINATION_IMAGE,
+    image: destination?.image || FALLBACK_DESTINATION_IMAGE,
     tags: [
       ...activityTags.slice(0, 2).map((tag: string) => tag.replace(/[-_]/g, ' ')),
       destination?.budgetTier || 'curated',
     ],
-    budget: budgetLookup[destination?.budgetTier] || 2500,
+    budget: avgPrice,
     bestSeason: destination?.bestSeason || 'All year',
     description: destination?.description || 'A romantic getaway curated for couples.',
     matchScore: Math.max(72, 96 - index * 4),
     highlights: highlights.slice(0, 4).map((label: string) => ({ icon: 'Sparkles', label })),
+    contactPhone: destination?.contactPhone || '',
+    contactEmail: destination?.contactEmail || '',
     x: 18 + ((index * 17) % 62),
     y: 22 + ((index * 11) % 46),
     type,
@@ -216,41 +213,17 @@ export default function HoneymoonDestinations() {
               transition={{ duration: 0.6 }}
             >
               <Box sx={{ textAlign: 'center', mb: 8 }}>
-                {!planningAccessGranted && !planningCheckLoading && (
-                  <Alert 
-                    severity="info" 
-                    icon={<Sparkles size={20} color={COLORS.primary} />}
-                    sx={{ 
-                      mb: 4, 
-                      borderRadius: 4, 
-                      bgcolor: '#FFF8E7', 
-                      border: '1px solid #E6C87E',
-                      textAlign: 'left',
-                      mx: 'auto',
-                      maxWidth: 800
-                    }}
-                  >
-                    <Typography variant="subtitle2" sx={{ fontWeight: 800, color: COLORS.primary }}>
-                      Explore & Wishlist Honeymoon Destinations
-                    </Typography>
-                    <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mb: 1 }}>
-                      You can browse and wishlist destinations now. Collaborative planning features will unlock once both partners accept the wedding invite.
-                    </Typography>
-                    <Button 
-                      size="small" 
-                      onClick={() => navigate('/messages')}
-                      sx={{ color: COLORS.primary, fontWeight: 700, textTransform: 'none', p: 0 }}
-                    >
-                      Go to Messages to invite partner →
-                    </Button>
-                  </Alert>
-                )}
                 <Typography variant="h2" sx={{ fontWeight: 900, fontFamily: 'Playfair Display', color: COLORS.primary, mb: 2 }}>
                   Let's find your perfect honeymoon
                 </Typography>
-                <Typography variant="h6" sx={{ color: COLORS.textSecondary, maxWidth: 600, mx: 'auto' }}>
-                  Answer 3 quick questions and our AI will curate the most romantic destinations for your first journey as a couple.
+                <Typography variant="h6" sx={{ color: COLORS.textSecondary, maxWidth: 600, mx: 'auto', mb: 3 }}>
+                  Explore romantic destinations in Sri Lanka. Answer a few quick questions and we will suggest the best spots for your trip.
                 </Typography>
+                <Chip 
+                  label="Optional Feature" 
+                  size="small"
+                  sx={{ bgcolor: alpha(COLORS.secondary, 0.1), color: COLORS.secondary, fontWeight: 700 }}
+                />
               </Box>
 
               <Stack spacing={6}>
@@ -368,7 +341,7 @@ export default function HoneymoonDestinations() {
                       '&:hover': { bgcolor: '#6B1423' },
                     }}
                   >
-                    {loading ? 'AI is Curating...' : 'Get AI Recommendations'}
+                    {loading ? 'Curating...' : 'Show Recommendations'}
                   </Button>
                 </Box>
               </Stack>
@@ -382,13 +355,20 @@ export default function HoneymoonDestinations() {
             >
               <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', md: 'center' }} sx={{ mb: 6 }} spacing={2}>
                 <Box>
+                  <Button
+                    startIcon={<ArrowRight size={18} style={{ transform: 'rotate(180deg)' }} />}
+                    onClick={() => setShowQuiz(true)}
+                    sx={{ mb: 2, color: COLORS.primary, fontWeight: 700, textTransform: 'none', p: 0 }}
+                  >
+                    Back to preferences
+                  </Button>
                   <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 1 }}>
                     <Typography variant="h3" sx={{ fontWeight: 900, fontFamily: 'Playfair Display', color: COLORS.primary }}>
                       Top Picks for You
                     </Typography>
                     <Chip
                       icon={<Sparkles size={14} color="white" />}
-                      label="AI Curated"
+                      label="Sri Lanka Picks"
                       sx={{ bgcolor: COLORS.accent, color: 'white', fontWeight: 800, height: 28 }}
                     />
                   </Stack>
@@ -446,7 +426,7 @@ export default function HoneymoonDestinations() {
                   onClick={() => setShowQuiz(true)}
                   sx={{ borderRadius: 3, px: 4, borderColor: COLORS.primary, color: COLORS.primary, fontWeight: 700, textTransform: 'none' }}
                 >
-                  Retake Preference Quiz
+                  ← Back to preferences
                 </Button>
               </Box>
             </motion.div>

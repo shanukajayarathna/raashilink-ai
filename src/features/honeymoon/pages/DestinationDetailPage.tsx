@@ -11,27 +11,17 @@ import {
   Button,
   IconButton,
   Chip,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
   useTheme,
   useMediaQuery,
   alpha,
   Skeleton,
 } from '@mui/material';
 import {
-  ChevronDown,
   MapPin,
   Calendar,
-  Thermometer,
-  CloudRain,
   Sparkles,
-  Plane,
-  CreditCard,
-  ShieldCheck,
   ExternalLink,
   ArrowLeft,
-  Heart,
   Waves,
   Utensils,
   Sun,
@@ -53,7 +43,7 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import honeymoonService from '../services/honeymoonService';
-
+import DestinationMapView from '../components/DestinationMapView';
 const COLORS = {
   primary: '#8B1A2E',
   secondary: '#C9A84C',
@@ -100,7 +90,7 @@ function mapDestinationDetail(destination: any) {
   const highlights = Array.isArray(destination?.highlights) ? destination.highlights : [];
   const images = Array.isArray(destination?.images) && destination.images.length > 0
     ? destination.images
-    : [FALLBACK_DESTINATION_IMAGE, FALLBACK_DESTINATION_IMAGE, FALLBACK_DESTINATION_IMAGE];
+    : [destination?.image || FALLBACK_DESTINATION_IMAGE, destination?.image || FALLBACK_DESTINATION_IMAGE, destination?.image || FALLBACK_DESTINATION_IMAGE];
 
   return {
     id: String(destination?._id || destination?.id || region),
@@ -109,30 +99,17 @@ function mapDestinationDetail(destination: any) {
     country,
     images,
     bestTime: destination?.bestSeason || 'All year',
-    aiReason:
+    summary:
       destination?.description ||
-      `We recommend ${region} because it aligns beautifully with a romantic, slow-paced honeymoon experience.`,
+      `${region} is a romantic and scenic honeymoon destination in Sri Lanka.`,
     highlights: highlights.length > 0 ? highlights : ['Scenic views', 'Romantic stays', 'Curated couple experiences'],
     activities: activities.length > 0 ? activities.map((item: string) => item.replace(/[-_]/g, ' ')) : ['Relaxation', 'Sightseeing', 'Fine Dining'],
-    itinerary: (activities.length > 0 ? activities.slice(0, 3) : ['Arrival', 'Explore', 'Relax']).map((activity: string, index: number) => ({
-      day: index + 1,
-      title: activity.replace(/[-_]/g, ' '),
-      desc: `Spend day ${index + 1} enjoying ${activity.replace(/[-_]/g, ' ')} in ${region}.`,
-    })),
-    travelInfo: {
-      visa: 'Check the latest travel requirements before booking.',
-      airlines: [
-        { name: 'SriLankan Airlines', price: 'Varies by season' },
-        { name: 'Partner airlines', price: 'Subject to availability' },
-      ],
-      currency: 'Check the local currency and payment rules before travel.',
-      safety: 'Review local travel guidance and seasonal weather advisories before departure.',
-    },
-    contact: destination?.contact || {
-      name: country === 'Sri Lanka' ? 'Sri Lanka Tourism Promotion Bureau' : '',
-      phone: country === 'Sri Lanka' ? '+94 11 242 6800' : '',
-      email: country === 'Sri Lanka' ? 'info@srilanka.travel' : '',
-      website: country === 'Sri Lanka' ? 'https://www.srilanka.travel/' : '',
+    coordinates: destination?.coordinates || { lat: 7.8731, lng: 80.7718 },
+    contact: {
+      name: `${region} Tourism Contact`,
+      phone: destination?.contactPhone || '',
+      email: destination?.contactEmail || '',
+      website: destination?.website ? `https://${String(destination.website).replace(/^https?:\/\//, '')}` : '',
     },
   };
 }
@@ -144,7 +121,6 @@ export default function DestinationDetail() {
   const [loading, setLoading] = useState(true);
   const [destination, setDestination] = useState<any | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [isSaved, setIsSaved] = useState(false);
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
@@ -238,22 +214,7 @@ export default function DestinationDetail() {
                 sx={{ bgcolor: alpha(COLORS.accent, 0.9), color: 'white', fontWeight: 700, borderRadius: 2 }}
               />
             </Box>
-            <Stack direction="row" spacing={2}>
-              <IconButton
-                onClick={() => setIsSaved(!isSaved)}
-                sx={{ bgcolor: 'white', color: isSaved ? COLORS.primary : COLORS.textSecondary, '&:hover': { bgcolor: alpha(COLORS.white, 0.9) } }}
-              >
-                <Heart size={24} fill={isSaved ? COLORS.primary : 'none'} />
-              </IconButton>
-              <Button
-                variant="contained"
-                startIcon={<Plane size={20} />}
-                onClick={() => navigate('/vendors?category=Travel')}
-                sx={{ bgcolor: COLORS.primary, borderRadius: 3, px: 4, py: 1.5, fontWeight: 800, textTransform: 'none', '&:hover': { bgcolor: '#6B1423' } }}
-              >
-                Find Travel Vendors
-              </Button>
-            </Stack>
+            <Chip label="Local Destination" sx={{ bgcolor: alpha(COLORS.white, 0.9), color: COLORS.primary, fontWeight: 700 }} />
           </Stack>
         </Container>
 
@@ -278,9 +239,8 @@ export default function DestinationDetail() {
               '& .MuiTab-root': { py: 3, fontWeight: 800, color: COLORS.textSecondary, '&.Mui-selected': { color: COLORS.primary } }
             }}
           >
-            <Tab label="Overview" />
-            <Tab label="Sample Itinerary" />
-            <Tab label="Travel Info" />
+            <Tab label="Destination Details" />
+            <Tab label="Map View" />
           </Tabs>
 
           <Box sx={{ p: { xs: 3, md: 6 }, bgcolor: 'white' }}>
@@ -292,9 +252,9 @@ export default function DestinationDetail() {
                       <Box sx={{ mb: 6, p: 3, borderRadius: 4, bgcolor: alpha(COLORS.accent, 0.05), border: `1px dashed ${COLORS.accent}` }}>
                         <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 2, color: COLORS.accent }}>
                           <Sparkles size={24} />
-                          <Typography variant="h6" sx={{ fontWeight: 800 }}>Why We Recommend This</Typography>
+                          <Typography variant="h6" sx={{ fontWeight: 800 }}>Destination Overview</Typography>
                         </Stack>
-                        <Typography variant="body1" sx={{ color: COLORS.textSecondary, lineHeight: 1.8 }}>{destination.aiReason}</Typography>
+                        <Typography variant="body1" sx={{ color: COLORS.textSecondary, lineHeight: 1.8 }}>{destination.summary}</Typography>
                       </Box>
 
                       <Typography variant="h5" sx={{ fontWeight: 800, mb: 3, fontFamily: 'Playfair Display' }}>Climate Overview</Typography>
@@ -332,7 +292,7 @@ export default function DestinationDetail() {
 
                     <Grid size={{ xs: 12, md: 5 }}>
                       <Typography variant="h5" sx={{ fontWeight: 800, mb: 3, fontFamily: 'Playfair Display' }}>Couple Activities</Typography>
-                      <Grid container spacing={2}>
+                      <Grid container spacing={2} sx={{ mb: 4 }}>
                         {destination.activities.map((a, i) => (
                           <Grid size={6} key={i}>
                             <Paper elevation={0} sx={{ p: 3, textAlign: 'center', borderRadius: 4, border: '1px solid', borderColor: 'divider', transition: 'all 0.3s ease', '&:hover': { transform: 'translateY(-4px)', borderColor: COLORS.primary, bgcolor: alpha(COLORS.primary, 0.02) } }}>
@@ -342,6 +302,47 @@ export default function DestinationDetail() {
                           </Grid>
                         ))}
                       </Grid>
+
+                      {(destination.contact?.name || destination.contact?.phone || destination.contact?.email || destination.contact?.website) && (
+                        <Box sx={{ p: 3, borderRadius: 3, bgcolor: alpha(COLORS.accent, 0.08), border: `1px solid ${alpha(COLORS.accent, 0.25)}` }}>
+                          <Typography variant="h6" sx={{ fontWeight: 800, mb: 2, color: COLORS.primary }}>
+                            Contact Information
+                          </Typography>
+                          {destination.contact?.name && (
+                            <Typography variant="body2" sx={{ color: COLORS.textPrimary, fontWeight: 700, mb: 1.5 }}>
+                              {destination.contact.name}
+                            </Typography>
+                          )}
+                          {destination.contact?.phone && (
+                            <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+                              <Phone size={16} color={COLORS.accent} />
+                              <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
+                                {destination.contact.phone}
+                              </Typography>
+                            </Stack>
+                          )}
+                          {destination.contact?.email && (
+                            <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+                              <Mail size={16} color={COLORS.accent} />
+                              <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
+                                {destination.contact.email}
+                              </Typography>
+                            </Stack>
+                          )}
+                          {destination.contact?.website && (
+                            <Button
+                              href={destination.contact.website}
+                              target="_blank"
+                              rel="noreferrer"
+                              size="small"
+                              endIcon={<ExternalLink size={16} />}
+                              sx={{ mt: 2, px: 0, color: COLORS.primary, fontWeight: 700, textTransform: 'none', justifyContent: 'flex-start' }}
+                            >
+                              Visit official website
+                            </Button>
+                          )}
+                        </Box>
+                      )}
                     </Grid>
                   </Grid>
                 </motion.div>
@@ -349,123 +350,29 @@ export default function DestinationDetail() {
 
               {tabValue === 1 && (
                 <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}>
-                  <Stack spacing={3}>
-                    {destination.itinerary.map((item, i) => (
-                      <Accordion key={i} defaultExpanded={i === 0} sx={{ borderRadius: 4, '&:before': { display: 'none' }, boxShadow: 'none', border: '1px solid', borderColor: 'divider', overflow: 'hidden' }}>
-                        <AccordionSummary expandIcon={<ChevronDown size={20} />} sx={{ p: 3, bgcolor: i === 0 ? alpha(COLORS.primary, 0.02) : 'white' }}>
-                          <Stack direction="row" spacing={3} alignItems="center">
-                            <Box sx={{ width: 48, height: 48, borderRadius: '50%', bgcolor: COLORS.primary, color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: '1.2rem' }}>{item.day}</Box>
-                            <Typography variant="h6" sx={{ fontWeight: 800 }}>{item.title}</Typography>
-                          </Stack>
-                        </AccordionSummary>
-                        <AccordionDetails sx={{ p: 4, pt: 0 }}>
-                          <Typography variant="body1" sx={{ color: COLORS.textSecondary, lineHeight: 1.8 }}>{item.desc}</Typography>
-                          <Button variant="outlined" size="small" sx={{ mt: 3, borderRadius: 2, textTransform: 'none', fontWeight: 700, borderColor: COLORS.primary, color: COLORS.primary }}>Edit Day {item.day}</Button>
-                        </AccordionDetails>
-                      </Accordion>
-                    ))}
-                    <Box sx={{ textAlign: 'center', pt: 4 }}>
-                      <Button variant="contained" sx={{ bgcolor: COLORS.accent, borderRadius: 3, px: 6, py: 2, fontWeight: 800, textTransform: 'none', '&:hover': { bgcolor: '#145258' } }}>Customize This Itinerary</Button>
-                    </Box>
+                  <DestinationMapView
+                    latitude={destination.coordinates.lat}
+                    longitude={destination.coordinates.lng}
+                    name={destination.name}
+                    region={destination.region}
+                    country={destination.country}
+                    height={isMobile ? 360 : 520}
+                  />
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mt: 2 }}>
+                    <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
+                      Coordinates: {destination.coordinates.lat.toFixed(4)}, {destination.coordinates.lng.toFixed(4)}
+                    </Typography>
+                    <Button
+                      size="small"
+                      endIcon={<ExternalLink size={16} />}
+                      href={`https://www.google.com/maps/search/?api=1&query=${destination.coordinates.lat},${destination.coordinates.lng}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      sx={{ textTransform: 'none', fontWeight: 700, color: COLORS.primary, p: 0 }}
+                    >
+                      Open in Google Maps
+                    </Button>
                   </Stack>
-                </motion.div>
-              )}
-
-              {tabValue === 2 && (
-                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}>
-                  <Grid container spacing={4}>
-                    <Grid size={{ xs: 12, md: 6 }}>
-                      <Stack spacing={4}>
-                        <Box>
-                          <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 2, color: COLORS.primary }}>
-                            <ShieldCheck size={24} />
-                            <Typography variant="h6" sx={{ fontWeight: 800 }}>Visa Requirements</Typography>
-                          </Stack>
-                          <Typography variant="body1" sx={{ color: COLORS.textSecondary, lineHeight: 1.8 }}>{destination.travelInfo.visa}</Typography>
-                        </Box>
-                        <Box>
-                          <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 2, color: COLORS.primary }}>
-                            <Plane size={24} />
-                            <Typography variant="h6" sx={{ fontWeight: 800 }}>Best Airlines from Colombo</Typography>
-                          </Stack>
-                          <Stack spacing={2}>
-                            {destination.travelInfo.airlines.map((a, i) => (
-                              <Stack key={i} direction="row" justifyContent="space-between" alignItems="center" sx={{ p: 2, borderRadius: 2, bgcolor: COLORS.cream }}>
-                                <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>{a.name}</Typography>
-                                <Typography variant="subtitle2" sx={{ fontWeight: 800, color: COLORS.primary }}>{a.price}</Typography>
-                              </Stack>
-                            ))}
-                          </Stack>
-                        </Box>
-                      </Stack>
-                    </Grid>
-                    <Grid size={{ xs: 12, md: 6 }}>
-                      <Stack spacing={4}>
-                        <Box>
-                          <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 2, color: COLORS.primary }}>
-                            <CreditCard size={24} />
-                            <Typography variant="h6" sx={{ fontWeight: 800 }}>Currency & Money</Typography>
-                          </Stack>
-                          <Typography variant="body1" sx={{ color: COLORS.textSecondary, lineHeight: 1.8 }}>{destination.travelInfo.currency}</Typography>
-                        </Box>
-                        <Box>
-                          <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 2, color: COLORS.primary }}>
-                            <ShieldCheck size={24} />
-                            <Typography variant="h6" sx={{ fontWeight: 800 }}>Health & Safety</Typography>
-                          </Stack>
-                          <Typography variant="body1" sx={{ color: COLORS.textSecondary, lineHeight: 1.8 }}>{destination.travelInfo.safety}</Typography>
-                        </Box>
-                        {(destination.contact?.name || destination.contact?.phone || destination.contact?.email || destination.contact?.website) && (
-                          <Box sx={{ p: 2.5, borderRadius: 3, bgcolor: alpha(COLORS.accent, 0.08), border: `1px solid ${alpha(COLORS.accent, 0.25)}` }}>
-                            <Typography variant="h6" sx={{ fontWeight: 800, mb: 1.5, color: COLORS.primary }}>
-                              Local Contact
-                            </Typography>
-                            {destination.contact?.name && (
-                              <Typography variant="body2" sx={{ color: COLORS.textPrimary, fontWeight: 700, mb: 1 }}>
-                                {destination.contact.name}
-                              </Typography>
-                            )}
-                            {destination.contact?.phone && (
-                              <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.8 }}>
-                                <Phone size={16} color={COLORS.accent} />
-                                <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
-                                  {destination.contact.phone}
-                                </Typography>
-                              </Stack>
-                            )}
-                            {destination.contact?.email && (
-                              <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.8 }}>
-                                <Mail size={16} color={COLORS.accent} />
-                                <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
-                                  {destination.contact.email}
-                                </Typography>
-                              </Stack>
-                            )}
-                            {destination.contact?.website && (
-                              <Button
-                                href={destination.contact.website}
-                                target="_blank"
-                                rel="noreferrer"
-                                size="small"
-                                endIcon={<ExternalLink size={16} />}
-                                sx={{ mt: 1.2, px: 0, color: COLORS.primary, fontWeight: 700, textTransform: 'none', justifyContent: 'flex-start' }}
-                              >
-                                Visit official website
-                              </Button>
-                            )}
-                          </Box>
-                        )}
-                        <Button
-                          fullWidth
-                          variant="contained"
-                          endIcon={<ExternalLink size={20} />}
-                          sx={{ bgcolor: COLORS.secondary, borderRadius: 3, py: 2, fontWeight: 800, textTransform: 'none', '&:hover': { bgcolor: '#B09342' } }}
-                        >
-                          Book via External Partner
-                        </Button>
-                      </Stack>
-                    </Grid>
-                  </Grid>
                 </motion.div>
               )}
             </AnimatePresence>
