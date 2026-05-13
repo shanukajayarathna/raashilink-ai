@@ -111,6 +111,16 @@ export default function VendorTab({ vendors = [], bookedVendorIds = [], expenses
     const s = statusMap[String(v._id)];
     return s && ['requested', 'booked'].includes(s.status);
   });
+
+  const cancelledVendorEntries = localBookedVendorIds
+    .filter((entry: any) => entry && entry.status === 'cancelled')
+    .map((entry: any) => {
+      const entryVendorId = typeof entry?.vendorId === 'object'
+        ? String(entry.vendorId?._id || entry.vendorId?.id || '')
+        : String(entry?.vendorId || '');
+      const vendor = safeVendors.find((item: any) => String(item?._id || '') === entryVendorId) || null;
+      return { entry, vendor, entryVendorId };
+    });
   const availableVendors = safeVendors.filter((v: any) => {
     if (!v?._id) return false;
     const s = statusMap[String(v._id)];
@@ -296,7 +306,7 @@ export default function VendorTab({ vendors = [], bookedVendorIds = [], expenses
                       )}
                       {entry?.status === 'booked' && (
                         <Typography variant="caption" sx={{ color: COLORS.textSecondary, fontStyle: 'italic', mt: 0.5 }}>
-                          Booking confirmed — contact vendor via phone/email to cancel
+                          Booking confirmed — contact this vendor directly using the phone/email details above.
                         </Typography>
                       )}
                     </Stack>
@@ -324,6 +334,88 @@ export default function VendorTab({ vendors = [], bookedVendorIds = [], expenses
         </Grid>
         )}
       </Box>
+
+      {cancelledVendorEntries.length > 0 && (
+        <>
+          {/* Cancelled Vendors Section */}
+          <Box sx={{ mb: 6 }}>
+            <Typography variant="h6" sx={{ fontWeight: 800, color: COLORS.primary, mb: 3, fontFamily: 'Playfair Display', display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              <Chip size="small" label="History" sx={{ bgcolor: `${COLORS.error}15`, color: COLORS.error, fontWeight: 700 }} />
+              Cancelled Vendors
+            </Typography>
+
+            <Grid container spacing={3}>
+              {cancelledVendorEntries.map(({ entry, vendor, entryVendorId }: any, i: number) => (
+                <Grid key={`${entryVendorId || 'cancelled'}-${i}`} size={{ xs: 12, md: 6 }}>
+                  <MotionCard
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: i * 0.05 }}
+                    sx={{
+                      borderRadius: 6,
+                      border: '1px solid',
+                      borderColor: `${COLORS.error}30`,
+                      bgcolor: `${COLORS.error}08`,
+                      overflow: 'hidden',
+                    }}
+                  >
+                    <CardContent sx={{ p: 3 }}>
+                      <Stack direction="row" justifyContent="space-between" alignItems="flex-start" sx={{ mb: 1 }}>
+                        <Box>
+                          <Typography variant="h6" sx={{ fontWeight: 800, color: COLORS.textPrimary }}>
+                            {vendor?.businessName || vendor?.name || entry?.vendorName || 'Vendor'}
+                          </Typography>
+                          <Typography variant="caption" sx={{ color: COLORS.textSecondary }}>
+                            {vendor?.category || entry?.category || 'Vendor Service'}
+                          </Typography>
+                        </Box>
+                        <Chip
+                          label="CANCELLED"
+                          size="small"
+                          sx={{ bgcolor: `${COLORS.error}25`, color: COLORS.error, fontWeight: 800, fontSize: '0.7rem' }}
+                        />
+                      </Stack>
+
+                      <Stack spacing={0.5} sx={{ mt: 1.5 }}>
+                        {entry?.selectedPackageName ? (
+                          <Typography variant="caption" sx={{ color: COLORS.textSecondary }}>
+                            Package: {entry.selectedPackageName}
+                          </Typography>
+                        ) : null}
+                        {entry?.quotedAmount ? (
+                          <Typography variant="caption" sx={{ color: COLORS.textSecondary }}>
+                            Last quoted amount: LKR {Number(entry.quotedAmount || 0).toLocaleString()}
+                          </Typography>
+                        ) : null}
+                        {entry?.notes ? (
+                          <Typography variant="caption" sx={{ color: COLORS.textSecondary }}>
+                            Cancellation reason: {entry.notes}
+                          </Typography>
+                        ) : null}
+
+                        {(vendor?.contactPhone || vendor?.contactEmail) && (
+                          <Stack direction="column" spacing={0.3} sx={{ mt: 1 }}>
+                            {vendor?.contactPhone ? (
+                              <Typography variant="caption" sx={{ color: COLORS.accent, fontWeight: 600 }}>
+                                Phone: {vendor.contactPhone}
+                              </Typography>
+                            ) : null}
+                            {vendor?.contactEmail ? (
+                              <Typography variant="caption" sx={{ color: COLORS.accent, fontWeight: 600 }}>
+                                Email: {vendor.contactEmail}
+                              </Typography>
+                            ) : null}
+                          </Stack>
+                        )}
+                      </Stack>
+                    </CardContent>
+                  </MotionCard>
+                </Grid>
+              ))}
+            </Grid>
+          </Box>
+        </>
+      )}
 
       <Divider sx={{ mb: 6, borderStyle: 'dashed' }} />
 
@@ -513,7 +605,7 @@ export default function VendorTab({ vendors = [], bookedVendorIds = [], expenses
         }}
       >
         <CircularProgress color="inherit" />
-        <Typography variant="body2" sx={{ fontWeight: 600 }}>Updating quote request...</Typography>
+        <Typography variant="body2" sx={{ fontWeight: 600 }}>Updating vendor booking status...</Typography>
       </Backdrop>
     </Box>
   );

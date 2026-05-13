@@ -9,6 +9,7 @@ import {
   Avatar, 
   IconButton, 
   Divider,
+  TextField,
   alpha,
   useTheme,
   Tooltip,
@@ -104,6 +105,7 @@ export default function BookingsManager({ quotes = [] }: BookingsManagerProps) {
 
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(bookings[0] || null);
   const [cancelConfirm, setCancelConfirm] = useState<Booking | null>(null);
+  const [cancelReason, setCancelReason] = useState('');
   const [cancelling, setCancelling] = useState(false);
   const [paymentUpdating, setPaymentUpdating] = useState<string | null>(null);
   const [localPaymentStatus, setLocalPaymentStatus] = useState<Record<string, string>>({});
@@ -140,8 +142,12 @@ export default function BookingsManager({ quotes = [] }: BookingsManagerProps) {
     if (!cancelConfirm) return;
     setCancelling(true);
     try {
-      await vendorService.updateQuoteRequest(cancelConfirm.id, { status: 'cancelled_by_vendor' });
+      await vendorService.updateQuoteRequest(cancelConfirm.id, {
+        status: 'cancelled_by_vendor',
+        message: cancelReason.trim() || 'Cancelled by vendor',
+      });
       setCancelConfirm(null);
+      setCancelReason('');
       setSelectedBooking(null);
       window.dispatchEvent(new CustomEvent('vendor:quote_arrived'));
     } catch {
@@ -178,9 +184,26 @@ export default function BookingsManager({ quotes = [] }: BookingsManagerProps) {
           <Typography>
             Are you sure you want to cancel the booking for <strong>{cancelConfirm?.coupleName}</strong>? The couple will be notified immediately and the booking will be reset.
           </Typography>
+          <TextField
+            fullWidth
+            multiline
+            minRows={3}
+            label="Cancellation reason"
+            placeholder="Share the reason for cancellation (visible to the couple)."
+            value={cancelReason}
+            onChange={(e) => setCancelReason(e.target.value)}
+            sx={{ mt: 2 }}
+          />
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={() => setCancelConfirm(null)} disabled={cancelling} sx={{ textTransform: 'none' }}>
+          <Button
+            onClick={() => {
+              setCancelConfirm(null);
+              setCancelReason('');
+            }}
+            disabled={cancelling}
+            sx={{ textTransform: 'none' }}
+          >
             Keep Booking
           </Button>
           <Button
@@ -378,7 +401,10 @@ export default function BookingsManager({ quotes = [] }: BookingsManagerProps) {
 
                 {/* Cancel Booking */}
                 <Button fullWidth variant="outlined"
-                  onClick={() => setCancelConfirm(selectedBooking)}
+                  onClick={() => {
+                    setCancelConfirm(selectedBooking);
+                    setCancelReason('');
+                  }}
                   sx={{ color: '#d32f2f', borderColor: '#d32f2f', borderRadius: '12px', textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: 'rgba(211,47,47,0.05)', borderColor: '#b71c1c' } }}>
                   Cancel This Booking
                 </Button>

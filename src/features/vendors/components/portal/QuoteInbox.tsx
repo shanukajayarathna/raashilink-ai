@@ -46,7 +46,7 @@ const COLORS = {
   textSecondary: '#555555',
 };
 
-type QuoteStatus = 'new' | 'responded' | 'accepted' | 'declined';
+type QuoteStatus = 'new' | 'responded' | 'accepted' | 'declined' | 'cancelled_by_vendor' | 'cancelled_by_user';
 
 interface QuoteRequest {
   id: string;
@@ -135,11 +135,14 @@ export default function QuoteInbox() {
 
   const filteredQuotes = useMemo(() => {
     return quotes.filter((quote) => {
+      const coupleName = String(quote.coupleName || '');
+      const location = String(quote.location || '');
+      const requirements = String(quote.requirements || '');
       const matchesSearch =
         !search ||
-        quote.coupleName.toLowerCase().includes(search.toLowerCase()) ||
-        quote.location.toLowerCase().includes(search.toLowerCase()) ||
-        quote.requirements.toLowerCase().includes(search.toLowerCase());
+        coupleName.toLowerCase().includes(search.toLowerCase()) ||
+        location.toLowerCase().includes(search.toLowerCase()) ||
+        requirements.toLowerCase().includes(search.toLowerCase());
       const matchesStatus = statusFilter === 'all' || quote.status === statusFilter;
       return matchesSearch && matchesStatus;
     });
@@ -189,7 +192,7 @@ export default function QuoteInbox() {
     }
   };
 
-  const getStatusChip = (status: QuoteStatus) => {
+  const getStatusChip = (status: string) => {
     const configs = {
       new: { label: 'New Request', color: COLORS.primary, icon: <Clock size={14} />, bg: alpha(COLORS.primary, 0.1) },
       responded: { label: 'Responded', color: COLORS.accent, icon: <CheckCircle2 size={14} />, bg: alpha(COLORS.accent, 0.1) },
@@ -197,7 +200,12 @@ export default function QuoteInbox() {
       declined: { label: 'Declined', color: '#d32f2f', icon: <XCircle size={14} />, bg: 'rgba(211, 47, 47, 0.1)' },
     } as const;
 
-    const config = configs[status];
+    const config = (configs as Record<string, { label: string; color: string; icon: React.ReactElement; bg: string }>)[status] || {
+      label: status ? status.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : 'Updated',
+      color: COLORS.textSecondary,
+      icon: <Clock size={14} />,
+      bg: alpha(COLORS.textSecondary, 0.12),
+    };
     return <Chip label={config.label} icon={config.icon} sx={{ bgcolor: config.bg, color: config.color, fontWeight: 600, borderRadius: '8px', '& .MuiChip-icon': { color: 'inherit' } }} />;
   };
 
@@ -234,6 +242,8 @@ export default function QuoteInbox() {
             <MenuItem value="responded">Responded</MenuItem>
             <MenuItem value="accepted">Accepted</MenuItem>
             <MenuItem value="declined">Declined</MenuItem>
+            <MenuItem value="cancelled_by_user">Cancelled by User</MenuItem>
+            <MenuItem value="cancelled_by_vendor">Cancelled by Vendor</MenuItem>
           </TextField>
         </Stack>
       </Box>
@@ -246,7 +256,7 @@ export default function QuoteInbox() {
         <Grid container spacing={2}>
           <AnimatePresence>
             {filteredQuotes.map((quote) => (
-              <Grid size={{ xs: 12 }} key={quote.id}>
+              <Grid size={{ xs: 12 }} key={quote.id || `${quote.coupleName}-${quote.createdAt}`}>
                 <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} transition={{ duration: 0.2 }}>
                   <Paper elevation={0} sx={{ p: 3, borderRadius: '16px', border: '1px solid rgba(139,26,46,0.08)', boxShadow: '0 2px 16px rgba(139,26,46,0.04)' }}>
                     <Grid container spacing={3} alignItems="center">
@@ -302,12 +312,16 @@ export default function QuoteInbox() {
                                 variant="contained"
                                 size="small"
                                 onClick={() => {
+                                  const parsedWeddingDate = quote.weddingDate ? new Date(quote.weddingDate) : null;
+                                  const safeScheduledDate = parsedWeddingDate && !Number.isNaN(parsedWeddingDate.getTime())
+                                    ? parsedWeddingDate.toISOString().split('T')[0]
+                                    : '';
                                   setSelectedQuote(quote);
                                   setQuoteForm({
                                     price: quote.response?.price ? String(quote.response.price) : '',
                                     packageName: quote.selectedPackageName || quote.preferredPackage || 'Custom Quote',
                                     message: quote.response?.message || '',
-                                    scheduledDate: quote.weddingDate ? new Date(quote.weddingDate).toISOString().split('T')[0] : '',
+                                    scheduledDate: safeScheduledDate,
                                     startTime: '10:00',
                                     endTime: '14:00',
                                   });

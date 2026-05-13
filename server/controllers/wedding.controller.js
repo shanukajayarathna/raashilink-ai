@@ -513,13 +513,87 @@ export const updateVendorStatus = asyncHandler(async (req, res) => {
     throw new ApiError(404, 'Vendor not found in project');
   }
   entry.status = status;
-  const vendor = await Vendor.findById(vendorId).select('category businessName').lean();
-  if (status === 'booked' && vendor?.category === 'Venue') {
+  const vendorSummary = await Vendor.findById(vendorId).select('category businessName').lean();
+  if (status === 'booked' && vendorSummary?.category === 'Venue') {
     project.venueId = vendorId;
   }
   if (status === 'cancelled' && String(project.venueId || '') === String(vendorId)) {
     project.venueId = undefined;
   }
+
+  if (status === 'cancelled') {
+    entry.confirmedStart = undefined;
+    entry.confirmedEnd = undefined;
+
+    if (entry.quoteRequestId) {
+      const quote = await QuoteRequest.findById(entry.quoteRequestId);
+      if (quote) {
+        quote.status = 'cancelled_by_user';
+        await quote.save();
+
+        if (quote.response?.scheduledStart) {
+          const cancelledDate = new Date(quote.response.scheduledStart);
+          const vendorDoc = await Vendor.findById(quote.vendorId);
+          if (vendorDoc) {
+            vendorDoc.availabilityCalendar = (vendorDoc.availabilityCalendar || []).filter((item) => {
+              const day = new Date(item.date);
+              return !(
+                !Number.isNaN(day.getTime()) &&
+                !Number.isNaN(cancelledDate.getTime()) &&
+                day.toISOString().split('T')[0] === cancelledDate.toISOString().split('T')[0]
+              );
+            });
+            await vendorDoc.save();
+          }
+        }
+
+        const vendorUserId = String(quote.vendorUserId || '');
+        if (vendorUserId) {
+          emitToUser(vendorUserId, 'quote_request_updated', {
+            quoteRequestId: String(quote._id),
+            status: 'cancelled_by_user',
+          });
+
+          emitToUser(vendorUserId, 'vendor_quote_request', {
+            quoteRequestId: String(quote._id),
+            status: 'cancelled_by_user',
+          });
+
+          const requesterName = req.user?.name || [req.user?.firstName, req.user?.lastName].filter(Boolean).join(' ').trim() || 'A couple';
+          try {
+            const notification = await Notification.create({
+              userId: vendorUserId,
+              type: 'vendor_booking_cancelled',
+              fromUserId: req.user._id,
+              fromUserName: requesterName,
+              fromUserProfilePic: null,
+              metadata: {
+                quoteRequestId: String(quote._id),
+                vendorId: String(quote.vendorId),
+                preview: `${requesterName} cancelled the booking request.`,
+              },
+            });
+
+            emitToUser(vendorUserId, 'notification', {
+              id: String(notification._id),
+              type: notification.type,
+              fromUserId: String(req.user._id),
+              fromUserName: requesterName,
+              fromUserProfilePic: null,
+              conversationId: null,
+              metadata: notification.metadata || null,
+              read: false,
+              createdAt: notification.createdAt,
+              preview: notification.metadata?.preview || '',
+            });
+          } catch {
+            // Notification failure should not block cancellation flow.
+          }
+        }
+      }
+    }
+  }
+
   await project.save();
   notifyPartner(project, req.user._id, 'vendor');
 

@@ -509,6 +509,12 @@ export const updateQuoteRequest = asyncHandler(async (req, res) => {
       scheduledEnd: status === 'accepted' ? scheduledRange?.end : quote.response?.scheduledEnd,
       respondedAt: new Date(),
     };
+  } else if (status === 'cancelled_by_vendor') {
+    quote.response = {
+      ...(quote.response || {}),
+      message: message || quote.response?.message || 'Cancelled by vendor',
+      respondedAt: new Date(),
+    };
   }
 
   await quote.save();
@@ -554,7 +560,14 @@ export const updateQuoteRequest = asyncHandler(async (req, res) => {
 
   // --- Cancellation by vendor: notify couple + clean calendar ---
   if (status === 'cancelled_by_vendor') {
+    const cancellationReason = String(message || quote.response?.message || 'Cancelled by vendor').trim();
     const projectForCancel = await WeddingProject.findById(quote.projectId);
+    const vendorForDetails = await Vendor.findById(quote.vendorId).select('businessName category contactPhone contactEmail').lean();
+    const vendorDisplayName =
+      vendorForDetails?.businessName ||
+      req.user?.name ||
+      [req.user?.firstName, req.user?.lastName].filter(Boolean).join(' ').trim() ||
+      'Your Vendor';
     if (projectForCancel) {
       // Clear confirmed dates from the project entry
       const cancelEntry = projectForCancel.vendors.find(
@@ -574,7 +587,44 @@ export const updateQuoteRequest = asyncHandler(async (req, res) => {
         emitToUser(uid, 'quote_request_updated', {
           quoteRequestId: String(quote._id),
           status: 'cancelled_by_vendor',
+          cancellationReason,
         });
+
+        try {
+          const notification = await Notification.create({
+            userId: uid,
+            type: 'vendor_booking_cancelled',
+            fromUserId: req.user._id,
+            fromUserName: vendorDisplayName,
+            fromUserProfilePic: null,
+            metadata: {
+              quoteRequestId: String(quote._id),
+              vendorId: String(quote.vendorId),
+              vendorName: vendorDisplayName,
+              vendorCategory: vendorForDetails?.category || '',
+              vendorPhone: vendorForDetails?.contactPhone || '',
+              vendorEmail: vendorForDetails?.contactEmail || '',
+              cancelReason: cancellationReason,
+              preview: `${vendorDisplayName} cancelled this booking. Reason: ${cancellationReason}. Contact: ${vendorForDetails?.contactPhone || 'N/A'}${vendorForDetails?.contactEmail ? ` | ${vendorForDetails.contactEmail}` : ''}`,
+            },
+          });
+
+          emitToUser(uid, 'notification', {
+            id: String(notification._id),
+            type: notification.type,
+            fromUserId: String(req.user._id),
+            fromUserName: vendorDisplayName,
+            vendorName: vendorDisplayName,
+            fromUserProfilePic: null,
+            conversationId: null,
+            metadata: notification.metadata,
+            read: false,
+            createdAt: notification.createdAt,
+            preview: notification.metadata?.preview || '',
+          });
+        } catch {
+          // Notification failure should not block the response.
+        }
       }
     }
 
@@ -588,37 +638,6 @@ export const updateQuoteRequest = asyncHandler(async (req, res) => {
       });
       await vendorForCancel.save();
     }
-
-    // Persist DB notification for the couple
-    const vendorUser = await import('../models/User.js').then(m => m.default.findById(req.user._id).select('name firstName lastName').lean()).catch(() => null);
-    const vendorName = vendorUser?.name || [vendorUser?.firstName, vendorUser?.lastName].filter(Boolean).join(' ').trim() || 'Your Vendor';
-    try {
-      const notification = await Notification.create({
-        userId: quote.requesterUserId,
-        type: 'vendor_booking_cancelled',
-        fromUserId: req.user._id,
-        fromUserName: vendorName,
-        fromUserProfilePic: null,
-        metadata: {
-          quoteRequestId: String(quote._id),
-          vendorId: String(quote.vendorId),
-          preview: `${vendorName} has cancelled your booking. Please contact them for details.`,
-        },
-      });
-      emitToUser(String(quote.requesterUserId), 'notification', {
-        id: String(notification._id),
-        type: notification.type,
-        fromUserId: String(req.user._id),
-        fromUserName: vendorName,
-        vendorName: vendorName,
-        fromUserProfilePic: null,
-        conversationId: null,
-        metadata: notification.metadata,
-        read: false,
-        createdAt: notification.createdAt,
-        preview: notification.metadata?.preview || '',
-      });
-    } catch { /* notification failure should not block the response */ }
 
     return res.status(200).json({ success: true, data: { status: 'cancelled_by_vendor' } });
   }

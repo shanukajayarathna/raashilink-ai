@@ -6,8 +6,24 @@ export interface AppNotification {
   fromUserId: string;
   fromUserName: string;
   fromUserProfilePic: string | null;
+  vendorName?: string;
   conversationId: string | null;
-  metadata?: { inviterId?: string; proposerId?: string; acceptorId?: string; resetterId?: string; cancelledBySelf?: boolean } | null;
+  metadata?: {
+    inviterId?: string;
+    proposerId?: string;
+    acceptorId?: string;
+    resetterId?: string;
+    cancelledBySelf?: boolean;
+    isDecline?: boolean;
+    preview?: string;
+    quoteRequestId?: string;
+    vendorId?: string;
+    vendorName?: string;
+    vendorCategory?: string;
+    vendorPhone?: string;
+    vendorEmail?: string;
+    cancelReason?: string;
+  } | null;
   read: boolean;
   createdAt: string;
   preview?: string;

@@ -1,8 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
+  Backdrop,
   Box,
   Button,
+  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
@@ -98,7 +100,7 @@ const buildInitialState = (weddingDate?: string, userPhone?: string, userEmail?:
   phone: userPhone || '',
   email: userEmail || '',
   contactName: userName || '',
-  preferredContactMethod: 'platform',
+  preferredContactMethod: 'phone',
 });
 
 const Transition = React.forwardRef(function Transition(
@@ -238,7 +240,7 @@ export default function QuoteRequestModal({
   return (
     <Dialog 
       open={open} 
-      onClose={onClose} 
+      onClose={isSubmitting ? undefined : onClose} 
       fullWidth 
       maxWidth="md" 
       TransitionComponent={Transition}
@@ -285,7 +287,7 @@ export default function QuoteRequestModal({
             <DialogContent sx={{ p: 4 }}>
               <Stack spacing={3} sx={{ mt: 1 }}>
                 <Alert icon={<Info size={18} />} severity="info" sx={{ borderRadius: 3 }}>
-                  This request goes directly to the vendor portal inbox with your event and contact details.
+                  This request goes directly to the vendor with your event and contact details.
                 </Alert>
 
                 {submitError ? <Alert severity="error" sx={{ borderRadius: 3 }}>{submitError}</Alert> : null}
@@ -500,7 +502,6 @@ export default function QuoteRequestModal({
                 </Grid>
 
                 <TextField select fullWidth label="Preferred Contact Method" value={formData.preferredContactMethod} onChange={(e) => handleChange('preferredContactMethod', e.target.value)}>
-                  <MenuItem value="platform">Platform inbox</MenuItem>
                   <MenuItem value="phone">Phone call</MenuItem>
                   <MenuItem value="email">Email</MenuItem>
                   <MenuItem value="whatsapp">WhatsApp</MenuItem>
@@ -530,7 +531,7 @@ export default function QuoteRequestModal({
               Request Sent
             </Typography>
             <Typography variant="body1" sx={{ color: 'text.secondary', mb: 2 }}>
-              The vendor now has your full quote brief in their profile inbox.
+              The vendor now has your full quote brief.
             </Typography>
             {packageOptions.find((p) => p.id === formData.preferredPackage)?.price ? (
               <Typography variant="body2" sx={{ color: COLORS.accent, mb: 3 }}>
@@ -545,6 +546,21 @@ export default function QuoteRequestModal({
           </motion.div>
         )}
       </AnimatePresence>
+
+      <Backdrop
+        open={isSubmitting}
+        sx={{
+          zIndex: (theme) => theme.zIndex.modal + 5,
+          backdropFilter: 'blur(5px)',
+          backgroundColor: 'rgba(20,20,20,0.25)',
+          color: '#fff',
+          flexDirection: 'column',
+          gap: 1,
+        }}
+      >
+        <CircularProgress color="inherit" />
+        <Typography variant="body2" sx={{ fontWeight: 600 }}>Sending request...</Typography>
+      </Backdrop>
     </Dialog>
   );
 }

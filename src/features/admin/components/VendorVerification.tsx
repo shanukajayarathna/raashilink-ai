@@ -1,58 +1,37 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
-  Box,
-  Paper,
-  Typography,
-  Grid,
-  Card,
-  CardContent,
-  CardActions,
-  Button,
-  Chip,
-  Avatar,
-  Stack,
-  Divider,
-  List,
-  ListItem,
-  ListItemIcon,
-  ListItemText,
-  IconButton,
-  Badge,
-  Tooltip,
-  Skeleton,
   Alert,
-  Tabs,
-  Tab,
+  Avatar,
+  Box,
+  Button,
+  Card,
+  CardActions,
+  CardContent,
+  Chip,
   Dialog,
-  DialogTitle,
-  DialogContent,
   DialogActions,
+  DialogContent,
+  DialogTitle,
+  Divider,
+  Grid,
+  IconButton,
+  Skeleton,
+  Stack,
+  Tab,
+  Tabs,
   TextField,
+  Tooltip,
+  Typography,
 } from '@mui/material';
-import {
-  CheckCircle2,
-  XCircle,
-  AlertCircle,
-  FileText,
-  UserCheck,
-  Image,
-  DollarSign,
-  Briefcase,
-  ExternalLink,
-  MessageSquare,
-  Clock,
-  ShieldCheck,
-} from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { CheckCircle2, Clock, ExternalLink, FileText, MessageSquare } from 'lucide-react';
+import { AnimatePresence, motion } from 'motion/react';
 import adminService from '../services/adminService';
 
-// Design System Constants
 const COLORS = {
   primary: '#8B1A2E',
   secondary: '#C9A84C',
   accent: '#1A6B72',
   background: '#FAF7F2',
-  white: '#FFFFFF',
   textPrimary: '#1C1C1C',
   textSecondary: '#555555',
   success: '#2E7D32',
@@ -77,13 +56,16 @@ const VendorVerification: React.FC<VendorVerificationProps> = ({ pendingCount = 
   const [dialogInput, setDialogInput] = useState('');
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState('');
-
-  useEffect(() => {
-    loadVendors();
-  }, [page, activeTab]);
+  const [noteDialogOpen, setNoteDialogOpen] = useState(false);
+  const [noteInput, setNoteInput] = useState('');
+  const [savingNote, setSavingNote] = useState(false);
 
   const statusByTab = ['pending', 'approved', 'rejected'];
   const currentStatus = statusByTab[activeTab] || 'pending';
+
+  useEffect(() => {
+    void loadVendors();
+  }, [page, activeTab]);
 
   const loadVendors = async () => {
     try {
@@ -116,9 +98,10 @@ const VendorVerification: React.FC<VendorVerificationProps> = ({ pendingCount = 
 
   const handleApprove = async () => {
     if (!selectedVendor) return;
+
     try {
       setProcessing(true);
-      await adminService.updateVendorStatus(selectedVendor.id, 'approved', dialogInput);
+      await adminService.approveVendor(selectedVendor.id, dialogInput);
       setDialogOpen(false);
       await loadVendors();
       await onStatusChange?.();
@@ -134,9 +117,10 @@ const VendorVerification: React.FC<VendorVerificationProps> = ({ pendingCount = 
       setError('Please provide a rejection reason');
       return;
     }
+
     try {
       setProcessing(true);
-      await adminService.updateVendorStatus(selectedVendor.id, 'rejected', dialogInput);
+      await adminService.rejectVendor(selectedVendor.id, dialogInput);
       setDialogOpen(false);
       await loadVendors();
       await onStatusChange?.();
@@ -160,6 +144,28 @@ const VendorVerification: React.FC<VendorVerificationProps> = ({ pendingCount = 
     }
   };
 
+  const openNoteDialog = (vendor: any) => {
+    setSelectedVendor(vendor);
+    setNoteInput(vendor.adminNotes || '');
+    setNoteDialogOpen(true);
+  };
+
+  const handleSaveNote = async () => {
+    if (!selectedVendor) return;
+
+    try {
+      setSavingNote(true);
+      await adminService.updateVendorStatus(selectedVendor.id, selectedVendor.approvalStatus, noteInput);
+      setNoteDialogOpen(false);
+      await loadVendors();
+      setError('');
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Failed to save note');
+    } finally {
+      setSavingNote(false);
+    }
+  };
+
   const renderPendingQueue = () => (
     <>
       {error && (
@@ -167,47 +173,71 @@ const VendorVerification: React.FC<VendorVerificationProps> = ({ pendingCount = 
           {error}
         </Alert>
       )}
+
       <Grid container spacing={3}>
         {vendors.length === 0 ? (
           <Grid size={{ xs: 12 }}>
             <Box sx={{ textAlign: 'center', py: 8 }}>
               <CheckCircle2 size={64} color={COLORS.success} style={{ opacity: 0.5, marginBottom: 16 }} />
-              <Typography variant="h6" color="textSecondary">No {currentStatus} vendors found</Typography>
+              <Typography variant="h6" color="textSecondary">
+                No {currentStatus} vendors found
+              </Typography>
             </Box>
           </Grid>
         ) : (
           vendors.map((vendor) => (
             <Grid size={{ xs: 12, lg: 6 }} key={vendor.id}>
               <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.3 }}>
-                <Card sx={{ borderRadius: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.05)', overflow: 'visible', position: 'relative' }}>
+                <Card sx={{ borderRadius: '16px', border: `1px solid ${COLORS.secondary}33` }}>
                   <CardContent sx={{ p: 3 }}>
                     <Box sx={{ display: 'flex', gap: 3, mb: 3 }}>
                       <Avatar sx={{ width: 80, height: 80, border: `4px solid ${COLORS.background}`, bgcolor: COLORS.primary }}>
                         {vendor.ownerName?.charAt(0) || 'V'}
                       </Avatar>
+
                       <Box sx={{ flexGrow: 1 }}>
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                           <Box>
-                            <Typography variant="h6" sx={{ fontWeight: 800, color: COLORS.primary }}>{vendor.businessName}</Typography>
-                            <Chip label={vendor.category} size="small" sx={{ bgcolor: `${COLORS.accent}15`, color: COLORS.accent, fontWeight: 700, mt: 0.5 }} />
-                              <Chip
-                                label={vendor.approvalStatus}
-                                size="small"
-                                sx={{
-                                  ml: 1,
-                                  bgcolor: vendor.approvalStatus === 'approved' ? `${COLORS.success}15` : vendor.approvalStatus === 'rejected' ? `${COLORS.error}15` : `${COLORS.warning}15`,
-                                  color: vendor.approvalStatus === 'approved' ? COLORS.success : vendor.approvalStatus === 'rejected' ? COLORS.error : COLORS.warning,
-                                  fontWeight: 700,
-                                  mt: 0.5,
-                                  textTransform: 'capitalize',
-                                }}
-                              />
+                            <Typography variant="h6" sx={{ fontWeight: 800, color: COLORS.primary }}>
+                              {vendor.businessName}
+                            </Typography>
+                            <Chip
+                              label={vendor.category}
+                              size="small"
+                              sx={{ bgcolor: `${COLORS.accent}15`, color: COLORS.accent, fontWeight: 700, mt: 0.5 }}
+                            />
+                            <Chip
+                              label={vendor.approvalStatus}
+                              size="small"
+                              sx={{
+                                ml: 1,
+                                bgcolor:
+                                  vendor.approvalStatus === 'approved'
+                                    ? `${COLORS.success}15`
+                                    : vendor.approvalStatus === 'rejected'
+                                      ? `${COLORS.error}15`
+                                      : `${COLORS.warning}15`,
+                                color:
+                                  vendor.approvalStatus === 'approved'
+                                    ? COLORS.success
+                                    : vendor.approvalStatus === 'rejected'
+                                      ? COLORS.error
+                                      : COLORS.warning,
+                                fontWeight: 700,
+                                mt: 0.5,
+                                textTransform: 'capitalize',
+                              }}
+                            />
                             <Typography variant="caption" sx={{ color: COLORS.textSecondary, display: 'block', mt: 1 }}>
                               Owner: {vendor.ownerName}
                             </Typography>
                           </Box>
+
                           <Box sx={{ textAlign: 'right' }}>
-                            <Typography variant="caption" sx={{ color: COLORS.textSecondary, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                            <Typography
+                              variant="caption"
+                              sx={{ color: COLORS.textSecondary, display: 'flex', alignItems: 'center', gap: 0.5 }}
+                            >
                               <Clock size={12} /> {new Date(vendor.createdAt).toLocaleDateString()}
                             </Typography>
                           </Box>
@@ -217,28 +247,63 @@ const VendorVerification: React.FC<VendorVerificationProps> = ({ pendingCount = 
 
                     <Divider sx={{ mb: 3 }} />
 
-                    <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 2, color: COLORS.textPrimary }}>Business Details</Typography>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 2, color: COLORS.textPrimary }}>
+                      Business Details
+                    </Typography>
                     <Stack spacing={1} sx={{ mb: 3 }}>
                       <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <Typography variant="caption" sx={{ color: COLORS.textSecondary }}>Registration #</Typography>
-                        <Typography variant="caption" sx={{ fontWeight: 600 }}>{vendor.businessRegistrationNumber || 'N/A'}</Typography>
+                        <Typography variant="caption" sx={{ color: COLORS.textSecondary }}>
+                          Registration #
+                        </Typography>
+                        <Typography variant="caption" sx={{ fontWeight: 600 }}>
+                          {vendor.businessRegistrationNumber || 'N/A'}
+                        </Typography>
                       </Box>
                       <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <Typography variant="caption" sx={{ color: COLORS.textSecondary }}>Email</Typography>
-                        <Typography variant="caption" sx={{ fontWeight: 600 }}>{vendor.ownerEmail}</Typography>
+                        <Typography variant="caption" sx={{ color: COLORS.textSecondary }}>
+                          Email
+                        </Typography>
+                        <Typography variant="caption" sx={{ fontWeight: 600 }}>
+                          {vendor.ownerEmail}
+                        </Typography>
                       </Box>
                       <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <Typography variant="caption" sx={{ color: COLORS.textSecondary }}>Phone</Typography>
-                        <Typography variant="caption" sx={{ fontWeight: 600 }}>{vendor.ownerPhone}</Typography>
+                        <Typography variant="caption" sx={{ color: COLORS.textSecondary }}>
+                          Phone
+                        </Typography>
+                        <Typography variant="caption" sx={{ fontWeight: 600 }}>
+                          {vendor.ownerPhone}
+                        </Typography>
                       </Box>
                     </Stack>
 
+                    {vendor.adminNotes && (
+                      <Box
+                        sx={{
+                          p: 2,
+                          mb: 3,
+                          bgcolor: `${COLORS.secondary}10`,
+                          borderLeft: `4px solid ${COLORS.secondary}`,
+                          borderRadius: '8px',
+                        }}
+                      >
+                        <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1, color: COLORS.primary }}>
+                          Admin Notes
+                        </Typography>
+                        <Typography variant="body2" sx={{ color: COLORS.textSecondary, whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
+                          {vendor.adminNotes}
+                        </Typography>
+                      </Box>
+                    )}
+
                     {vendor.socialLinks && Object.keys(vendor.socialLinks).length > 0 && (
                       <>
-                        <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 2, color: COLORS.textPrimary }}>Social Links</Typography>
+                        <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 2, color: COLORS.textPrimary }}>
+                          Social Links
+                        </Typography>
                         <Stack direction="row" spacing={1} sx={{ mb: 3 }}>
-                          {Object.entries(vendor.socialLinks).map(([platform, url]: [string, any]) => (
-                            url && (
+                          {Object.entries(vendor.socialLinks).map(([platform, url]: [string, any]) =>
+                            url ? (
                               <Tooltip key={platform} title={platform}>
                                 <IconButton
                                   size="small"
@@ -248,15 +313,17 @@ const VendorVerification: React.FC<VendorVerificationProps> = ({ pendingCount = 
                                   <ExternalLink size={16} />
                                 </IconButton>
                               </Tooltip>
-                            )
-                          ))}
+                            ) : null,
+                          )}
                         </Stack>
                       </>
                     )}
 
                     {vendor.documents && vendor.documents.length > 0 && (
                       <>
-                        <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 2, color: COLORS.textPrimary }}>Submitted Documents</Typography>
+                        <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 2, color: COLORS.textPrimary }}>
+                          Submitted Documents
+                        </Typography>
                         <Stack spacing={1} sx={{ mb: 3 }}>
                           {vendor.documents.map((doc: any, idx: number) => (
                             <Box
@@ -281,11 +348,7 @@ const VendorVerification: React.FC<VendorVerificationProps> = ({ pendingCount = 
                                   </Typography>
                                 </Box>
                               </Box>
-                              <IconButton
-                                size="small"
-                                onClick={() => window.open(doc.url, '_blank')}
-                                sx={{ color: COLORS.accent }}
-                              >
+                              <IconButton size="small" onClick={() => window.open(doc.url, '_blank')} sx={{ color: COLORS.accent }}>
                                 <ExternalLink size={16} />
                               </IconButton>
                             </Box>
@@ -294,8 +357,17 @@ const VendorVerification: React.FC<VendorVerificationProps> = ({ pendingCount = 
                       </>
                     )}
                   </CardContent>
+
                   <CardActions sx={{ p: 3, pt: 0, justifyContent: 'space-between' }}>
-                    <Button startIcon={<MessageSquare size={18} />} sx={{ color: COLORS.textSecondary }}>Add Note</Button>
+                    <Button
+                      startIcon={<MessageSquare size={18} />}
+                      sx={{ color: COLORS.textSecondary }}
+                      onClick={() => openNoteDialog(vendor)}
+                      disabled={processing || savingNote}
+                    >
+                      {vendor.adminNotes ? 'Edit Note' : 'Add Note'}
+                    </Button>
+
                     <Stack direction="row" spacing={2}>
                       {vendor.approvalStatus !== 'pending' && (
                         <Button
@@ -307,6 +379,7 @@ const VendorVerification: React.FC<VendorVerificationProps> = ({ pendingCount = 
                           Mark Pending
                         </Button>
                       )}
+
                       <Button
                         variant="outlined"
                         color="error"
@@ -316,6 +389,7 @@ const VendorVerification: React.FC<VendorVerificationProps> = ({ pendingCount = 
                       >
                         Reject
                       </Button>
+
                       <Button
                         variant="contained"
                         onClick={() => openApproveDialog(vendor)}
@@ -332,21 +406,14 @@ const VendorVerification: React.FC<VendorVerificationProps> = ({ pendingCount = 
           ))
         )}
       </Grid>
+
       {totalPages > 1 && (
         <Box sx={{ mt: 4, display: 'flex', justifyContent: 'center', gap: 2 }}>
-          <Button
-            disabled={page === 1}
-            onClick={() => setPage(page - 1)}
-          >
+          <Button disabled={page === 1} onClick={() => setPage(page - 1)}>
             Previous
           </Button>
-          <Typography sx={{ alignSelf: 'center' }}>
-            Page {page} of {totalPages}
-          </Typography>
-          <Button
-            disabled={page === totalPages}
-            onClick={() => setPage(page + 1)}
-          >
+          <Typography sx={{ alignSelf: 'center' }}>Page {page} of {totalPages}</Typography>
+          <Button disabled={page === totalPages} onClick={() => setPage(page + 1)}>
             Next
           </Button>
         </Box>
@@ -357,25 +424,30 @@ const VendorVerification: React.FC<VendorVerificationProps> = ({ pendingCount = 
   return (
     <Box>
       <Box sx={{ mb: 4 }}>
-        <Typography variant="h6" sx={{ fontWeight: 700, fontFamily: 'Playfair Display', mb: 1 }}>Vendor Verification</Typography>
-        <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>Manage existing vendors and change approval status</Typography>
+        <Typography variant="h6" sx={{ fontWeight: 700, fontFamily: 'Playfair Display', mb: 1 }}>
+          Vendor Verification
+        </Typography>
+        <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
+          Manage existing vendors and change approval status
+        </Typography>
+
         <Tabs
           value={activeTab}
           onChange={(_event, value) => {
             setActiveTab(value);
             setPage(1);
           }}
-          sx={{ 
+          sx={{
             mt: 2,
             '& .MuiTabs-indicator': { bgcolor: COLORS.secondary, height: 3, borderRadius: '3px 3px 0 0' },
-            '& .MuiTab-root': { 
-              textTransform: 'none', 
-              fontWeight: 700, 
+            '& .MuiTab-root': {
+              textTransform: 'none',
+              fontWeight: 700,
               minHeight: 48,
               fontSize: '0.9rem',
               color: COLORS.textSecondary,
-              '&.Mui-selected': { color: COLORS.primary }
-            }
+              '&.Mui-selected': { color: COLORS.primary },
+            },
           }}
         >
           <Tab label={pendingCount > 0 ? `Pending (${pendingCount})` : 'Pending'} />
@@ -399,9 +471,7 @@ const VendorVerification: React.FC<VendorVerificationProps> = ({ pendingCount = 
       </AnimatePresence>
 
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)}>
-        <DialogTitle>
-          {dialogType === 'approve' ? 'Approve Vendor' : 'Reject Vendor'}
-        </DialogTitle>
+        <DialogTitle>{dialogType === 'approve' ? 'Approve Vendor' : 'Reject Vendor'}</DialogTitle>
         <DialogContent>
           {dialogType === 'approve' ? (
             <>
@@ -444,7 +514,31 @@ const VendorVerification: React.FC<VendorVerificationProps> = ({ pendingCount = 
             variant="contained"
             sx={{ bgcolor: dialogType === 'approve' ? COLORS.success : COLORS.error }}
           >
-            {processing ? 'Processing...' : (dialogType === 'approve' ? 'Approve' : 'Reject')}
+            {processing ? 'Processing...' : dialogType === 'approve' ? 'Approve' : 'Reject'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={noteDialogOpen} onClose={() => setNoteDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          {selectedVendor?.adminNotes ? 'Edit Note' : 'Add Note'} - {selectedVendor?.businessName}
+        </DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            fullWidth
+            multiline
+            rows={5}
+            value={noteInput}
+            onChange={(e) => setNoteInput(e.target.value)}
+            placeholder="Add admin notes about this vendor..."
+            sx={{ mt: 2 }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setNoteDialogOpen(false)}>Cancel</Button>
+          <Button onClick={handleSaveNote} disabled={savingNote} variant="contained" sx={{ bgcolor: COLORS.primary }}>
+            {savingNote ? 'Saving...' : 'Save Note'}
           </Button>
         </DialogActions>
       </Dialog>

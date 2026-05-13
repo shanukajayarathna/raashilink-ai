@@ -26,6 +26,7 @@ import {
   DialogActions,
   TextField,
   Stack,
+  Chip,
 } from '@mui/material';
 import { 
   LayoutDashboard, 
@@ -144,6 +145,7 @@ export default function VendorPortal() {
   const [otpValue, setOtpValue] = useState('');
   const [busyChannel, setBusyChannel] = useState<'email' | 'phone' | null>(null);
   const [verifying, setVerifying] = useState(false);
+  const [approvalError, setApprovalError] = useState<string | null>(null);
   
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
@@ -225,6 +227,23 @@ export default function VendorPortal() {
       });
     } catch (error) {
       console.error('Error fetching vendor data', error);
+      
+      // Check if the error is due to pending/rejected approval status
+      const errorStatus = (error as any)?.response?.status;
+      const errorMessage = (error as any)?.response?.data?.message || '';
+      
+      if (errorStatus === 403 && errorMessage.includes('pending')) {
+        setApprovalError('pending');
+        setVendorData(null);
+        return;
+      }
+      
+      if (errorStatus === 403 && errorMessage.includes('rejected')) {
+        setApprovalError('rejected');
+        setVendorData(null);
+        return;
+      }
+      
       setVendorData((prev: any) => prev || {
           businessName: user?.vendorProfile?.businessName || user?.name || 'Vendor Account',
           category: user?.vendorProfile?.businessCategory || 'Vendor',
@@ -269,8 +288,12 @@ export default function VendorPortal() {
         // Silently refresh QuoteInbox list without showing skeleton
         window.dispatchEvent(new CustomEvent('vendor:quote_arrived'));
       };
+      const onQuoteRequestUpdated = () => {
+        fetchVendorData();
+        window.dispatchEvent(new CustomEvent('vendor:quote_arrived'));
+      };
       const onNotification = (payload: AppNotification) => {
-        if (payload?.type !== 'vendor_quote_request') return;
+        if (payload?.type !== 'vendor_quote_request' && payload?.type !== 'vendor_booking_cancelled') return;
 
         if (activeTabRef.current === 1) {
           notificationService.markRead(payload.id).catch(() => {});
@@ -283,10 +306,17 @@ export default function VendorPortal() {
           if (prev.some((n) => n.id === payload.id)) return prev;
           return [payload, ...prev];
         });
-        dispatch(showToast({ type: 'info', message: `${payload.fromUserName || 'A user'} sent a new quote request.` }));
+        dispatch(showToast({
+          type: 'info',
+          message:
+            payload?.type === 'vendor_booking_cancelled'
+              ? `${payload.fromUserName || 'A user'} cancelled a booking request.`
+              : `${payload.fromUserName || 'A user'} sent a new quote request.`,
+        }));
         window.dispatchEvent(new CustomEvent('vendor:quote_arrived'));
       };
       socket.on('vendor_quote_request', onVendorQuoteRequest);
+      socket.on('quote_request_updated', onQuoteRequestUpdated);
       socket.on('notification', onNotification);
 
       return () => {
@@ -294,6 +324,7 @@ export default function VendorPortal() {
         window.removeEventListener('focus', handleRefresh);
         window.removeEventListener('app:refresh', handleRefresh as EventListener);
         socket.off('vendor_quote_request', onVendorQuoteRequest);
+        socket.off('quote_request_updated', onQuoteRequestUpdated);
         socket.off('notification', onNotification);
       };
     }
@@ -312,6 +343,70 @@ export default function VendorPortal() {
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', bgcolor: COLORS.background }}>
         <Skeleton variant="rectangular" width="100%" height="100%" />
       </Box>
+    );
+  }
+
+  if (approvalError) {
+    return (
+      <Dialog open={true} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: '20px' } }}>
+        <DialogContent sx={{ pt: 4, textAlign: 'center' }}>
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="h5" sx={{ fontWeight: 700, color: COLORS.primary, mb: 2 }}>
+              {approvalError === 'pending' ? '⏳ Application Under Review' : '❌ Application Rejected'}
+            </Typography>
+            <Typography variant="body2" color="textSecondary" sx={{ lineHeight: 1.6, mb: 3 }}>
+              {approvalError === 'pending'
+                ? "Your vendor profile is currently under review by our admin team. We're carefully evaluating your business to ensure the best experience for our customers. This typically takes 1-2 business days."
+                : 'Unfortunately, your vendor application has been rejected. Please review the requirements and reapply if you believe this is an error.'}
+            </Typography>
+          </Box>
+          
+          <Box
+            sx={{
+              bgcolor: '#FFF3E0',
+              borderLeft: `4px solid ${COLORS.secondary}`,
+              p: 2.5,
+              borderRadius: '8px',
+              mb: 3,
+              textAlign: 'left'
+            }}
+          >
+            <Typography variant="subtitle2" sx={{ fontWeight: 700, color: COLORS.primary, mb: 1 }}>
+              📧 Need Help?
+            </Typography>
+            <Typography variant="body2" sx={{ color: COLORS.textSecondary, mb: 1 }}>
+              For more details about your application status or to get assistance, please email us:
+            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1.5 }}>
+              <Typography
+                component="a"
+                href="mailto:raashilink@ai.lk"
+                sx={{
+                  fontWeight: 600,
+                  color: COLORS.secondary,
+                  textDecoration: 'none',
+                  '&:hover': { textDecoration: 'underline' }
+                }}
+              >
+                raashilink@ai.lk
+              </Typography>
+            </Box>
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 3 }}>
+          <Button
+            fullWidth
+            variant="contained"
+            onClick={() => {
+              dispatch(logout());
+              navigate('/login');
+            }}
+            sx={{ bgcolor: COLORS.primary, '&:hover': { bgcolor: '#6b1423' } }}
+          >
+            Return to Login
+          </Button>
+        </DialogActions>
+      </Dialog>
     );
   }
 
@@ -588,73 +683,75 @@ export default function VendorPortal() {
         </Box>
 
         {/* Content */}
-        <Container maxWidth="xl" sx={{ py: 4, flexGrow: 1 }}>
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={activeTab}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.2 }}
-            >
-              {activeTab === 0 && (
-                <DashboardOverview
-                  stats={vendorData.stats}
-                  activity={vendorData.activity}
-                  vendorProfile={vendorData.vendorProfile}
-                  verification={vendorData.verification}
-                  onRequestOtp={handleRequestVerificationOtp}
-                  onOpenVerify={(channel) => {
-                    setVerifyDialog({ open: true, channel });
-                    setOtpValue('');
-                  }}
-                  busyChannel={busyChannel}
-                />
-              )}
-              {activeTab === 1 && <QuoteInbox />}
-              {activeTab === 2 && <BookingsManager quotes={vendorData.quoteItems || []} />}
-              {activeTab === 3 && (
-                <VendorCalendar
-                  quotes={vendorData.quoteItems || []}
-                  availabilityCalendar={vendorData.vendorProfile?.availabilityCalendar || []}
-                />
-              )}
-              {activeTab === 4 && (
-                <PortfolioUpload
-                  portfolioImages={vendorData.vendorProfile?.portfolioImages || []}
-                  onUpdate={(images) =>
-                    setVendorData((prev: any) => ({
-                      ...prev,
-                      vendorProfile: { ...(prev?.vendorProfile || {}), portfolioImages: images },
-                    }))
-                  }
-                />
-              )}
-              {activeTab === 5 && (
-                <ProfileManagement
-                  vendorData={vendorData}
-                  onSaved={(updated) =>
-                    setVendorData((prev: any) => ({
-                      ...prev,
-                      businessName: updated?.businessName || prev?.businessName,
-                      category: updated?.category || prev?.category,
-                      vendorProfile: {
-                        ...(prev?.vendorProfile || {}),
-                        ...(updated || {}),
-                      },
-                    }))
-                  }
-                />
-              )}
-              {activeTab === 6 && (
-                <AnalyticsView
-                  quoteItems={vendorData.quoteItems || []}
-                  vendorProfile={vendorData.vendorProfile || null}
-                />
-              )}
-            </motion.div>
-          </AnimatePresence>
-        </Container>
+        <Box sx={{ flex: 1, overflowY: 'auto', p: { xs: 2, md: 4 } }}>
+          <Box sx={{ maxWidth: '1400px', mx: 'auto' }}>
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={activeTab}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.2 }}
+              >
+                {activeTab === 0 && (
+                  <DashboardOverview
+                    stats={vendorData.stats}
+                    activity={vendorData.activity}
+                    vendorProfile={vendorData.vendorProfile}
+                    verification={vendorData.verification}
+                    onRequestOtp={handleRequestVerificationOtp}
+                    onOpenVerify={(channel: 'email' | 'phone') => {
+                      setVerifyDialog({ open: true, channel });
+                      setOtpValue('');
+                    }}
+                    busyChannel={busyChannel}
+                  />
+                )}
+                {activeTab === 1 && <QuoteInbox />}
+                {activeTab === 2 && <BookingsManager quotes={vendorData.quoteItems || []} />}
+                {activeTab === 3 && (
+                  <VendorCalendar
+                    quotes={vendorData.quoteItems || []}
+                    availabilityCalendar={vendorData.vendorProfile?.availabilityCalendar || []}
+                  />
+                )}
+                {activeTab === 4 && (
+                  <PortfolioUpload
+                    portfolioImages={vendorData.vendorProfile?.portfolioImages || []}
+                    onUpdate={(images) =>
+                      setVendorData((prev: any) => ({
+                        ...prev,
+                        vendorProfile: { ...(prev?.vendorProfile || {}), portfolioImages: images },
+                      }))
+                    }
+                  />
+                )}
+                {activeTab === 5 && (
+                  <ProfileManagement
+                    vendorData={vendorData}
+                    onSaved={(updated) =>
+                      setVendorData((prev: any) => ({
+                        ...prev,
+                        businessName: updated?.businessName || prev?.businessName,
+                        category: updated?.category || prev?.category,
+                        vendorProfile: {
+                          ...(prev?.vendorProfile || {}),
+                          ...(updated || {}),
+                        },
+                      }))
+                    }
+                  />
+                )}
+                {activeTab === 6 && (
+                  <AnalyticsView
+                    quoteItems={vendorData.quoteItems || []}
+                    vendorProfile={vendorData.vendorProfile || null}
+                  />
+                )}
+              </motion.div>
+            </AnimatePresence>
+          </Box>
+        </Box>
 
         {/* Mobile Bottom Navigation */}
         {isMobile && (
@@ -774,7 +871,7 @@ export default function VendorPortal() {
                   {notif.fromUserName || 'A user'} sent a quote request
                 </Typography>
                 <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mt: 0.3 }}>
-                  {notif.preview || notif.metadata?.preview || 'Open Quotes to review details.'}
+                  {(notif as any)?.metadata?.preview || 'Open Quotes to review details.'}
                 </Typography>
               </Box>
             </MenuItem>
@@ -862,7 +959,7 @@ export const DashboardOverview = ({
                 ⚠️ Contact Verification Pending
               </Typography>
               <Typography variant="caption" sx={{ display: 'block', lineHeight: 1.5 }}>
-                {!verification?.emailVerified && 'Email '}{!verification?.emailVerified && !verification?.phoneVerified && '& '}{!verification?.phoneVerified && 'phone '} verification needed to enable client communication.
+                {!verification?.emailVerified && 'Email '}{!verification?.emailVerified && !verification?.phoneVerified && '& '}{!verification?.phoneVerified && 'phone '} verification needed to unlock contact features.
               </Typography>
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mt: 1.5 }}>
                 {!verification?.emailVerified && (

@@ -44,7 +44,14 @@ export default function NotificationPanel({
     onClose();
     if (n.type === 'mutual_match' || n.type === 'message_received') {
       navigate('/messages', { state: { conversationId: n.conversationId } });
-    } else if (n.type === 'wedding_invite' || n.type === 'wedding_accepted' || n.type === 'wedding_planning_unlocked' || n.type === 'wedding_cancelled') {
+    } else if (
+      n.type === 'wedding_invite' ||
+      n.type === 'wedding_accepted' ||
+      n.type === 'wedding_planning_unlocked' ||
+      n.type === 'wedding_cancelled' ||
+      n.type === 'vendor_quote_request' ||
+      n.type === 'vendor_booking_cancelled'
+    ) {
       navigate('/wedding');
     } else if (n.type === 'interest_declined' || n.type === 'match_removed') {
       // No navigation needed — just dismiss
@@ -248,6 +255,16 @@ export default function NotificationPanel({
                               <span style={{ color: '#6b7280' }}>{n.metadata?.cancelledBySelf ? 'You' : (n.fromUserName || 'This user')}</span>
                               {n.metadata?.isDecline ? ' declined the wedding invite' : ' cancelled wedding planning'}
                             </>
+                          ) : n.type === 'vendor_quote_request' ? (
+                            <>
+                              <span style={{ color: '#8B1A2E' }}>{n.metadata?.vendorName || n.fromUserName || 'Your vendor'}</span>
+                              {' '}updated your booking request
+                            </>
+                          ) : n.type === 'vendor_booking_cancelled' ? (
+                            <>
+                              <span style={{ color: '#d32f2f' }}>{n.metadata?.vendorName || n.fromUserName || 'Your vendor'}</span>
+                              {' '}cancelled this booking
+                            </>
                           ) : (
                             <>
                               <span style={{ color: '#8B1A2E' }}>{n.fromUserName}</span>
@@ -255,10 +272,10 @@ export default function NotificationPanel({
                             </>
                           )}
                         </Typography>
-                        {n.type === 'message_received' && n.preview && (
+                        {(n.type === 'message_received' || n.type === 'vendor_quote_request' || n.type === 'vendor_booking_cancelled') && (n.preview || n.metadata?.preview) && (
                           <Typography variant="caption" color="text.secondary"
                             sx={{ display: 'block', mt: 0.25, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 200 }}>
-                            {n.preview}
+                            {n.preview || n.metadata?.preview}
                           </Typography>
                         )}
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
@@ -311,6 +328,13 @@ export default function NotificationPanel({
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: '#6b7280' }}>
                               <HeartOff size={11} />
                               <Typography variant="caption" sx={{ color: '#6b7280', fontWeight: 600 }}>
+                                Go to Wedding page
+                              </Typography>
+                            </Box>
+                          ) : (n.type === 'vendor_quote_request' || n.type === 'vendor_booking_cancelled') ? (
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: '#8B1A2E' }}>
+                              <CalendarHeart size={11} />
+                              <Typography variant="caption" sx={{ color: '#8B1A2E', fontWeight: 600 }}>
                                 Go to Wedding page
                               </Typography>
                             </Box>
