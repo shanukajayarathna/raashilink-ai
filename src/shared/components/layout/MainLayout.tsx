@@ -293,12 +293,17 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
       const removedBy = payload?.byUserName || 'Someone';
       showEventNotifRef.current('👋', 'Match removed', `${removedBy} removed you from their matches.`, '/matches', '#6b7280');
     };
+    const onProfileUpdated = (payload: any) => {
+      if (!payload?.userId) return;
+      window.dispatchEvent(new CustomEvent('app:refresh'));
+    };
 
     socket.on('interest_received', onInterestReceived);
     socket.on('mutual_match', onMutualMatch);
     socket.on('interest_accepted', onInterestAccepted);
     socket.on('interest_declined', onInterestDeclined);
     socket.on('match_removed', onMatchRemoved);
+    socket.on('profile_updated', onProfileUpdated);
 
     // Real-time server-pushed notifications (e.g. wedding invites)
     const onNotification = (payload: AppNotification) => {
@@ -405,6 +410,7 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
       socket.off('interest_accepted', onInterestAccepted);
       socket.off('interest_declined', onInterestDeclined);
       socket.off('match_removed', onMatchRemoved);
+      socket.off('profile_updated', onProfileUpdated);
       socket.off('notification', onNotification);
       socket.off('wedding_reset', onWeddingReset);
       window.removeEventListener('wedding:accepted', onWeddingAcceptedSelf);

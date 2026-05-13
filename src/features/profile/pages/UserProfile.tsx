@@ -298,6 +298,7 @@ export default function UserProfile() {
   );
   const [loading, setLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [savingPrivacyField, setSavingPrivacyField] = useState<string | null>(null);
   const [profileData, setProfileData] = useState<any>(null);
   const [editing, setEditing] = useState(initialEdit);
   const [editData, setEditData] = useState<any>({});
@@ -498,7 +499,6 @@ export default function UserProfile() {
           },
           photos: [],
           privacy: {
-            showLastSeen: true,
             showHoroscope: true,
             showPhone: false,
             whoCanMessage: 'Matches Only',
@@ -682,6 +682,51 @@ export default function UserProfile() {
       dispatch(showToast({ type: 'error', message: 'Failed to update profile. Please try again.' }));
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handlePrivacyChange = async (field: string, value: any) => {
+    if (savingPrivacyField) return;
+
+    const previousProfilePrivacy = profileData?.privacy || {};
+    const previousEditPrivacy = editData?.privacy || {};
+
+    // Optimistic update for immediate UI response.
+    setProfileData((prev: any) => ({
+      ...(prev || {}),
+      privacy: { ...(prev?.privacy || {}), [field]: value },
+    }));
+    setEditData((prev: any) => ({
+      ...(prev || {}),
+      privacy: { ...(prev?.privacy || {}), [field]: value },
+    }));
+    setSavingPrivacyField(field);
+
+    try {
+      const response = await userService.updateProfile({
+        privacy: { [field]: value },
+      });
+
+      const normalized = mergeAuthFallbacks(normalizeProfileData(response));
+      setProfileData(normalized);
+      setEditData(normalized);
+      dispatch(updateUser(normalized));
+      dispatch(showToast({ type: 'success', message: 'Privacy setting updated.' }));
+    } catch (err) {
+      console.error('Failed to update privacy setting:', err);
+
+      // Revert optimistic update on failure.
+      setProfileData((prev: any) => ({
+        ...(prev || {}),
+        privacy: previousProfilePrivacy,
+      }));
+      setEditData((prev: any) => ({
+        ...(prev || {}),
+        privacy: previousEditPrivacy,
+      }));
+      dispatch(showToast({ type: 'error', message: 'Failed to update privacy setting. Please try again.' }));
+    } finally {
+      setSavingPrivacyField(null);
     }
   };
 
@@ -918,11 +963,18 @@ export default function UserProfile() {
     ? buildPersonalityChartFromAnswers(editData.personalityAnswers, editData.personality || profileData.personality)
     : profileData.personality;
 
+  const blockingOverlayOpen = isSaving || Boolean(savingPrivacyField);
+  const blockingOverlayMessage = isSaving
+    ? 'Saving your profile…'
+    : savingPrivacyField
+      ? 'Updating privacy settings…'
+      : '';
+
   return (
     <>
       {/* Save overlay — blocks interaction with a blurred fade during DB write */}
       <Backdrop
-        open={isSaving}
+        open={blockingOverlayOpen}
         sx={{
           zIndex: (theme) => theme.zIndex.modal + 10,
           bgcolor: 'rgba(20, 10, 10, 0.45)',
@@ -931,7 +983,7 @@ export default function UserProfile() {
           gap: 2,
         }}
       >
-        <Fade in={isSaving}>
+        <Fade in={blockingOverlayOpen}>
           <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
             <CircularProgress size={52} sx={{ color: '#C9A84C' }} thickness={3.5} />
             <Typography
@@ -942,7 +994,7 @@ export default function UserProfile() {
                 letterSpacing: '0.02em',
               }}
             >
-              Saving your profile…
+              {blockingOverlayMessage}
             </Typography>
           </Box>
         </Fade>
@@ -2043,32 +2095,13 @@ export default function UserProfile() {
                   <Stack spacing={3}>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <Box>
-                        <Typography variant="subtitle1" sx={{ fontWeight: 800 }}>Show my last seen</Typography>
-                        <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>Allow others to see when you were last active</Typography>
-                      </Box>
-                      <Switch 
-                        checked={editing ? editData.privacy?.showLastSeen || false : profileData.privacy.showLastSeen} 
-                        onChange={(e) => editing && setEditData({
-                          ...editData,
-                          privacy: { ...editData.privacy, showLastSeen: e.target.checked }
-                        })}
-                        disabled={!editing}
-                        color="primary" 
-                      />
-                    </Box>
-                    <Divider />
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Box>
                         <Typography variant="subtitle1" sx={{ fontWeight: 800 }}>Show my horoscope to matches</Typography>
                         <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>Matches can view your detailed birth chart</Typography>
                       </Box>
                       <Switch 
                         checked={editing ? editData.privacy?.showHoroscope || false : profileData.privacy.showHoroscope} 
-                        onChange={(e) => editing && setEditData({
-                          ...editData,
-                          privacy: { ...editData.privacy, showHoroscope: e.target.checked }
-                        })}
-                        disabled={!editing}
+                        onChange={(e) => { void handlePrivacyChange('showHoroscope', e.target.checked); }}
+                        disabled={Boolean(savingPrivacyField)}
                         color="primary" 
                       />
                     </Box>
@@ -2080,11 +2113,8 @@ export default function UserProfile() {
                       </Box>
                       <Switch 
                         checked={editing ? editData.privacy?.showPhone || false : profileData.privacy.showPhone} 
-                        onChange={(e) => editing && setEditData({
-                          ...editData,
-                          privacy: { ...editData.privacy, showPhone: e.target.checked }
-                        })}
-                        disabled={!editing}
+                        onChange={(e) => { void handlePrivacyChange('showPhone', e.target.checked); }}
+                        disabled={Boolean(savingPrivacyField)}
                         color="primary" 
                       />
                     </Box>
@@ -2096,14 +2126,13 @@ export default function UserProfile() {
                           <Chip 
                             key={option} 
                             label={option} 
-                            onClick={() => editing && setEditData({
-                              ...editData,
-                              privacy: { ...editData.privacy, whoCanMessage: option }
-                            })}
+                            onClick={() => { void handlePrivacyChange('whoCanMessage', option); }}
                             sx={{ 
                               bgcolor: (editing ? editData.privacy?.whoCanMessage : profileData.privacy.whoCanMessage) === option ? COLORS.primary : COLORS.cream,
                               color: (editing ? editData.privacy?.whoCanMessage : profileData.privacy.whoCanMessage) === option ? 'white' : COLORS.primary,
-                              fontWeight: 700
+                              fontWeight: 700,
+                              opacity: savingPrivacyField ? 0.75 : 1,
+                              pointerEvents: savingPrivacyField ? 'none' : 'auto',
                             }} 
                           />
                         ))}
@@ -2117,14 +2146,13 @@ export default function UserProfile() {
                           <Chip 
                             key={option} 
                             label={option} 
-                            onClick={() => editing && setEditData({
-                              ...editData,
-                              privacy: { ...editData.privacy, whoCanSeePhotos: option }
-                            })}
+                            onClick={() => { void handlePrivacyChange('whoCanSeePhotos', option); }}
                             sx={{ 
                               bgcolor: (editing ? editData.privacy?.whoCanSeePhotos : profileData.privacy.whoCanSeePhotos) === option ? COLORS.primary : COLORS.cream,
                               color: (editing ? editData.privacy?.whoCanSeePhotos : profileData.privacy.whoCanSeePhotos) === option ? 'white' : COLORS.primary,
-                              fontWeight: 700
+                              fontWeight: 700,
+                              opacity: savingPrivacyField ? 0.75 : 1,
+                              pointerEvents: savingPrivacyField ? 'none' : 'auto',
                             }} 
                           />
                         ))}

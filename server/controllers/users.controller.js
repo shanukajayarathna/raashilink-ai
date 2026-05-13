@@ -13,6 +13,7 @@ import bcrypt from 'bcrypt';
 import logger from '../utils/logger.js';
 import { resolveBirthPlace } from '../utils/birthLocation.js';
 import { deriveGanaFromNakshatra } from '../utils/gana.js';
+import { emitToUser } from '../lib/socket.js';
 
 const OTP_EXPIRY_MINUTES = 10;
 const SRI_LANKA_MOBILE_REGEX = /^7\d{8}$/;
@@ -52,6 +53,14 @@ function normalizeIsoDateInput(value) {
 
 function getTodayIsoDate() {
   return new Date().toISOString().split('T')[0];
+}
+
+function getUserVerificationIdentifier(user, channel) {
+  if (channel === 'email') {
+    return user.email;
+  }
+
+  return normalizePhone(user.personalInfo?.phone || user.phone || '');
 }
 
 async function createOtp({ identifier, channel, purpose }) {
@@ -613,6 +622,12 @@ export const updateProfile = asyncHandler(async (req, res) => {
     throw new ApiError(404, 'User profile not found');
   }
 
+  emitToUser(req.user._id, 'profile_updated', {
+    userId: String(req.user._id),
+    updatedAt: new Date().toISOString(),
+    privacy: user.privacySettings || user.privacy || {},
+  });
+
   res.status(200).json(mapProfile(user));
 });
 
@@ -627,7 +642,7 @@ export const requestContactVerification = asyncHandler(async (req, res) => {
     throw new ApiError(404, 'User profile not found');
   }
 
-  const identifier = channel === 'email' ? user.email : normalizePhone(user.phone || '');
+  const identifier = getUserVerificationIdentifier(user, channel);
   if (!identifier) {
     throw new ApiError(400, `No ${channel} is available for verification`);
   }
@@ -666,7 +681,7 @@ export const confirmContactVerification = asyncHandler(async (req, res) => {
     throw new ApiError(404, 'User profile not found');
   }
 
-  const identifier = channel === 'email' ? user.email : normalizePhone(user.phone || '');
+  const identifier = getUserVerificationIdentifier(user, channel);
   if (!identifier) {
     throw new ApiError(400, `No ${channel} is available for verification`);
   }
@@ -896,6 +911,10 @@ export const updateContactEmail = asyncHandler(async (req, res) => {
     throw new ApiError(404, 'User not found');
   }
 
+  if (!user.passwordHash) {
+    throw new ApiError(401, 'This account was registered via Google. Please set a password using "Forgot Password" before changing your email.');
+  }
+
   const passwordValid = await bcrypt.compare(String(currentPassword), user.passwordHash);
   if (!passwordValid) {
     throw new ApiError(401, 'Current password is incorrect');
@@ -979,6 +998,15 @@ export const changePassword = asyncHandler(async (req, res) => {
     throw new ApiError(404, 'User not found');
   }
 
+  if (!user.passwordHash) {
+    // If no password exists, we allow setting the first one without a current password,
+    // OR we can require them to use Forgot Password.
+    // Given the user's report, they are likely trying to "change" it while logged in.
+    // I'll allow setting it if currentPassword is provided as any value (since they might have typed something),
+    // but better to just allow it or tell them to use Forgot Password.
+    throw new ApiError(401, 'This account was registered via Google. Please use "Forgot Password" to set your first password.');
+  }
+
   const passwordValid = await bcrypt.compare(String(currentPassword), user.passwordHash);
   if (!passwordValid) {
     throw new ApiError(401, 'Current password is incorrect');
@@ -1023,7 +1051,7 @@ export const deleteAccount = asyncHandler(async (req, res) => {
     WeddingProject.deleteMany({ coupleUserIds: { $size: 0 } }),
     Vendor.deleteMany({ userId }),
     AuthOtp.deleteMany({
-      $or: [{ identifier: user.email }, { identifier: normalizePhone(user.phone || '') }, { identifier: userIdString }],
+      $or: [{ identifier: user.email }, { identifier: normalizePhone(user.personalInfo?.phone || user.phone || '') }, { identifier: userIdString }],
     }),
   ]);
 

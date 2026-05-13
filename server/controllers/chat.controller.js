@@ -16,18 +16,37 @@ function ensureObjectId(id, field) {
   }
 }
 
-async function findMutualConversation(userId, recipientId) {
+async function isMutualMatch(userId, recipientId) {
   const mutual = await MatchInterest.findOne({
     $or: [
       { fromUser: userId, toUser: recipientId, status: 'mutual' },
       { fromUser: recipientId, toUser: userId, status: 'mutual' },
     ],
-  });
+  }).lean();
 
-  if (!mutual) {
-    throw new ApiError(403, 'Messaging unlocks only after a mutual match');
+  return Boolean(mutual);
+}
+
+function resolveWhoCanMessage(recipient) {
+  return recipient?.privacySettings?.whoCanMessage || 'Matches Only';
+}
+
+async function ensureMessagingAllowed(senderId, recipient) {
+  const policy = resolveWhoCanMessage(recipient);
+
+  if (policy === 'No One') {
+    throw new ApiError(403, 'This user is not accepting new messages');
   }
 
+  if (policy === 'Matches Only') {
+    const mutual = await isMutualMatch(senderId, recipient._id);
+    if (!mutual) {
+      throw new ApiError(403, 'Messaging unlocks only after a mutual match');
+    }
+  }
+}
+
+async function findOrCreateConversation(userId, recipientId) {
   let conversation = await Conversation.findOne({
     matchUsers: { $all: [userId, recipientId] },
   });
@@ -41,6 +60,15 @@ async function findMutualConversation(userId, recipientId) {
   }
 
   return conversation;
+}
+
+async function findMutualConversation(userId, recipientId) {
+  const mutual = await isMutualMatch(userId, recipientId);
+  if (!mutual) {
+    throw new ApiError(403, 'Messaging unlocks only after a mutual match');
+  }
+
+  return findOrCreateConversation(userId, recipientId);
 }
 
 export const sendMessage = asyncHandler(async (req, res) => {
@@ -57,7 +85,9 @@ export const sendMessage = asyncHandler(async (req, res) => {
     throw new ApiError(404, 'Recipient not found');
   }
 
-  const conversation = await findMutualConversation(req.user._id, recipientId);
+  await ensureMessagingAllowed(req.user._id, recipient);
+
+  const conversation = await findOrCreateConversation(req.user._id, recipientId);
 
   const message = await Message.create({
     conversationId: conversation._id,
@@ -276,27 +306,7 @@ export const getConversations = asyncHandler(async (req, res) => {
     })
     .filter(Boolean);
 
-  const mutualStatuses = pairs.length > 0
-    ? await MatchInterest.find({
-        status: 'mutual',
-        $or: pairs.flatMap((pair) => ([
-          { fromUser: req.user._id, toUser: pair.otherUserId },
-          { fromUser: pair.otherUserId, toUser: req.user._id },
-        ])),
-      })
-        .select('fromUser toUser')
-        .lean()
-    : [];
-
-  const mutualUserIds = new Set(
-    mutualStatuses.map((entry) =>
-      String(entry.fromUser) === String(req.user._id) ? String(entry.toUser) : String(entry.fromUser)
-    )
-  );
-
-  const conversations = pairs
-    .filter((pair) => mutualUserIds.has(pair.otherUserId))
-    .map((pair) => pair.conversation);
+  const conversations = pairs.map((pair) => pair.conversation);
 
   const otherUserIds = [...new Set(
     conversations.flatMap((conversation) =>
@@ -374,7 +384,7 @@ export const getConversations = asyncHandler(async (req, res) => {
 });
 
 /**
- * GET-or-CREATE conversation with a mutual match partner.
+ * GET-or-CREATE conversation with a user based on recipient privacy policy.
  * Safe to call multiple times — never creates duplicates.
  */
 export const openConversation = asyncHandler(async (req, res) => {
@@ -385,22 +395,27 @@ export const openConversation = asyncHandler(async (req, res) => {
     throw new ApiError(400, 'Cannot open conversation with yourself');
   }
 
-  const conversation = await findMutualConversation(req.user._id, userId);
+  const recipient = await User.findById(userId)
+    .select('privacySettings.whoCanMessage personalInfo.firstName personalInfo.lastName personalInfo.profilePic personalInfo.photos')
+    .lean();
+  if (!recipient) {
+    throw new ApiError(404, 'Recipient not found');
+  }
+
+  await ensureMessagingAllowed(req.user._id, recipient);
+  const conversation = await findOrCreateConversation(req.user._id, userId);
 
   const hiddenEntry = (conversation.hiddenFor || []).find(
     (entry) => String(entry.userId) === String(req.user._id)
   );
 
-  const partner = await User.findById(userId)
-    .select('personalInfo.firstName personalInfo.lastName personalInfo.profilePic personalInfo.photos')
-    .lean();
   const title =
-    [partner?.personalInfo?.firstName, partner?.personalInfo?.lastName]
+    [recipient?.personalInfo?.firstName, recipient?.personalInfo?.lastName]
       .filter(Boolean)
       .join(' ') || 'Conversation';
-  const partnerPhotos = Array.isArray(partner?.personalInfo?.photos) ? partner.personalInfo.photos : [];
+  const partnerPhotos = Array.isArray(recipient?.personalInfo?.photos) ? recipient.personalInfo.photos : [];
   const partnerMainPhoto = partnerPhotos.find((p) => p?.isMain)?.url || partnerPhotos[0]?.url || null;
-  const partnerImg = partner?.personalInfo?.profilePic || partnerMainPhoto || null;
+  const partnerImg = recipient?.personalInfo?.profilePic || partnerMainPhoto || null;
 
   const lastMessage = await Message.findOne({ conversationId: conversation._id })
     .sort({ createdAt: -1 })

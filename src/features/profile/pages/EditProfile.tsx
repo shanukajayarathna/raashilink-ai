@@ -147,7 +147,6 @@ export default function EditProfile() {
     familyPlans: 'Want children',
     socialPreference: 50,
     privacy: {
-      showLastSeen: true,
       showHoroscope: true,
       showPhone: false,
       whoCanMessage: 'Matches Only',
@@ -381,7 +380,7 @@ export default function EditProfile() {
       dispatch(logout());
       
       // Navigate to login page
-      navigate('/auth/login');
+      navigate('/login');
     } catch (error: any) {
       setError(error.response?.data?.message || 'Failed to delete account. Please try again.');
     } finally {
@@ -814,17 +813,6 @@ export default function EditProfile() {
                 <FormControlLabel
                   control={
                     <Switch
-                      checked={formData.privacy.showLastSeen}
-                      onChange={(e) => { void handlePrivacyChange('showLastSeen', e.target.checked); }}
-                      color="primary"
-                      disabled={saving || savingPrivacyField === 'showLastSeen'}
-                    />
-                  }
-                  label={<Typography variant="body2">Show my last seen</Typography>}
-                />
-                <FormControlLabel
-                  control={
-                    <Switch
                       checked={formData.privacy.showHoroscope}
                       onChange={(e) => { void handlePrivacyChange('showHoroscope', e.target.checked); }}
                       color="primary"
@@ -1006,9 +994,15 @@ export default function EditProfile() {
         <DialogTitle sx={{ fontWeight: 800, color: COLORS.primary }}>Change Password</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
-            <Typography variant="body2" color="text.secondary">
-              Choose a strong password of at least 8 characters.
-            </Typography>
+            {user?.verification?.hasPassword === false ? (
+              <Alert severity="info" sx={{ borderRadius: 2 }}>
+                You registered via Google and haven't set a password yet. To set a password for your account, please use the <strong>Forgot Password</strong> flow from the login page.
+              </Alert>
+            ) : (
+              <Typography variant="body2" color="text.secondary">
+                Choose a strong password of at least 8 characters.
+              </Typography>
+            )}
             <TextField
               fullWidth
               label="Current Password"

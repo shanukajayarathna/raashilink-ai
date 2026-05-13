@@ -1,5 +1,4 @@
 const DEFAULT_PRIVACY = {
-  showLastSeen: true,
   showHoroscope: true,
   showPhone: false,
   whoCanMessage: 'Matches Only',
