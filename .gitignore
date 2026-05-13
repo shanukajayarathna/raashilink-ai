@@ -9,7 +9,5 @@ __pycache__/
 .env*
 !.env.example
 
-# Temporary API response / test data files
-n.json
-s.json
-login_resp.json
+# Codex scratch outputs
+.tmp_*.txt
