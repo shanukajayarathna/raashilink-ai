@@ -29,12 +29,16 @@ const COLORS = {
 
 const CHART_COLORS = [COLORS.primary, COLORS.secondary, COLORS.accent, '#4CAF50', '#FF9800', '#9C27B0'];
 
-export default function OverviewTab({ data, onSwitchTab, project, budget }: { data: any, onSwitchTab: (idx: number) => void, project?: any, budget?: any }) {
+export default function OverviewTab({ data, onSwitchTab, project, budget, readOnly = false }: { data: any, onSwitchTab: (idx: number) => void, project?: any, budget?: any, readOnly?: boolean }) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const chartWidth = isMobile ? 280 : 420;
   const chartHeight = isMobile ? 240 : 280;
-  const [aiTip, setAiTip] = React.useState('Analyzing your latest wedding budget and plan details...');
+  const [aiTip, setAiTip] = React.useState(
+    readOnly
+      ? 'AI Budget Tip is available after wedding planning is unlocked for both partners.'
+      : 'Analyzing your latest wedding budget and plan details...'
+  );
   const [aiTipLoading, setAiTipLoading] = React.useState(false);
 
   // Build budget chart data from real expenses grouped by category, or fall back to empty
@@ -83,6 +87,14 @@ export default function OverviewTab({ data, onSwitchTab, project, budget }: { da
   React.useEffect(() => {
     let cancelled = false;
 
+    if (readOnly) {
+      setAiTip('AI Budget Tip is available after wedding planning is unlocked for both partners.');
+      setAiTipLoading(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
     const fetchBudgetTip = async () => {
       try {
         setAiTipLoading(true);
@@ -111,7 +123,7 @@ export default function OverviewTab({ data, onSwitchTab, project, budget }: { da
     return () => {
       cancelled = true;
     };
-  }, [aiContextKey]);
+  }, [aiContextKey, readOnly]);
 
   return (
     <Grid container spacing={4}>
