@@ -454,7 +454,7 @@ const AboutUsSection = () => (
 const ImageGallery = () => {
   const images = [
     {
-      url: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcR605huzSbivNR5GqJ5HG3cv63_zZif7uETuQ&s",
+      url: "https://colombobatik.lk/cdn/shop/files/IMG_0355_2_1_50_fdc656e3-14e2-440e-8404-2a3524ecae2c.jpg?v=1687434296&width=1500",
       title: "Traditional Kandyan Bride",
       description: "The timeless elegance of Sri Lankan wedding traditions."
     },
