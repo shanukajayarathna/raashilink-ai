@@ -11,3 +11,6 @@ __pycache__/
 
 # Codex scratch outputs
 .tmp_*.txt
+
+# User-uploaded files (runtime data, not source code)
+server/uploads/
