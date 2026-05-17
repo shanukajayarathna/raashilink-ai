@@ -4,13 +4,25 @@ import { io, Socket } from 'socket.io-client';
 // ─── Module-level singleton ────────────────────────────────────────────────
 let _socket: Socket | null = null;
 
+function normalizeApiHost(rawHost: string): string {
+  const value = (rawHost || '').trim();
+  if (!value) return '';
+  if (value.endsWith('/api/v1')) return value.slice(0, -'/api/v1'.length);
+  return value;
+}
+
 function resolveSocketHost(): string {
   if (typeof window === 'undefined') return '';
   const { hostname, protocol } = window.location;
   if (hostname === 'localhost' || hostname === '127.0.0.1') {
     return 'http://localhost:5000';
   }
-  // In production the Socket.io server lives on the same origin
+  const configuredApiHost = normalizeApiHost(import.meta.env.VITE_API_URL || '');
+  if (configuredApiHost) {
+    return configuredApiHost;
+  }
+
+  // Fallback: assume Socket.io is hosted on the same origin as the frontend.
   return `${protocol}//${window.location.host}`;
 }
 
