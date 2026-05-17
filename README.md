@@ -172,6 +172,7 @@ Health endpoints:
 - Set VITE_API_URL to your deployed backend API base
 
 Detailed free deployment guide: [docs/DEPLOY_FREE.md](docs/DEPLOY_FREE.md)
+Render backend guide: [docs/DEPLOY_RENDER.md](docs/DEPLOY_RENDER.md)
 
 ### Backend
 

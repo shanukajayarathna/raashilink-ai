@@ -1,0 +1,17 @@
+.git
+.github
+node_modules
+dist
+build
+coverage
+.env
+.env.local
+.env.production
+.venv
+.venv-1
+uploads
+server/uploads
+npm-debug.log
+yarn-error.log
+*.log
+docs
