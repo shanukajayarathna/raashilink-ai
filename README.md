@@ -171,6 +171,8 @@ Health endpoints:
 - Deploy dist/ to static hosting (for example Vercel, Netlify, CloudFront, Nginx)
 - Set VITE_API_URL to your deployed backend API base
 
+Detailed free deployment guide: [docs/DEPLOY_FREE.md](docs/DEPLOY_FREE.md)
+
 ### Backend
 
 - Deploy Node.js API as a long-running service (for example Render, Railway, EC2, or container platform)

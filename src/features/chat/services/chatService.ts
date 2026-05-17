@@ -1,5 +1,18 @@
 import axiosInstance from '@/shared/config/axiosConfig';
 
+function resolveApiOrigin() {
+  const configuredApiUrl = import.meta.env.VITE_API_URL || '';
+
+  if (!configuredApiUrl) {
+    return 'http://localhost:5000';
+  }
+
+  const normalizedApiUrl = configuredApiUrl.replace(/\/$/, '');
+  return normalizedApiUrl.endsWith('/api/v1')
+    ? normalizedApiUrl.slice(0, normalizedApiUrl.length - '/api/v1'.length)
+    : normalizedApiUrl;
+}
+
 /**
  * Chat Service for RaashiLink.AI
  * Handles user messaging, chat history, and real-time communication.
@@ -20,7 +33,7 @@ sendStreamingMessage: async (
   onChunk: (text: string) => void
 ): Promise<string> => {
   const token = localStorage.getItem('token');
-  const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+  const apiUrl = resolveApiOrigin();
   const endpoint = `${apiUrl}/api/v1/chat/stream`;
   const trimmedMessage = message.trim();
   let fullResponse = '';
@@ -180,7 +193,7 @@ sendMessage: async (messageData: any) => {
    */
   connectToStream: (chatId: string, onMessage: (data: any) => void, onError: (error: any) => void) => {
     const token = localStorage.getItem('token');
-    const url = `${import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1'}/chat/${chatId}/stream?token=${token}`;
+    const url = `${resolveApiOrigin()}/api/v1/chat/${chatId}/stream?token=${token}`;
     
     const eventSource = new EventSource(url);
     
