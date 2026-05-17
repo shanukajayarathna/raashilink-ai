@@ -105,7 +105,6 @@ function mapVendorDetail(vendor: any, reviewsPayload: any) {
     rating: Number.isFinite(ratingValue) ? Number(ratingValue.toFixed(1)) : 0,
     reviewCount,
     location: vendor?.city || serviceArea.join(', '),
-    priceRange: `LKR ${minPrice.toLocaleString()} — ${maxPrice.toLocaleString()}`,
     description: vendor?.description || 'Professional wedding services tailored for your celebration.',
     image: portfolioImages[0] || FALLBACK_VENDOR_IMAGE,
     logo: portfolioImages[0] || FALLBACK_VENDOR_IMAGE,
@@ -140,7 +139,10 @@ function mapVendorDetail(vendor: any, reviewsPayload: any) {
     city: vendor?.city || '',
     address: vendor?.address || '',
     serviceAreaDistricts: serviceArea,
-    priceRange: minPrice > 0 || maxPrice > 0 ? `LKR ${minPrice.toLocaleString()} — LKR ${maxPrice.toLocaleString()}` : 'Custom Quote',
+    priceRange:
+      minPrice > 0 || maxPrice > 0
+        ? `LKR ${minPrice.toLocaleString()} — LKR ${maxPrice.toLocaleString()}`
+        : 'Custom Quote',
   };
 }
 
