@@ -43,6 +43,21 @@ app.use((req, res, next) => {
 });
 
 app.use((req, res, next) => {
+  const extraOrigins = [];
+  if (process.env.FRONTEND_URLS) {
+    extraOrigins.push(
+      ...process.env.FRONTEND_URLS.split(',')
+        .map((value) => value.trim())
+        .filter(Boolean)
+    );
+  }
+
+  // Vercel automatically exposes VERCEL_URL (hostname only). Accept it for CORS in case
+  // the user deploys the frontend to Vercel and forgets to update FRONTEND_URL.
+  if (process.env.VERCEL_URL) {
+    extraOrigins.push(`https://${process.env.VERCEL_URL}`);
+  }
+
   const allowedOrigins = new Set([
     'http://localhost:3000',
     'http://127.0.0.1:3000',
@@ -53,6 +68,7 @@ app.use((req, res, next) => {
     'http://localhost:4173',
     'http://127.0.0.1:4173',
     process.env.FRONTEND_URL,
+    ...extraOrigins,
   ].filter(Boolean));
 
   const requestOrigin = req.headers.origin;
