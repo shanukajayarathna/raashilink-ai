@@ -87,6 +87,10 @@ app.use((req, res, next) => {
 app.use(express.json({ limit: '10mb' }));
 app.use('/uploads', express.static(uploadsRootDir));
 
+app.get('/', (req, res) => {
+  res.status(200).send('RaashiLink API is running. Try GET /api/v1/health');
+});
+
 app.get(['/health', '/api/v1/health'], (req, res) => {
   res.json({
     success: true,
