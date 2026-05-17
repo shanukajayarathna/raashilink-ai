@@ -7,6 +7,8 @@ This project is best deployed for free as:
 - Database: MongoDB Atlas M0 free cluster
 - Cache: disabled initially with `REDIS_ENABLED=false`
 
+If you are deploying the backend to Railway instead of a VM, follow `docs/DEPLOY_RAILWAY.md`.
+
 If you want zero cost without buying a domain, use a free subdomain (for example DuckDNS) and deploy frontend+backend on a single VM.
 
 ## Fastest All-Free Path (Single VM)

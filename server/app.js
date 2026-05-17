@@ -22,7 +22,9 @@ import { seedDemoUsers } from './services/demoData.service.js';
 import './jobs/dailyMatches.job.js';
 
 dotenv.config({ path: '.env' });
-dotenv.config({ path: '.env.local', override: true });
+if (process.env.NODE_ENV !== 'production') {
+  dotenv.config({ path: '.env.local', override: true });
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

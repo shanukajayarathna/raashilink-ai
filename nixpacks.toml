@@ -1,0 +1,12 @@
+[phases.setup]
+nixPkgs = ["nodejs_20", "python3", "python3Packages.pip"]
+
+[phases.install]
+cmds = [
+  "npm ci",
+  "python3 -m pip install --upgrade pip",
+  "python3 -m pip install -r server/python/requirements.txt"
+]
+
+[start]
+cmd = "npm run api"
