@@ -1,5 +1,6 @@
 import http from 'node:http';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import express from 'express';
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
@@ -33,6 +34,13 @@ const uploadsRootDir = path.resolve(__dirname, 'uploads');
 const app = express();
 app.locals.isReady = false;
 app.locals.startupPhase = 'booting';
+
+app.use((req, res, next) => {
+  const requestId = crypto.randomUUID();
+  req.requestId = requestId;
+  res.setHeader('x-request-id', requestId);
+  next();
+});
 
 app.use((req, res, next) => {
   const allowedOrigins = new Set([

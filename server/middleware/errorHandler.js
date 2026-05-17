@@ -25,16 +25,19 @@ export default function errorHandler(err, req, res, next) {
   }
 
   logger.error('Request failed', {
+    requestId: req.requestId,
     method: req.method,
     path: req.originalUrl,
     statusCode,
     message,
     details,
-    stack: process.env.NODE_ENV === 'development' ? err.stack : undefined,
+    errorName: err?.name,
+    stack: err?.stack,
   });
 
   res.status(statusCode).json({
     success: false,
+    requestId: req.requestId,
     message,
     ...(details ? { details } : {}),
   });
