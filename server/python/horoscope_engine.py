@@ -4,6 +4,7 @@ import os
 import math
 from datetime import datetime
 from zoneinfo import ZoneInfo
+from server.python.compatibility.nakshatra_defs import NAKSHATRAS, GANA_BY_NAKSHATRA, normalize_nakshatra
 
 try:
     import swisseph as swe
@@ -35,45 +36,6 @@ SIGNS = [
     "Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo",
     "Libra", "Scorpio", "Sagittarius", "Capricorn", "Aquarius", "Pisces"
 ]
-
-# Nakshatras (27)
-NAKSHATRAS = [
-    "Ashwini", "Bharani", "Krittika", "Rohini", "Mrigashira", "Ardra",
-    "Punarvasu", "Pushya", "Ashlesha", "Magha", "Purva Phalguni", "Uttara Phalguni",
-    "Hasta", "Chitra", "Swati", "Vishakha", "Anuradha", "Jyeshtha",
-    "Mula", "Purva Ashadha", "Uttara Ashadha", "Shravana", "Dhanishta", "Shatabhisha",
-    "Purva Bhadrapada", "Uttara Bhadrapada", "Revati"
-]
-
-GANA_BY_NAKSHATRA = {
-    "Ashwini": "Deva",
-    "Bharani": "Manushya",
-    "Krittika": "Rakshasa",
-    "Rohini": "Manushya",
-    "Mrigashira": "Deva",
-    "Ardra": "Manushya",
-    "Punarvasu": "Deva",
-    "Pushya": "Deva",
-    "Ashlesha": "Rakshasa",
-    "Magha": "Rakshasa",
-    "Purva Phalguni": "Manushya",
-    "Uttara Phalguni": "Manushya",
-    "Hasta": "Deva",
-    "Chitra": "Rakshasa",
-    "Swati": "Deva",
-    "Vishakha": "Rakshasa",
-    "Anuradha": "Deva",
-    "Jyeshtha": "Rakshasa",
-    "Mula": "Rakshasa",
-    "Purva Ashadha": "Manushya",
-    "Uttara Ashadha": "Manushya",
-    "Shravana": "Deva",
-    "Dhanishta": "Rakshasa",
-    "Shatabhisha": "Rakshasa",
-    "Purva Bhadrapada": "Manushya",
-    "Uttara Bhadrapada": "Manushya",
-    "Revati": "Deva",
-}
 
 SHUKLA_TITHIS = [
     "Pratipada", "Dwitiya", "Tritiya", "Chaturthi", "Panchami", "Shashthi", "Saptami",
@@ -569,6 +531,7 @@ def calculate_horoscope(birth_date, birth_time, lat, lon, timezone="Asia/Colombo
         # Determine Nakshatra
         nakshatra_index = int(moon_longitude / (360 / 27)) % 27
         nakshatra = NAKSHATRAS[nakshatra_index]
+        nakshatra = normalize_nakshatra(nakshatra)
 
         # Determine Nakshatra Pada (1-4)
         nakshatra_start = nakshatra_index * (360 / 27)
