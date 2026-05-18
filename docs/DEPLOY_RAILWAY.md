@@ -18,12 +18,11 @@ This repo contains:
 2. Select this repository.
 3. Choose the service that builds from the repo root.
 
-This repository includes `nixpacks.toml`, so Railway will:
+This repository includes a `Dockerfile`, so Railway will build a container that includes:
 
-- Install Node.js 20 + Python 3
-- `npm ci`
-- `pip install -r server/python/requirements.txt`
-- Start the server with `npm run api`
+- Node.js 20
+- Python 3 + `server/python/requirements.txt` dependencies
+- Starts the API with `npm run api`
 
 ## 3) Railway environment variables (backend)
 
