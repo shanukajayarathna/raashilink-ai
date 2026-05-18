@@ -1,15 +1,7 @@
 import json
 import sys
 import math
-
-# Nakshatra definitions (27)
-NAKSHATRAS = [
-    "Ashwini", "Bharani", "Krittika", "Rohini", "Mrigashira", "Ardra",
-    "Punarvasu", "Pushya", "Ashlesha", "Magha", "Purva Phalguni", "Uttara Phalguni",
-    "Hasta", "Chitra", "Swati", "Vishakha", "Anuradha", "Jyeshtha",
-    "Mula", "Purva Ashadha", "Uttara Ashadha", "Shravana", "Dhanishta", "Shatabhisha",
-    "Purva Bhadrapada", "Uttara Bhadrapada", "Revati"
-]
+from server.python.compatibility.nakshatra_defs import NAKSHATRAS, GANA_BY_NAKSHATRA, normalize_nakshatra
 
 # Rashi definitions (12)
 RASHIS = [
@@ -44,12 +36,6 @@ YONI_ENEMIES = {
     "Serpent": "Mongoose", "Mongoose": "Serpent"
 }
 
-# Gana by nakshatra
-GANA_GROUPS = [
-    "Deva", "Manushya", "Rakshasa", "Manushya", "Deva", "Manushya", "Deva", "Deva", "Rakshasa",
-    "Rakshasa", "Manushya", "Manushya", "Deva", "Rakshasa", "Deva", "Rakshasa", "Deva", "Rakshasa",
-    "Rakshasa", "Manushya", "Manushya", "Deva", "Rakshasa", "Rakshasa", "Manushya", "Manushya", "Deva"
-]
 
 # Nadi by nakshatra
 NADI_GROUPS = [
@@ -75,7 +61,8 @@ PLANET_FRIENDSHIPS = {
 }
 
 def get_nakshatra_index(nakshatra):
-    return NAKSHATRAS.index(nakshatra) if nakshatra in NAKSHATRAS else -1
+    name = normalize_nakshatra(nakshatra)
+    return NAKSHATRAS.index(name) if name in NAKSHATRAS else -1
 
 def get_rashi_index(rashi):
     return RASHIS.index(rashi) if rashi in RASHIS else -1
@@ -167,12 +154,12 @@ def score_graha_maitri(rashi1, rashi2):
     return 0  # both enemies
 
 def score_gana(nak1, nak2):
-    idx1 = get_nakshatra_index(nak1)
-    idx2 = get_nakshatra_index(nak2)
-    if idx1 == -1 or idx2 == -1:
+    name1 = normalize_nakshatra(nak1)
+    name2 = normalize_nakshatra(nak2)
+    gana1 = GANA_BY_NAKSHATRA.get(name1)
+    gana2 = GANA_BY_NAKSHATRA.get(name2)
+    if not gana1 or not gana2:
         return 0
-    gana1 = GANA_GROUPS[idx1]
-    gana2 = GANA_GROUPS[idx2]
     if gana1 == gana2:
         return 6
     if {gana1, gana2} == {"Deva", "Manushya"}:
