@@ -247,13 +247,6 @@ export default function CoupleDashboard() {
       cta: 'Find Vendors',
     },
     {
-      title: 'Horoscope Check',
-      description: 'Review your horoscope and check couple compatibility when needed.',
-      icon: <AutoAwesome sx={{ fontSize: 28, color: COLORS.primary }} />,
-      action: () => navigate('/horoscope'),
-      cta: 'View Horoscope Tools',
-    },
-    {
       title: 'Honeymoon Ideas',
       description: 'Explore destinations once your wedding planning is underway.',
       icon: <TravelExplore sx={{ fontSize: 28, color: COLORS.accent }} />,
@@ -331,10 +324,6 @@ export default function CoupleDashboard() {
         }}
         busyChannel={busyChannel}
       />
-
-      <Alert severity="info" sx={{ mb: 3, borderRadius: '16px' }}>
-        Horoscope compatibility remains available for couples, but match cards, interests, and discovery are intentionally hidden for this account type.
-      </Alert>
 
       <Grid container spacing={3}>
         {cards.map((card, index) => (

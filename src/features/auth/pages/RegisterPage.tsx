@@ -1626,7 +1626,7 @@ const RegisterPage = () => {
             </Typography>
 
             <Stack spacing={1.25} sx={{ pb: 2 }}>
-              {formData.role !== 'vendor' && (
+              {formData.role !== 'vendor' && formData.role !== 'couple' && (
                 <>
                   <Typography variant="body2" sx={{ fontWeight: 800, color: COLORS.primary }}>
                     1) Profile visibility (who can see you)
@@ -1637,21 +1637,34 @@ const RegisterPage = () => {
                 </>
               )}
 
-              <Typography variant="body2" sx={{ fontWeight: 800, color: COLORS.primary, mt: 1 }}>
-                {formData.role === 'vendor' ? '1) Business Verification & Listing' : '2) Horoscope & Birth Data / Wedding Details'}
-              </Typography>
-              <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
-                {formData.role === 'vendor' ? (
-                  <>Your business details and uploaded documents are strictly confidential and used solely for vendor verification. Once approved, your listing will be visible to couples in the marketplace.</>
-                ) : formData.role === 'couple' ? (
-                  <>Partner name, wedding date, and budget help personalize planning features. You can update these later from your profile/dashboard.</>
-                ) : (
-                  <>Your birth date/time/place is used to calculate your horoscope and improve match quality. If you want to update these later, go to <b>Profile → Edit Profile</b>.</>
-                )}
-              </Typography>
+              {formData.role !== 'vendor' && (
+                <>
+                  <Typography variant="body2" sx={{ fontWeight: 800, color: COLORS.primary, mt: 1 }}>
+                    {formData.role === 'couple' ? '1) Wedding Details' : '2) Horoscope & Birth Data'}
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
+                    {formData.role === 'couple' ? (
+                      <>Partner name, wedding date, and budget help personalize planning features. You can update these later from your profile/dashboard.</>
+                    ) : (
+                      <>Your birth date/time/place is used to calculate your horoscope and improve match quality. If you want to update these later, go to <b>Profile → Edit Profile</b>.</>
+                    )}
+                  </Typography>
+                </>
+              )}
+
+              {formData.role === 'vendor' && (
+                <>
+                  <Typography variant="body2" sx={{ fontWeight: 800, color: COLORS.primary, mt: 1 }}>
+                    1) Business Verification & Listing
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
+                    Your business details and uploaded documents are strictly confidential and used solely for vendor verification. Once approved, your listing will be visible to couples in the marketplace.
+                  </Typography>
+                </>
+              )}
 
               <Typography variant="body2" sx={{ fontWeight: 800, color: COLORS.primary, mt: 1 }}>
-                {formData.role === 'vendor' ? '2) Branding & Logo' : '3) Profile Picture & Media'}
+                {formData.role === 'vendor' ? '2) Branding & Logo' : formData.role === 'couple' ? '2) Profile Picture & Media' : '3) Profile Picture & Media'}
               </Typography>
               <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
                 {formData.role === 'vendor' ? (
@@ -1661,7 +1674,7 @@ const RegisterPage = () => {
                 )}
               </Typography>
 
-              {formData.role !== 'vendor' && (
+              {formData.role !== 'vendor' && formData.role !== 'couple' && (
                 <>
                   <Typography variant="body2" sx={{ fontWeight: 800, color: COLORS.primary, mt: 1 }}>
                     4) Religion / ethnicity (optional)
@@ -1673,31 +1686,33 @@ const RegisterPage = () => {
               )}
 
               <Typography variant="body2" sx={{ fontWeight: 800, color: COLORS.primary, mt: 1 }}>
-                {formData.role === 'vendor' ? '3) Admin Approval Required' : '5) After you complete registration'}
+                {formData.role === 'vendor' ? '3) Admin Approval Required' : formData.role === 'couple' ? '3) After you complete registration' : '5) After you complete registration'}
               </Typography>
               <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
                 {formData.role === 'vendor' ? (
                   <><b>An administrator must review and approve your registration first.</b> Once verified and approved by our administrators, your vendor account is activated and you will gain access to log in to your Vendor Portal to create packages, showcase work, and manage quote requests.</>
+                ) : formData.role === 'couple' ? (
+                  <>Your account is created, then you can access your dashboard. You can review and change your profile details anytime from <b>Profile → Edit Profile</b>.</>
                 ) : (
                   <>Your account is created, then you can access your dashboard. You can review and change your privacy settings and profile details anytime from <b>Profile → Edit Profile</b>.</>
                 )}
               </Typography>
 
               <Typography variant="body2" sx={{ fontWeight: 800, color: COLORS.primary, mt: 1 }}>
-                {formData.role === 'vendor' ? '4) Public Visibility' : '6) What other people can view'}
+                {formData.role === 'vendor' ? '4) Public Visibility' : formData.role === 'couple' ? '4) What other people can view' : '6) What other people can view'}
               </Typography>
               <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
                 {formData.role === 'vendor' ? (
                   <>Couples and website visitors can view your business name, category, portfolio link, descriptions, and verified badges. Your uploaded tax and identity documents are never shown publicly.</>
                 ) : formData.role === 'couple' ? (
-                  <>Other users may see your <b>profile details</b> and <b>profile picture</b> (based on your visibility). Wedding details are used for planning features and can be updated later.</>
+                  <>Wedding details are used for planning features and can be updated later from your profile/dashboard.</>
                 ) : (
                   <>Other users may see your <b>basic profile details</b> and <b>profile picture</b> (based on your visibility). Horoscope insights are generated using your birth details.</>
                 )}
               </Typography>
 
               <Typography variant="body2" sx={{ fontWeight: 800, color: COLORS.primary, mt: 1 }}>
-                {formData.role === 'vendor' ? '5) Professional Standards' : '7) Safety reminders'}
+                {formData.role === 'vendor' ? '5) Professional Standards' : formData.role === 'couple' ? '5) Safety reminders' : '7) Safety reminders'}
               </Typography>
               <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
                 {formData.role === 'vendor' ? (
@@ -1893,7 +1908,7 @@ const RegisterPage = () => {
                     disabled={
                       isLoading ||
                       (activeStep === 0 && !formData.role) ||
-                      (activeStep === steps.length - 1 && !formData.terms)
+                      (activeStep === steps.length - 1 && steps[activeStep] === 'Finalize' && !formData.terms)
                     }
                     endIcon={isLoading ? <CircularProgress size={20} color="inherit" /> : <ArrowForward />}
                     sx={{ 

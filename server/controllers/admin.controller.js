@@ -51,6 +51,18 @@ export const getOverview = asyncHandler(async (req, res) => {
     horoscopeSeekerTotal,
     horoscopeSeekersThisMonth,
     horoscopeSeekersLastMonth,
+    coupleTotal,
+    couplesThisMonth,
+    couplesLastMonth,
+    partnerTotal,
+    partnersThisMonth,
+    partnersLastMonth,
+    mutualMatchesTotal,
+    mutualMatchesThisMonth,
+    mutualMatchesLastMonth,
+    verifiedUsersTotal,
+    verifiedUsersThisMonth,
+    verifiedUsersLastMonth,
   ] = await Promise.all([
     User.countDocuments({ role: 'user' }),
     Vendor.countDocuments({ approvalStatus: 'approved' }),
@@ -62,13 +74,38 @@ export const getOverview = asyncHandler(async (req, res) => {
     User.countDocuments({ role: 'user', userType: 'horoscope_seeker' }),
     User.countDocuments({ role: 'user', userType: 'horoscope_seeker', createdAt: { $gte: startOfMonth } }),
     User.countDocuments({ role: 'user', userType: 'horoscope_seeker', createdAt: { $gte: startOfPreviousMonth, $lt: startOfMonth } }),
+    User.countDocuments({ role: 'user', userType: 'couple' }),
+    User.countDocuments({ role: 'user', userType: 'couple', createdAt: { $gte: startOfMonth } }),
+    User.countDocuments({ role: 'user', userType: 'couple', createdAt: { $gte: startOfPreviousMonth, $lt: startOfMonth } }),
+    User.countDocuments({ role: 'user', userType: 'partner' }),
+    User.countDocuments({ role: 'user', userType: 'partner', createdAt: { $gte: startOfMonth } }),
+    User.countDocuments({ role: 'user', userType: 'partner', createdAt: { $gte: startOfPreviousMonth, $lt: startOfMonth } }),
+    Match.countDocuments({ mutualInterest: true }),
+    Match.countDocuments({ mutualInterest: true, createdAt: { $gte: startOfMonth } }),
+    Match.countDocuments({ mutualInterest: true, createdAt: { $gte: startOfPreviousMonth, $lt: startOfMonth } }),
+    User.countDocuments({ role: 'user', 'verification.emailVerified': true }),
+    User.countDocuments({ role: 'user', 'verification.emailVerified': true, createdAt: { $gte: startOfMonth } }),
+    User.countDocuments({ role: 'user', 'verification.emailVerified': true, createdAt: { $gte: startOfPreviousMonth, $lt: startOfMonth } }),
   ]);
 
   const horoscopeSeekerGrowthDelta = horoscopeSeekersThisMonth - horoscopeSeekersLastMonth;
   const horoscopeSeekerGrowthLabel = `${horoscopeSeekerGrowthDelta >= 0 ? '+' : ''}${horoscopeSeekerGrowthDelta} this month`;
 
+  const coupleGrowthDelta = couplesThisMonth - couplesLastMonth;
+  const coupleGrowthLabel = `${coupleGrowthDelta >= 0 ? '+' : ''}${coupleGrowthDelta} this month`;
+
+  const partnerGrowthDelta = partnersThisMonth - partnersLastMonth;
+  const partnerGrowthLabel = `${partnerGrowthDelta >= 0 ? '+' : ''}${partnerGrowthDelta} this month`;
+
+  const mutualMatchesGrowthDelta = mutualMatchesThisMonth - mutualMatchesLastMonth;
+  const mutualMatchesGrowthLabel = `${mutualMatchesGrowthDelta >= 0 ? '+' : ''}${mutualMatchesGrowthDelta} this month`;
+
+  const verifiedUsersGrowthDelta = verifiedUsersThisMonth - verifiedUsersLastMonth;
+  const verifiedUsersGrowthLabel = `${verifiedUsersGrowthDelta >= 0 ? '+' : ''}${verifiedUsersGrowthDelta} this month`;
+
   const revenueValue = projects.reduce((sum, project) => sum + Number(project?.totalBudget || 0), 0);
 
+  // Generate 6 Months Growth Data
   const growthData = [];
   for (let offset = 5; offset >= 0; offset -= 1) {
     const monthStart = new Date(now.getFullYear(), now.getMonth() - offset, 1);
@@ -93,6 +130,86 @@ export const getOverview = asyncHandler(async (req, res) => {
     });
   }
 
+  // Generate 6 Months Match Trends
+  const matchGrowthData = [];
+  for (let offset = 5; offset >= 0; offset -= 1) {
+    const monthStart = new Date(now.getFullYear(), now.getMonth() - offset, 1);
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() - offset + 1, 1);
+
+    const matchesCount = await Match.countDocuments({
+      createdAt: { $gte: monthStart, $lt: monthEnd },
+    });
+
+    matchGrowthData.push({
+      month: formatMonthLabel(monthStart),
+      matches: matchesCount,
+    });
+  }
+
+  // Generate 30 Days Daily Datasets (User Growth & Match Trends)
+  const thirtyDaysAgo = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 29);
+  thirtyDaysAgo.setHours(0, 0, 0, 0);
+
+  const [usersLast30Days, matchesLast30Days] = await Promise.all([
+    User.find({
+      role: 'user',
+      createdAt: { $gte: thirtyDaysAgo }
+    }).select('createdAt verification.emailVerified').lean(),
+    Match.find({
+      createdAt: { $gte: thirtyDaysAgo }
+    }).select('createdAt').lean()
+  ]);
+
+  const dailyGrowthData = [];
+  const dailyMatchData = [];
+  const dailyMap = {};
+
+  for (let offset = 29; offset >= 0; offset -= 1) {
+    const day = new Date(now.getFullYear(), now.getMonth(), now.getDate() - offset);
+    day.setHours(0, 0, 0, 0);
+    const key = day.toDateString();
+    const label = day.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    dailyMap[key] = {
+      date: label,
+      registered: 0,
+      active: 0,
+      matches: 0
+    };
+  }
+
+  usersLast30Days.forEach(user => {
+    const userDate = new Date(user.createdAt);
+    userDate.setHours(0, 0, 0, 0);
+    const key = userDate.toDateString();
+    if (dailyMap[key]) {
+      dailyMap[key].registered += 1;
+      if (user.verification?.emailVerified) {
+        dailyMap[key].active += 1;
+      }
+    }
+  });
+
+  matchesLast30Days.forEach(match => {
+    const matchDate = new Date(match.createdAt);
+    matchDate.setHours(0, 0, 0, 0);
+    const key = matchDate.toDateString();
+    if (dailyMap[key]) {
+      dailyMap[key].matches += 1;
+    }
+  });
+
+  Object.keys(dailyMap).forEach(key => {
+    dailyGrowthData.push({
+      date: dailyMap[key].date,
+      registered: dailyMap[key].registered,
+      active: dailyMap[key].active
+    });
+    dailyMatchData.push({
+      date: dailyMap[key].date,
+      matches: dailyMap[key].matches
+    });
+  });
+
   const [recentUsers, recentVendors, recentMatches] = await Promise.all([
     User.find({ role: 'user' })
       .sort({ createdAt: -1 })
@@ -115,14 +232,14 @@ export const getOverview = asyncHandler(async (req, res) => {
     ...recentUsers.map((user, index) => ({
       id: `user-${index}`,
       type: 'user',
-      text: `New user \"${[user.personalInfo?.firstName, user.personalInfo?.lastName].filter(Boolean).join(' ').trim() || 'User'}\" registered`,
+      text: `New user "${[user.personalInfo?.firstName, user.personalInfo?.lastName].filter(Boolean).join(' ').trim() || 'User'}" registered`,
       time: user.createdAt,
       status: 'success',
     })),
     ...recentVendors.map((vendor, index) => ({
       id: `vendor-${index}`,
       type: 'vendor',
-      text: `Vendor \"${vendor.businessName || 'Vendor'}\" ${vendor.approvalStatus === 'pending' ? 'pending approval' : vendor.verified ? 'is verified' : 'joined the marketplace'}`,
+      text: `Vendor "${vendor.businessName || 'Vendor'}" ${vendor.approvalStatus === 'pending' ? 'pending approval' : vendor.verified ? 'is verified' : 'joined the marketplace'}`,
       time: vendor.createdAt,
       status: vendor.approvalStatus === 'pending' ? 'warning' : vendor.verified ? 'success' : 'info',
     })),
@@ -156,6 +273,14 @@ export const getOverview = asyncHandler(async (req, res) => {
         pendingVendors,
         horoscopeSeekerTotal,
         horoscopeSeekerGrowthDelta,
+        coupleTotal,
+        coupleGrowthDelta,
+        partnerTotal,
+        partnerGrowthDelta,
+        mutualMatchesTotal,
+        mutualMatchesGrowthDelta,
+        verifiedUsersTotal,
+        verifiedUsersGrowthDelta,
         matchesThisMonth: matchCountThisMonth,
         totalMatches,
         totalProjects,
@@ -169,14 +294,41 @@ export const getOverview = asyncHandler(async (req, res) => {
           growth: horoscopeSeekerGrowthLabel,
           color: '#A16207',
         },
+        {
+          title: 'Couples',
+          value: coupleTotal.toLocaleString('en-US'),
+          growth: coupleGrowthLabel,
+          color: '#EC4899',
+        },
+        {
+          title: 'Partners',
+          value: partnerTotal.toLocaleString('en-US'),
+          growth: partnerGrowthLabel,
+          color: '#3B82F6',
+        },
         { title: 'Active Vendors', value: vendorCount.toLocaleString('en-US'), growth: 'Live', color: '#1A6B72' },
         { title: 'Pending Vendors', value: pendingVendors.toLocaleString('en-US'), growth: 'Live', color: '#ED6C02' },
+        {
+          title: 'Verified Users',
+          value: verifiedUsersTotal.toLocaleString('en-US'),
+          growth: verifiedUsersGrowthLabel,
+          color: '#10B981',
+        },
+        {
+          title: 'Mutual Matches',
+          value: mutualMatchesTotal.toLocaleString('en-US'),
+          growth: mutualMatchesGrowthLabel,
+          color: '#8B5CF6',
+        },
         { title: 'Matches This Month', value: matchCountThisMonth.toLocaleString('en-US'), growth: 'Live', color: '#C9A84C' },
         { title: 'Total Matches', value: totalMatches.toLocaleString('en-US'), growth: 'Live', color: '#6A1B9A' },
         { title: 'Wedding Projects', value: totalProjects.toLocaleString('en-US'), growth: 'Live', color: '#1565C0' },
         { title: 'Revenue (LKR)', value: revenueValue.toLocaleString('en-US'), growth: 'Live', color: '#2E7D32' },
       ],
       growthData,
+      dailyGrowthData,
+      matchGrowthData,
+      dailyMatchData,
       recentActivity,
     },
   });
@@ -702,6 +854,66 @@ export const getAnalytics = asyncHandler(async (req, res) => {
 
   const growthDelta = newUsersThisMonth - newUsersLastMonth;
 
+  // Calculate new analytics
+  const [rawGenderCounts, rawRashiCounts, allUsersWithAge] = await Promise.all([
+    User.aggregate([
+      { $match: { role: 'user', 'personalInfo.gender': { $exists: true, $ne: null, $ne: '' } } },
+      { $group: { _id: '$personalInfo.gender', count: { $sum: 1 } } },
+      { $project: { _id: 0, name: '$_id', value: '$count' } }
+    ]),
+    User.aggregate([
+      { $match: { role: 'user', 'horoscopeData.rashi': { $exists: true, $ne: null, $ne: '' } } },
+      { $group: { _id: '$horoscopeData.rashi', count: { $sum: 1 } } },
+      { $project: { _id: 0, name: '$_id', value: '$count' } },
+      { $sort: { value: -1 } }
+    ]),
+    User.find({ role: 'user', 'personalInfo.age': { $exists: true, $ne: null } }).select('personalInfo.age').lean()
+  ]);
+
+  const genderMap = {
+    male: 'Male',
+    female: 'Female',
+    'non-binary': 'Non-binary',
+    'prefer_not_to_say': 'Prefer Not To Say'
+  };
+
+  const genderDistribution = rawGenderCounts.map(g => ({
+    name: genderMap[g.name] || g.name || 'Other',
+    value: g.value
+  }));
+
+  const rashiDistribution = rawRashiCounts.map(r => ({
+    name: r.name,
+    value: r.value
+  }));
+
+  const ageDistribution = [
+    { range: '18-25', count: 0 },
+    { range: '26-30', count: 0 },
+    { range: '31-35', count: 0 },
+    { range: '36-40', count: 0 },
+    { range: '41-45', count: 0 },
+    { range: '46+', count: 0 },
+  ];
+
+  allUsersWithAge.forEach(u => {
+    const age = Number(u.personalInfo?.age);
+    if (!age || Number.isNaN(age)) return;
+    if (age <= 25) ageDistribution[0].count++;
+    else if (age <= 30) ageDistribution[1].count++;
+    else if (age <= 35) ageDistribution[2].count++;
+    else if (age <= 40) ageDistribution[3].count++;
+    else if (age <= 45) ageDistribution[4].count++;
+    else ageDistribution[5].count++;
+  });
+
+  const mutualMatchesCount = await Match.countDocuments({ mutualInterest: true });
+  const unilateralMatchesCount = Math.max(0, totalMatches - mutualMatchesCount);
+  const matchInterestDistribution = [
+    { name: 'Mutual Matches', value: mutualMatchesCount },
+    { name: 'Unilateral Matches', value: unilateralMatchesCount }
+  ];
+
   res.status(200).json({
     success: true,
     data: {
@@ -723,6 +935,10 @@ export const getAnalytics = asyncHandler(async (req, res) => {
       provinceDistribution,
       vendorCategoryDistribution: vendorCategoryCounts,
       retentionFunnel,
+      genderDistribution,
+      rashiDistribution,
+      ageDistribution,
+      matchInterestDistribution,
     },
   });
 });

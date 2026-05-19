@@ -299,7 +299,7 @@ export default function UserProfile() {
     if (initialTab === 1) return isCouple ? 'about' : 'astrology';
     if (initialTab === 2) return isCouple ? 'about' : 'lifestyle';
     if (initialTab === 3) return isCouple ? 'about' : 'photos';
-    if (initialTab === 4) return 'privacy';
+    if (initialTab === 4) return isHoroscopeSeeker ? 'about' : 'privacy';
     return 'about';
   });
   const [loading, setLoading] = useState(false);
@@ -362,7 +362,10 @@ export default function UserProfile() {
     if (isHoroscopeSeeker && tabValue !== 'about') {
       setTabValue('about');
     }
-  }, [isHoroscopeSeeker, tabValue]);
+    if (isCouple && (tabValue === 'astrology' || tabValue === 'lifestyle' || tabValue === 'photos')) {
+      setTabValue('about');
+    }
+  }, [isHoroscopeSeeker, isCouple, tabValue]);
 
   useEffect(() => {
     const query = String(editData.location || '').trim();
@@ -1080,7 +1083,7 @@ export default function UserProfile() {
                   <Typography variant="caption" sx={{ fontWeight: 800, color: COLORS.accent, display: 'flex', alignItems: 'center', gap: 0.5, justifyContent: 'flex-end' }}>
                     <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: '#4CAF50' }} /> {profileData.status}
                   </Typography>
-                  {!isHoroscopeSeeker && (
+                  {!isHoroscopeSeeker && !isCouple && (
                     <Box sx={{ mt: 1, display: 'flex', alignItems: 'center', gap: 1, justifyContent: 'flex-end' }}>
                       <Typography variant="caption" sx={{ fontWeight: 700 }}>Profile Strength</Typography>
                       <Chip
@@ -2095,9 +2098,10 @@ export default function UserProfile() {
 
           {!isHoroscopeSeeker && <CustomTabPanel value={tabValue} index="privacy">
             <Grid container spacing={4}>
-              <Grid size={{ xs: 12, md: 7 }}>
-                <Paper sx={{ p: 4, borderRadius: '24px', boxShadow: '0 2px 16px rgba(0,0,0,0.03)' }}>
-                  <Typography variant="h6" sx={{ mb: 4, fontWeight: 800, color: COLORS.primary }}>Privacy Controls</Typography>
+              {!isCouple && (
+                <Grid size={{ xs: 12, md: 7 }}>
+                  <Paper sx={{ p: 4, borderRadius: '24px', boxShadow: '0 2px 16px rgba(0,0,0,0.03)' }}>
+                    <Typography variant="h6" sx={{ mb: 4, fontWeight: 800, color: COLORS.primary }}>Privacy Controls</Typography>
                   <Stack spacing={3}>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <Box>
@@ -2167,8 +2171,9 @@ export default function UserProfile() {
                   </Stack>
                 </Paper>
               </Grid>
+              )}
 
-              <Grid size={{ xs: 12, md: 5 }}>
+              <Grid size={{ xs: 12, md: isCouple ? 12 : 5 }}>
                 <Stack spacing={4}>
                   <Paper sx={{ p: 4, borderRadius: '24px', boxShadow: '0 2px 16px rgba(0,0,0,0.03)', border: `1px solid ${alpha(COLORS.accent, 0.1)}` }}>
                     <Typography variant="h6" sx={{ mb: 2, fontWeight: 800, color: COLORS.accent }}>Data & Privacy</Typography>

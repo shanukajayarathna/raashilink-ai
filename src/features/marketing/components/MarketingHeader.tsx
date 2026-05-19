@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { Box, Container, Stack, Typography, Button, useTheme, useMediaQuery } from '@mui/material';
+import { Box, Container, Stack, Typography, Button, useTheme, useMediaQuery, Drawer, Divider, IconButton } from '@mui/material';
 import { Link, useLocation } from 'react-router-dom';
+import { Menu, X } from 'lucide-react';
 import { MARKETING_COLORS as COLORS } from '../constants/colors';
 
 export default function MarketingHeader() {
@@ -12,6 +13,7 @@ export default function MarketingHeader() {
   // Detect if on landing page
   const isHomePage = location.pathname === '/';
   const [scrolled, setScrolled] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   useEffect(() => {
     if (!isHomePage) {
@@ -60,108 +62,212 @@ export default function MarketingHeader() {
         }}
       >
         <Container sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <Stack 
-                direction="row" 
-                spacing={1} 
-                alignItems="center" 
-                component={Link} 
-                to="/"
-                sx={{ textDecoration: 'none', position: 'relative', height: 48 }}
-              >
-                <Box
-                  component="img"
-                  src="/RaashiLink_Logo.png"
-                  alt="RaashiLink Logo"
-                  sx={{ 
-                    width: 100, 
-                    height: 100, 
-                    objectFit: 'contain',
-                    position: 'absolute',
-                    left: -25,
-                    top: '50%',
-                    transform: 'translateY(-50%)',
-                    filter: showSolidBg 
-                      ? 'drop-shadow(0 4px 8px rgba(0,0,0,0.1))' 
-                      : 'brightness(0) invert(1) drop-shadow(0 0 15px rgba(255,255,255,0.5))',
-                    transition: 'all 0.4s ease'
-                  }}
-                />
-                <Typography variant="h5" sx={{ 
-                  ml: '50px !important',
-                  color: showSolidBg ? COLORS.primary : 'white', 
-                  fontWeight: 900, 
-                  fontFamily: 'Playfair Display',
-                  letterSpacing: '-0.5px',
-                  textShadow: showSolidBg ? 'none' : '0 2px 15px rgba(0,0,0,0.4)',
-                  transition: 'all 0.4s ease'
-                }}>
-                  RaashiLink.AI
-                </Typography>
-              </Stack>
+          <Stack 
+            direction="row" 
+            spacing={1} 
+            alignItems="center" 
+            component={Link} 
+            to="/"
+            sx={{ textDecoration: 'none', position: 'relative', height: 48 }}
+          >
+            <Box
+              component="img"
+              src="/RaashiLink_Logo.png"
+              alt="RaashiLink Logo"
+              sx={{ 
+                width: 100, 
+                height: 100, 
+                objectFit: 'contain',
+                position: 'absolute',
+                left: -25,
+                top: '50%',
+                transform: 'translateY(-50%)',
+                filter: showSolidBg 
+                  ? 'drop-shadow(0 4px 8px rgba(0,0,0,0.1))' 
+                  : 'brightness(0) invert(1) drop-shadow(0 0 15px rgba(255,255,255,0.5))',
+                transition: 'all 0.4s ease'
+              }}
+            />
+            <Typography variant="h5" sx={{ 
+              ml: '50px !important',
+              color: showSolidBg ? COLORS.primary : 'white', 
+              fontWeight: 900, 
+              fontFamily: 'Playfair Display',
+              letterSpacing: '-0.5px',
+              textShadow: showSolidBg ? 'none' : '0 2px 15px rgba(0,0,0,0.4)',
+              transition: 'all 0.4s ease'
+            }}>
+              RaashiLink.AI
+            </Typography>
+          </Stack>
 
-              <Stack direction="row" spacing={5} alignItems="center" sx={{ display: { xs: 'none', md: 'flex' } }}>
-                {[
-                  { label: 'Features', path: '/features' },
-                  { label: 'How it Works', path: '/how-it-works' },
-                  { label: 'About Us', path: '/about-us' }
-                ].map((item) => {
-                  const isActive = location.pathname === item.path;
-                  return (
-                    <Typography 
-                      key={item.label} 
-                      variant="body2" 
-                      component={Link}
-                      to={item.path}
-                      sx={{ 
-                        color: showSolidBg ? (isActive ? COLORS.primary : COLORS.textPrimary) : 'white', 
-                        fontWeight: isActive ? 800 : 600, 
-                        cursor: 'pointer',
-                        textDecoration: 'none',
-                        position: 'relative',
-                        textShadow: showSolidBg ? 'none' : '0 1px 8px rgba(0,0,0,0.3)',
-                        transition: '0.3s',
-                        '&:after': {
-                          content: '""',
-                          position: 'absolute',
-                          bottom: -4,
-                          left: 0,
-                          width: isActive ? '100%' : 0,
-                          height: 2,
-                          bgcolor: COLORS.secondary,
-                          transition: 'width 0.3s ease'
-                        },
-                        '&:hover': { 
-                          color: COLORS.secondary,
-                          '&:after': { width: '100%' }
-                        }
-                      }}
-                    >
-                      {item.label}
-                    </Typography>
-                  );
-                })}
-                
-                <Stack direction="row" spacing={2}>
-                  <Button 
-                    component={Link} 
-                    to="/login" 
-                    variant="contained"
-                    sx={authButtonSx}
-                  >
-                    Login
-                  </Button>
-                  <Button 
-                    component={Link} 
-                    to="/register" 
-                    variant="contained" 
-                    sx={authButtonSx}
-                  >
-                    Register
-                  </Button>
-                </Stack>
-              </Stack>
-            </Container>
+          <Stack direction="row" spacing={5} alignItems="center" sx={{ display: { xs: 'none', md: 'flex' } }}>
+            {[
+              { label: 'Features', path: '/features' },
+              { label: 'How it Works', path: '/how-it-works' },
+              { label: 'About Us', path: '/about-us' }
+            ].map((item) => {
+              const isActive = location.pathname === item.path;
+              return (
+                <Typography 
+                  key={item.label} 
+                  variant="body2" 
+                  component={Link}
+                  to={item.path}
+                  sx={{ 
+                    color: showSolidBg ? (isActive ? COLORS.primary : COLORS.textPrimary) : 'white', 
+                    fontWeight: isActive ? 800 : 600, 
+                    cursor: 'pointer',
+                    textDecoration: 'none',
+                    position: 'relative',
+                    textShadow: showSolidBg ? 'none' : '0 1px 8px rgba(0,0,0,0.3)',
+                    transition: '0.3s',
+                    '&:after': {
+                      content: '""',
+                      position: 'absolute',
+                      bottom: -4,
+                      left: 0,
+                      width: isActive ? '100%' : 0,
+                      height: 2,
+                      bgcolor: COLORS.secondary,
+                      transition: 'width 0.3s ease'
+                    },
+                    '&:hover': { 
+                      color: COLORS.secondary,
+                      '&:after': { width: '100%' }
+                    }
+                  }}
+                >
+                  {item.label}
+                </Typography>
+              );
+            })}
+            
+            <Stack direction="row" spacing={2}>
+              <Button 
+                component={Link} 
+                to="/login" 
+                variant="contained"
+                sx={authButtonSx}
+              >
+                Login
+              </Button>
+              <Button 
+                component={Link} 
+                to="/register" 
+                variant="contained" 
+                sx={authButtonSx}
+              >
+                Register
+              </Button>
+            </Stack>
+          </Stack>
+
+          <IconButton
+            onClick={() => setDrawerOpen(true)}
+            sx={{ 
+              display: { xs: 'flex', md: 'none' },
+              color: showSolidBg ? COLORS.primary : 'white',
+              transition: 'all 0.4s ease'
+            }}
+          >
+            <Menu size={24} />
+          </IconButton>
+        </Container>
       </Box>
+
+      <Drawer
+        anchor="right"
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        PaperProps={{
+          sx: {
+            width: '280px',
+            bgcolor: 'rgba(255, 255, 255, 0.98)',
+            backdropFilter: 'blur(16px)',
+            p: 3,
+            boxSizing: 'border-box'
+          }
+        }}
+      >
+        <Stack spacing={4} sx={{ height: '100%' }}>
+          <Stack direction="row" justifyContent="space-between" alignItems="center">
+            <Typography variant="h6" sx={{ fontFamily: 'Playfair Display', fontWeight: 900, color: COLORS.primary }}>
+              RaashiLink.AI
+            </Typography>
+            <IconButton onClick={() => setDrawerOpen(false)} sx={{ color: COLORS.primary }}>
+              <X size={24} />
+            </IconButton>
+          </Stack>
+
+          <Divider />
+
+          <Stack spacing={3} sx={{ flexGrow: 1 }}>
+            {[
+              { label: 'Features', path: '/features' },
+              { label: 'How it Works', path: '/how-it-works' },
+              { label: 'About Us', path: '/about-us' }
+            ].map((item) => {
+              const isActive = location.pathname === item.path;
+              return (
+                <Typography
+                  key={item.label}
+                  component={Link}
+                  to={item.path}
+                  onClick={() => setDrawerOpen(false)}
+                  sx={{
+                    color: isActive ? COLORS.primary : COLORS.textPrimary,
+                    fontWeight: isActive ? 800 : 600,
+                    textDecoration: 'none',
+                    fontSize: '1.1rem',
+                    transition: '0.3s',
+                    '&:hover': { color: COLORS.secondary }
+                  }}
+                >
+                  {item.label}
+                </Typography>
+              );
+            })}
+          </Stack>
+
+          <Stack spacing={2} sx={{ pb: 4 }}>
+            <Button
+              component={Link}
+              to="/login"
+              variant="contained"
+              onClick={() => setDrawerOpen(false)}
+              sx={{
+                bgcolor: COLORS.cream,
+                color: COLORS.primary,
+                fontWeight: 800,
+                borderRadius: '12px',
+                py: 1.5,
+                boxShadow: 'none',
+                '&:hover': { bgcolor: COLORS.secondary, color: 'white' }
+              }}
+            >
+              Login
+            </Button>
+            <Button
+              component={Link}
+              to="/register"
+              variant="contained"
+              onClick={() => setDrawerOpen(false)}
+              sx={{
+                bgcolor: COLORS.secondary,
+                color: COLORS.primary,
+                fontWeight: 800,
+                borderRadius: '12px',
+                py: 1.5,
+                boxShadow: 'none',
+                '&:hover': { bgcolor: COLORS.primary, color: 'white' }
+              }}
+            >
+              Register
+            </Button>
+          </Stack>
+        </Stack>
+      </Drawer>
     </motion.div>
   );
 }

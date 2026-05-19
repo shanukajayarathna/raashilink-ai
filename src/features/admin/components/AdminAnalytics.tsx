@@ -12,6 +12,9 @@ import {
   Heart,
   Store,
   MapPin,
+  Users,
+  Star,
+  Activity,
 } from 'lucide-react';
 import {
   BarChart,
@@ -95,6 +98,10 @@ const AdminAnalytics: React.FC = () => {
   const provinceData = analytics?.provinceDistribution || [];
   const vendorCategoryData = analytics?.vendorCategoryDistribution || [];
   const retentionData = analytics?.retentionFunnel || [];
+  const genderDistribution = analytics?.genderDistribution || [];
+  const ageDistribution = analytics?.ageDistribution || [];
+  const rashiDistribution = analytics?.rashiDistribution || [];
+  const matchInterestDistribution = analytics?.matchInterestDistribution || [];
 
   const generatedAt = analytics?.generatedAt ? new Date(analytics.generatedAt).toLocaleTimeString() : 'N/A';
   const growthDelta = analytics?.users?.growthDelta || 0;
@@ -242,6 +249,106 @@ const AdminAnalytics: React.FC = () => {
                   </Typography>
                 </Box>
               ))}
+            </Box>
+          </Paper>
+        </Grid>
+
+        {/* User Gender Ratio */}
+        <Grid size={{ xs: 12, lg: 6 }}>
+          <Paper sx={{ p: 3, borderRadius: '16px', height: '100%' }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Users size={20} color={COLORS.primary} /> User Gender Ratio
+            </Typography>
+            <Box sx={{ height: 300, display: 'flex', alignItems: 'center' }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={genderDistribution}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={60}
+                    outerRadius={100}
+                    paddingAngle={5}
+                    dataKey="value"
+                  >
+                    {genderDistribution.map((_: any, index: number) => (
+                      <Cell key={`cell-${index}`} fill={CHART_COLORS[(index + 2) % CHART_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <RechartsTooltip />
+                  <Legend verticalAlign="middle" align="right" layout="vertical" />
+                </PieChart>
+              </ResponsiveContainer>
+            </Box>
+          </Paper>
+        </Grid>
+
+        {/* Match Interest Breakdown */}
+        <Grid size={{ xs: 12, lg: 6 }}>
+          <Paper sx={{ p: 3, borderRadius: '16px', height: '100%' }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Heart size={20} color={COLORS.primary} /> Match Interest Breakdown
+            </Typography>
+            <Box sx={{ height: 300, display: 'flex', alignItems: 'center' }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={matchInterestDistribution}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={60}
+                    outerRadius={100}
+                    paddingAngle={5}
+                    dataKey="value"
+                  >
+                    {matchInterestDistribution.map((_: any, index: number) => (
+                      <Cell key={`cell-${index}`} fill={[COLORS.primary, COLORS.secondary][index % 2]} />
+                    ))}
+                  </Pie>
+                  <RechartsTooltip />
+                  <Legend verticalAlign="middle" align="right" layout="vertical" />
+                </PieChart>
+              </ResponsiveContainer>
+            </Box>
+          </Paper>
+        </Grid>
+
+        {/* Age Group Demographics */}
+        <Grid size={{ xs: 12, lg: 6 }}>
+          <Paper sx={{ p: 3, borderRadius: '16px', height: '100%' }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Activity size={20} color={COLORS.accent} /> Age Group Demographics
+            </Typography>
+            <Box sx={{ height: 300 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={ageDistribution}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                  <XAxis dataKey="range" axisLine={false} tickLine={false} tick={{ fontSize: 12 }} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12 }} />
+                  <RechartsTooltip cursor={{ fill: 'transparent' }} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }} />
+                  <Bar dataKey="count" fill={COLORS.accent} radius={[4, 4, 0, 0]} barSize={40} />
+                </BarChart>
+              </ResponsiveContainer>
+            </Box>
+          </Paper>
+        </Grid>
+
+        {/* Horoscope Rashi Distribution */}
+        <Grid size={{ xs: 12, lg: 6 }}>
+          <Paper sx={{ p: 3, borderRadius: '16px', height: '100%' }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Star size={20} color={COLORS.secondary} /> Horoscope Rashi Distribution
+            </Typography>
+            <Box sx={{ height: 300 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={rashiDistribution} layout="vertical">
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f0f0f0" />
+                  <XAxis type="number" hide />
+                  <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} width={100} tick={{ fontSize: 12 }} />
+                  <RechartsTooltip cursor={{ fill: 'transparent' }} />
+                  <Bar dataKey="value" fill={COLORS.secondary} radius={[0, 4, 4, 0]} barSize={16} />
+                </BarChart>
+              </ResponsiveContainer>
             </Box>
           </Paper>
         </Grid>

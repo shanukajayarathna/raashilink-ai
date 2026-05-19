@@ -40,6 +40,10 @@ import {
   XCircle,
   AlertCircle,
   Star,
+  Heart,
+  Activity,
+  ShieldCheck,
+  Zap,
 } from 'lucide-react';
 import { motion, AnimatePresence, LayoutGroup } from 'motion/react';
 import { useSelector, useDispatch } from 'react-redux';
@@ -103,6 +107,9 @@ const AdminDashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [overviewData, setOverviewData] = useState<any>(null);
   const [overviewError, setOverviewError] = useState('');
+  const [userGrowthPeriod, setUserGrowthPeriod] = useState<'daily' | 'monthly'>('monthly');
+  const [matchTrendsPeriod, setMatchTrendsPeriod] = useState<'daily' | 'monthly'>('monthly');
+  const [isSyncing, setIsSyncing] = useState(false);
   const theme = useTheme();
   const navigate = useNavigate();
   const dispatch = useDispatch();
@@ -115,23 +122,39 @@ const AdminDashboard: React.FC = () => {
     user?.photos?.[0]?.url
   );
 
-  const loadOverview = async () => {
+  const loadOverview = async (showSpinner = true) => {
     try {
-      setLoading(true);
+      if (showSpinner) {
+        setLoading(true);
+      } else {
+        setIsSyncing(true);
+      }
       setOverviewError('');
       const response = await adminService.getOverview();
       setOverviewData(response?.data || null);
     } catch (error: any) {
       console.error('Failed to load admin overview', error);
-      setOverviewData(null);
+      if (showSpinner) {
+        setOverviewData(null);
+      }
       setOverviewError(error?.response?.data?.message || 'Failed to load overview');
     } finally {
-      setLoading(false);
+      if (showSpinner) {
+        setLoading(false);
+      } else {
+        setIsSyncing(false);
+      }
     }
   };
 
   useEffect(() => {
-    void loadOverview();
+    void loadOverview(true);
+
+    const interval = setInterval(() => {
+      void loadOverview(false);
+    }, 15000);
+
+    return () => clearInterval(interval);
   }, []);
 
   const handleSignOut = () => {
@@ -156,8 +179,12 @@ const AdminDashboard: React.FC = () => {
   const kpiIconMap: Record<string, React.ReactNode> = {
     'Total Users': <Users size={24} />,
     'Horoscope Seekers': <Star size={24} />,
+    'Couples': <Heart size={24} />,
+    'Partners': <Users size={24} />,
     'Active Vendors': <Store size={24} />,
     'Pending Vendors': <AlertCircle size={24} />,
+    'Verified Users': <ShieldCheck size={24} />,
+    'Mutual Matches': <Heart size={24} />,
     'Matches This Month': <TrendingUp size={24} />,
     'Total Matches': <TrendingUp size={24} />,
     'Wedding Projects': <CheckCircle2 size={24} />,
@@ -309,37 +336,154 @@ const AdminDashboard: React.FC = () => {
           </Grid>
         ))}
 
-        {/* Charts Section */}
-        <Grid size={{ xs: 12, lg: 8 }}>
+        {/* Charts Section: User Growth & Activity */}
+        <Grid size={{ xs: 12, lg: 6 }}>
           <Paper sx={{ p: 3, borderRadius: '16px', height: '100%' }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
-              <Typography variant="h6" sx={{ fontWeight: 700, fontFamily: 'Playfair Display' }}>User Growth & Activity</Typography>
-              <Stack direction="row" spacing={1}>
-                <Chip label="Registered" size="small" sx={{ bgcolor: COLORS.primary, color: 'white' }} />
-                <Chip label="Active" size="small" sx={{ bgcolor: COLORS.accent, color: 'white' }} />
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, flexWrap: 'wrap', gap: 2 }}>
+              <Box>
+                <Typography variant="h6" sx={{ fontWeight: 700, fontFamily: 'Playfair Display' }}>User Growth & Activity</Typography>
+                <Stack direction="row" spacing={1} sx={{ mt: 0.5 }}>
+                  <Chip label="Registered" size="small" sx={{ bgcolor: COLORS.primary, color: 'white', height: 20, fontSize: '0.75rem' }} />
+                  <Chip label="Active" size="small" sx={{ bgcolor: COLORS.accent, color: 'white', height: 20, fontSize: '0.75rem' }} />
+                </Stack>
+              </Box>
+              <Stack direction="row" spacing={0.5} sx={{ bgcolor: '#F0EBE1', p: 0.5, borderRadius: '20px' }}>
+                <Button 
+                  size="small" 
+                  onClick={() => setUserGrowthPeriod('daily')} 
+                  sx={{ 
+                    borderRadius: '16px', 
+                    px: 2, 
+                    py: 0.5,
+                    fontSize: '0.75rem',
+                    textTransform: 'none',
+                    bgcolor: userGrowthPeriod === 'daily' ? 'white' : 'transparent',
+                    color: userGrowthPeriod === 'daily' ? COLORS.primary : COLORS.textSecondary,
+                    boxShadow: userGrowthPeriod === 'daily' ? '0 2px 8px rgba(0,0,0,0.1)' : 'none',
+                    '&:hover': { bgcolor: userGrowthPeriod === 'daily' ? 'white' : 'rgba(0,0,0,0.05)' }
+                  }}
+                >
+                  Daily
+                </Button>
+                <Button 
+                  size="small" 
+                  onClick={() => setUserGrowthPeriod('monthly')} 
+                  sx={{ 
+                    borderRadius: '16px', 
+                    px: 2, 
+                    py: 0.5,
+                    fontSize: '0.75rem',
+                    textTransform: 'none',
+                    bgcolor: userGrowthPeriod === 'monthly' ? 'white' : 'transparent',
+                    color: userGrowthPeriod === 'monthly' ? COLORS.primary : COLORS.textSecondary,
+                    boxShadow: userGrowthPeriod === 'monthly' ? '0 2px 8px rgba(0,0,0,0.1)' : 'none',
+                    '&:hover': { bgcolor: userGrowthPeriod === 'monthly' ? 'white' : 'rgba(0,0,0,0.05)' }
+                  }}
+                >
+                  Monthly
+                </Button>
               </Stack>
             </Box>
-            <Box sx={{ height: 350, width: '100%' }}>
+            <Box sx={{ height: 320, width: '100%' }}>
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={userGrowthData}>
+                <AreaChart data={userGrowthPeriod === 'daily' ? (overviewData?.dailyGrowthData || []) : (overviewData?.growthData || [])}>
                   <defs>
                     <linearGradient id="colorReg" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor={COLORS.primary} stopOpacity={0.1}/>
+                      <stop offset="5%" stopColor={COLORS.primary} stopOpacity={0.15}/>
                       <stop offset="95%" stopColor={COLORS.primary} stopOpacity={0}/>
                     </linearGradient>
                     <linearGradient id="colorAct" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor={COLORS.accent} stopOpacity={0.1}/>
+                      <stop offset="5%" stopColor={COLORS.accent} stopOpacity={0.15}/>
                       <stop offset="95%" stopColor={COLORS.accent} stopOpacity={0}/>
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-                  <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: COLORS.textSecondary, fontSize: 12 }} />
-                  <YAxis axisLine={false} tickLine={false} tick={{ fill: COLORS.textSecondary, fontSize: 12 }} />
-                  <RechartsTooltip
-                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }}
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2dcd0" />
+                  <XAxis 
+                    dataKey={userGrowthPeriod === 'daily' ? 'date' : 'month'} 
+                    axisLine={false} 
+                    tickLine={false} 
+                    tick={{ fill: COLORS.textSecondary, fontSize: 11 }} 
                   />
-                  <Area type="monotone" dataKey="registered" stroke={COLORS.primary} strokeWidth={3} fillOpacity={1} fill="url(#colorReg)" />
-                  <Area type="monotone" dataKey="active" stroke={COLORS.accent} strokeWidth={3} fillOpacity={1} fill="url(#colorAct)" />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fill: COLORS.textSecondary, fontSize: 11 }} />
+                  <RechartsTooltip
+                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.1)', background: '#fff' }}
+                  />
+                  <Area type="monotone" dataKey="registered" name="Registered" stroke={COLORS.primary} strokeWidth={3} fillOpacity={1} fill="url(#colorReg)" />
+                  <Area type="monotone" dataKey="active" name="Active" stroke={COLORS.accent} strokeWidth={3} fillOpacity={1} fill="url(#colorAct)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </Box>
+          </Paper>
+        </Grid>
+
+        {/* Charts Section: Match Trends */}
+        <Grid size={{ xs: 12, lg: 6 }}>
+          <Paper sx={{ p: 3, borderRadius: '16px', height: '100%' }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, flexWrap: 'wrap', gap: 2 }}>
+              <Box>
+                <Typography variant="h6" sx={{ fontWeight: 700, fontFamily: 'Playfair Display' }}>Match Trends</Typography>
+                <Typography variant="caption" sx={{ color: COLORS.textSecondary, display: 'block', mt: 0.5 }}>
+                  Matrimonial compatibility matching volume
+                </Typography>
+              </Box>
+              <Stack direction="row" spacing={0.5} sx={{ bgcolor: '#F0EBE1', p: 0.5, borderRadius: '20px' }}>
+                <Button 
+                  size="small" 
+                  onClick={() => setMatchTrendsPeriod('daily')} 
+                  sx={{ 
+                    borderRadius: '16px', 
+                    px: 2, 
+                    py: 0.5,
+                    fontSize: '0.75rem',
+                    textTransform: 'none',
+                    bgcolor: matchTrendsPeriod === 'daily' ? 'white' : 'transparent',
+                    color: matchTrendsPeriod === 'daily' ? COLORS.primary : COLORS.textSecondary,
+                    boxShadow: matchTrendsPeriod === 'daily' ? '0 2px 8px rgba(0,0,0,0.1)' : 'none',
+                    '&:hover': { bgcolor: matchTrendsPeriod === 'daily' ? 'white' : 'rgba(0,0,0,0.05)' }
+                  }}
+                >
+                  Daily
+                </Button>
+                <Button 
+                  size="small" 
+                  onClick={() => setMatchTrendsPeriod('monthly')} 
+                  sx={{ 
+                    borderRadius: '16px', 
+                    px: 2, 
+                    py: 0.5,
+                    fontSize: '0.75rem',
+                    textTransform: 'none',
+                    bgcolor: matchTrendsPeriod === 'monthly' ? 'white' : 'transparent',
+                    color: matchTrendsPeriod === 'monthly' ? COLORS.primary : COLORS.textSecondary,
+                    boxShadow: matchTrendsPeriod === 'monthly' ? '0 2px 8px rgba(0,0,0,0.1)' : 'none',
+                    '&:hover': { bgcolor: matchTrendsPeriod === 'monthly' ? 'white' : 'rgba(0,0,0,0.05)' }
+                  }}
+                >
+                  Monthly
+                </Button>
+              </Stack>
+            </Box>
+            <Box sx={{ height: 320, width: '100%' }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={matchTrendsPeriod === 'daily' ? (overviewData?.dailyMatchData || []) : (overviewData?.matchGrowthData || [])}>
+                  <defs>
+                    <linearGradient id="colorMatches" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor={COLORS.secondary} stopOpacity={0.25}/>
+                      <stop offset="95%" stopColor={COLORS.secondary} stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2dcd0" />
+                  <XAxis 
+                    dataKey={matchTrendsPeriod === 'daily' ? 'date' : 'month'} 
+                    axisLine={false} 
+                    tickLine={false} 
+                    tick={{ fill: COLORS.textSecondary, fontSize: 11 }} 
+                  />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fill: COLORS.textSecondary, fontSize: 11 }} />
+                  <RechartsTooltip
+                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.1)', background: '#fff' }}
+                  />
+                  <Area type="monotone" dataKey="matches" name="Matches Generated" stroke={COLORS.secondary} strokeWidth={3} fillOpacity={1} fill="url(#colorMatches)" />
                 </AreaChart>
               </ResponsiveContainer>
             </Box>
@@ -347,7 +491,7 @@ const AdminDashboard: React.FC = () => {
         </Grid>
 
         {/* Activity Feed */}
-        <Grid size={{ xs: 12, lg: 4 }}>
+        <Grid size={{ xs: 12, lg: 6 }}>
           <Paper sx={{ p: 3, borderRadius: '16px', height: '100%' }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
               <Typography variant="h6" sx={{ fontWeight: 700, fontFamily: 'Playfair Display' }}>Recent Activity</Typography>
@@ -402,10 +546,94 @@ const AdminDashboard: React.FC = () => {
             </List>
             <Box sx={{ mt: 2, p: 2, bgcolor: COLORS.background, borderRadius: '12px', display: 'flex', alignItems: 'center', gap: 2 }}>
               <History size={20} color={COLORS.textSecondary} />
-              <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
-                Last sync: {overviewData?.generatedAt ? new Date(overviewData.generatedAt).toLocaleString() : 'N/A'}
+              <Typography variant="body2" sx={{ color: COLORS.textSecondary, display: 'flex', alignItems: 'center', gap: 1 }}>
+                Last sync: {overviewData?.generatedAt ? new Date(overviewData.generatedAt).toLocaleTimeString() : 'N/A'}
+                {isSyncing && <CircularProgress size={12} sx={{ color: COLORS.primary }} />}
               </Typography>
             </Box>
+          </Paper>
+        </Grid>
+
+        {/* System Health / Live Monitor */}
+        <Grid size={{ xs: 12, lg: 6 }}>
+          <Paper sx={{ p: 3, borderRadius: '16px', height: '100%', display: 'flex', flexDirection: 'column' }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+              <Typography variant="h6" sx={{ fontWeight: 700, fontFamily: 'Playfair Display' }}>System Live Monitor</Typography>
+              <Chip 
+                icon={<Activity size={12} color={COLORS.success} />} 
+                label="All Systems Live" 
+                size="small" 
+                sx={{ bgcolor: '#E8F5E9', color: COLORS.success, fontWeight: 700 }} 
+              />
+            </Box>
+            
+            <Stack spacing={2} sx={{ flexGrow: 1 }}>
+              <Box sx={{ p: 2, bgcolor: COLORS.background, borderRadius: '12px', border: '1px solid rgba(201, 168, 76, 0.2)' }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 700, color: COLORS.primary, mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Zap size={16} /> Real-Time Telemetry
+                </Typography>
+                <Grid container spacing={2}>
+                  <Grid size={{ xs: 6 }}>
+                    <Typography variant="caption" color="textSecondary" sx={{ display: 'block' }}>Active Polling Frequency</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 600 }}>15s Background Intervals</Typography>
+                  </Grid>
+                  <Grid size={{ xs: 6 }}>
+                    <Typography variant="caption" color="textSecondary" sx={{ display: 'block' }}>Server Link</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 600, color: COLORS.success }}>Operational</Typography>
+                  </Grid>
+                </Grid>
+              </Box>
+
+              <Box sx={{ display: 'flex', gap: 2, height: '100%' }}>
+                <Paper 
+                  variant="outlined" 
+                  onClick={() => setActiveTab('Users')}
+                  sx={{ 
+                    p: 2.5, 
+                    flex: 1, 
+                    borderRadius: '12px', 
+                    cursor: 'pointer', 
+                    textAlign: 'center',
+                    border: '1px solid rgba(0,0,0,0.06)',
+                    transition: 'all 0.2s',
+                    '&:hover': {
+                      borderColor: COLORS.primary,
+                      bgcolor: 'rgba(139, 26, 46, 0.02)',
+                      transform: 'translateY(-2px)'
+                    }
+                  }}
+                >
+                  <Users size={24} color={COLORS.primary} style={{ margin: '0 auto 8px' }} />
+                  <Typography variant="body2" sx={{ fontWeight: 700 }}>Manage Users</Typography>
+                  <Typography variant="caption" color="textSecondary">Verify profiles & details</Typography>
+                </Paper>
+                
+                <Paper 
+                  variant="outlined" 
+                  onClick={() => setActiveTab('Vendors')}
+                  sx={{ 
+                    p: 2.5, 
+                    flex: 1, 
+                    borderRadius: '12px', 
+                    cursor: 'pointer', 
+                    textAlign: 'center',
+                    border: '1px solid rgba(0,0,0,0.06)',
+                    transition: 'all 0.2s',
+                    '&:hover': {
+                      borderColor: COLORS.accent,
+                      bgcolor: 'rgba(26, 107, 114, 0.02)',
+                      transform: 'translateY(-2px)'
+                    }
+                  }}
+                >
+                  <Store size={24} color={COLORS.accent} style={{ margin: '0 auto 8px' }} />
+                  <Typography variant="body2" sx={{ fontWeight: 700 }}>Verify Vendors</Typography>
+                  <Typography variant="caption" color="textSecondary">
+                    {pendingVendorCount} pending approval
+                  </Typography>
+                </Paper>
+              </Box>
+            </Stack>
           </Paper>
         </Grid>
       </Grid>

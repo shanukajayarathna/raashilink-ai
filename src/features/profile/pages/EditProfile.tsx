@@ -89,6 +89,7 @@ export default function EditProfile() {
   const navigate = useNavigate();
   const { user, token } = useSelector((state: RootState) => state.auth);
   const isHoroscopeSeeker = user?.profileType === 'horoscope_seeker' || user?.userType === 'horoscope_seeker';
+  const isCouple = user?.profileType === 'couple' || user?.userType === 'couple';
   const dispatch = useDispatch();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -834,7 +835,7 @@ export default function EditProfile() {
             )}
 
             {/* Privacy Section */}
-            {!isHoroscopeSeeker && (
+            {!isHoroscopeSeeker && !isCouple && (
               <MotionPaper
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
