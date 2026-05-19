@@ -9,6 +9,8 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
+import { useDispatch } from 'react-redux';
+import { updateUser } from '@/features/auth/store/authSlice';
 import adminService from '../services/adminService';
 import ProfilePhotoUpload from '@/features/profile/components/ProfilePhotoUpload';
 
@@ -19,6 +21,7 @@ const COLORS = {
 };
 
 const AdminSettings: React.FC = () => {
+  const dispatch = useDispatch();
   const [loading, setLoading] = useState(true);
   const [savingName, setSavingName] = useState(false);
   const [savingEmail, setSavingEmail] = useState(false);
@@ -68,6 +71,7 @@ const AdminSettings: React.FC = () => {
       setError('');
       await adminService.updateAdminProfileName(name.trim());
       setSuccess('Admin name updated successfully');
+      dispatch(updateUser({ name: name.trim() }));
     } catch (err: any) {
       setError(err?.response?.data?.message || 'Failed to update name');
     } finally {
@@ -121,8 +125,9 @@ const AdminSettings: React.FC = () => {
     try {
       setSavingPhoto(true);
       setError('');
-      await adminService.uploadAdminPhoto(file);
+      const res = await adminService.uploadAdminPhoto(file);
       setSuccess('Admin photo updated successfully');
+      dispatch(updateUser({ profilePic: res?.profilePic || null }));
       await loadAdminProfile();
     } catch (err: any) {
       setError(err?.response?.data?.message || 'Failed to upload photo');
@@ -137,6 +142,7 @@ const AdminSettings: React.FC = () => {
       setError('');
       await adminService.removeAdminPhoto();
       setSuccess('Admin photo removed successfully');
+      dispatch(updateUser({ profilePic: null }));
       await loadAdminProfile();
     } catch (err: any) {
       setError(err?.response?.data?.message || 'Failed to remove photo');
