@@ -77,23 +77,62 @@ function getUserFirstName(user) {
 function buildProfileSummary(user) {
   const profileName = `${getUserFirstName(user)} ${user.personalInfo?.lastName || user?.lastName || ''}`.trim();
   const role = user.role === 'vendor' ? 'Vendor' : user.weddingProject?.partnerName ? 'Couple' : 'Partner';
+  const age = user.personalInfo?.age || 'Not specified';
+  const gender = user.personalInfo?.gender || 'Not specified';
   const location = user.personalInfo?.location || 'Sri Lanka';
+  const maritalStatus = user.personalInfo?.maritalStatus || 'single';
   const horoscopeSummary = buildHoroscopeSummary(user);
   const profession = user.lifestyle?.professionType || 'Not specified';
   const education = user.lifestyle?.educationLevel || 'Not specified';
   const religion = user.lifestyle?.religion || 'Not specified';
+  const diet = user.lifestyle?.diet || 'Not specified';
   const familyStyle = user.lifestyle?.familyValues != null ? `${Math.round(user.lifestyle.familyValues * 100)}% family-oriented` : 'Not specified';
+  const hobbies = Array.isArray(user.lifestyle?.hobbies) ? user.lifestyle.hobbies.join(', ') : 'Not specified';
+  const languages = Array.isArray(user.lifestyle?.languages) ? user.lifestyle.languages.join(', ') : 'Not specified';
 
-  return [
+  const preferences = user.preferences || {};
+  const seekingGender = user.personalInfo?.seekingGender || 'Not specified';
+  const prefAgeMin = preferences.ageRange?.min || 'Not specified';
+  const prefAgeMax = preferences.ageRange?.max || 'Not specified';
+  const prefLocations = Array.isArray(preferences.preferredLocations) ? preferences.preferredLocations.join(', ') : 'Not specified';
+
+  const wp = user.weddingProject || {};
+  const wpPartnerName = wp.partnerName || null;
+  const wpDate = wp.weddingDate ? new Date(wp.weddingDate).toISOString().slice(0, 10) : null;
+  const wpBudget = wp.budget || null;
+  const wpStatus = wp.status || null;
+
+  const lines = [
     `Name: ${profileName}`,
     `Role: ${role}`,
+    `Age: ${age}`,
+    `Gender: ${gender}`,
+    `Marital Status: ${maritalStatus}`,
     `Location: ${location}`,
     `Profession: ${profession}`,
     `Education: ${education}`,
     `Religion: ${religion}`,
+    `Diet: ${diet}`,
     `Family orientation: ${familyStyle}`,
-    ...(horoscopeSummary ? [`Horoscope:\n${horoscopeSummary}`] : []),
-  ].join('\n');
+    `Languages: ${languages}`,
+    `Hobbies: ${hobbies}`,
+    `Seeking Partner Gender: ${seekingGender}`,
+    `Partner Age Preference: ${prefAgeMin} to ${prefAgeMax}`,
+    `Partner Location Preference: ${prefLocations}`,
+  ];
+
+  if (wpPartnerName || wpDate || wpBudget) {
+    lines.push(`Wedding Project Partner: ${wpPartnerName || 'Not specified'}`);
+    lines.push(`Wedding Date: ${wpDate || 'Not specified'}`);
+    lines.push(`Wedding Budget: ${wpBudget || 'Not specified'}`);
+    lines.push(`Wedding Planning Status: ${wpStatus || 'Not specified'}`);
+  }
+
+  if (horoscopeSummary) {
+    lines.push(`Horoscope:\n${horoscopeSummary}`);
+  }
+
+  return lines.join('\n');
 }
 
 function buildHoroscopeSummary(user) {
@@ -162,10 +201,24 @@ function buildSystemPrompt(user, language) {
     ? 'This user is a horoscope seeker. Focus ONLY on astrology-based personal life guidance (timing, strengths, relationships, career, health habits, remedies, routines, decision-making). Do NOT mention matchmaking, finding a partner, or wedding planning unless the user explicitly asks.'
     : 'You support users with relationships, matchmaking, and wedding planning; you may also answer horoscope questions when asked.';
 
+  const now = new Date();
+  const currentDateStr = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  const currentTimeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZoneName: 'short' });
+  const localDateTimeStr = `Current Local Date & Time: ${currentDateStr} at ${currentTimeStr}`;
+
   return `You are RaashiBot, the AI assistant for RaashiLink.AI. Answer the user with kindness, cultural sensitivity, and relevance to Sri Lankan context.
 ${scopeLine}
 Always honor the user's selected language instruction: ${formatLanguageInstruction(language)}.
 Always address the user by their first name in every reply, naturally and respectfully. Do NOT append any familial terms, honorifics, or informal suffixes (such as "අයියා", "මල්ලි", "අක්කා", "නංගි", "Aiya", "Malli", "Akka", "Nangi", "brother", "sister" etc.) to the user's name under any circumstances. Always use their clean first name only. User first name: ${firstName}.
+
+Topic Guardrails:
+- You must strictly restrict your responses to the allowed topics of RaashiLink.AI: Vedic astrology/horoscope analysis, matchmaking/relationships, wedding planning (budget, checklist, venues, vendors), honeymoon destinations, and auspicious times/dates (Muhurtha) for significant events (e.g. weddings, groundbreaking, starting business).
+- If the user asks questions or makes requests outside these topics (for example: cooking recipes, coding help, general history, non-astrological science, news, or standard web search topics), you must politely decline and state that you are only able to assist with astrology, matchmaking, and wedding planning on RaashiLink.AI. Always steer the conversation back to the allowed topics.
+
+Conversational Flow & Continuity:
+- You are participating in a multi-turn, flowing conversation. Use the provided Conversation History to maintain context and continuity.
+- If the user responds to a question you previously asked (such as providing details like a birth place, date, or location), acknowledge their response in the context of that ongoing conversation. Do not treat their reply as a new, isolated query.
+- For example, if you previously asked for the location and date/time of construction, and the user responds with only a location, acknowledge the location, use it to personalize the guidance, and politely ask for the remaining details needed (like date/time) or provide general guidance for that location.
 
 Astrology behavior rules:
 - Only interpret from the "Horoscope" and "Birth" data provided above; do not invent placements.
@@ -176,6 +229,7 @@ Astrology behavior rules:
 
 User profile:
 ${profileSummary}
+${localDateTimeStr}
 ${realtimeSnapshotText}
 
 Reply strictly following these language rules: ${formatLanguageInstruction(language)} and keep your answer concise, helpful, and friendly.`;
@@ -208,7 +262,7 @@ function buildGeminiTranscript(systemPrompt, history = [], userMessage = '', lan
   const renderedHistory = (history || [])
     .slice(-12)
     .map((item) => {
-      const role = item?.role === 'assistant' ? 'Assistant' : 'User';
+      const role = item?.role === 'assistant' || item?.role === 'model' || item?.role === 'bot' ? 'Assistant' : 'User';
       return `${role}: ${item?.content || ''}`;
     })
     .join('\n');
@@ -218,7 +272,7 @@ function buildGeminiTranscript(systemPrompt, history = [], userMessage = '', lan
   return `${base}\n\nConversation history:\n${renderedHistory}\n\nUser: ${userPrompt}\nAssistant:`;
 }
 
-async function generateGroqReply({ user, message, language }) {
+async function generateGroqReply({ user, message, language, history = [] }) {
   const client = getGroqClient();
   if (!client) {
     throw new Error('Groq API key not configured');
@@ -226,6 +280,10 @@ async function generateGroqReply({ user, message, language }) {
 
   const baseMessages = [
     { role: 'system', content: buildSystemPrompt(user, language) },
+    ...(history || []).slice(-12).map((item) => ({
+      role: item.role === 'assistant' || item.role === 'model' || item.role === 'bot' ? 'assistant' : 'user',
+      content: item.content,
+    })),
     { role: 'user', content: buildUserPrompt(message, language) },
   ];
 
@@ -290,13 +348,14 @@ async function generateGroqReply({ user, message, language }) {
   return text;
 }
 
-async function generateGeminiReply({ user, message, language }) {
+async function generateGeminiReply({ user, message, language, history = [] }) {
   const client = getGeminiClient();
   if (!client) {
     throw new Error('Gemini API key not configured');
   }
 
-  const prompt = `${buildSystemPrompt(user, language)}\n\n${buildUserPrompt(message, language)}`;
+  const systemPrompt = buildSystemPrompt(user, language);
+  const prompt = buildGeminiTranscript(systemPrompt, history, message, language);
   const response = await client.models.generateContent({
     model: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
     contents: prompt,
@@ -341,7 +400,7 @@ function fallbackReply(user, language) {
   return `Hello ${name}! I'm ready to help using your horoscope profile. Your Moon sign is ${sign}. Ask your personal life question (timing, career, relationships, routines, remedies).`;
 }
 
-export async function generateAssistantReply({ user, message, language = 'en' }) {
+export async function generateAssistantReply({ user, message, language = 'en', history = [] }) {
   try {
     const maybeLocal = buildLocalHoroscopeAnswer({ user, message, language });
     if (maybeLocal) return maybeLocal;
@@ -358,10 +417,10 @@ export async function generateAssistantReply({ user, message, language = 'en' })
     for (const provider of providers) {
       try {
         if (provider === 'gemini' && process.env.GEMINI_API_KEY) {
-          return await generateGeminiReply({ user, message, language });
+          return await generateGeminiReply({ user, message, language, history });
         }
         if (provider === 'groq' && process.env.GROQ_API_KEY) {
-          return await generateGroqReply({ user, message, language });
+          return await generateGroqReply({ user, message, language, history });
         }
       } catch (err) {
         logger.warn(`AI Provider ${provider} failed or out of credits. Falling back...`, { 
@@ -494,7 +553,7 @@ async function streamChatWithFallback({ user, history, userMessage, language, re
 
         if (language === 'si' || language === 'ta') {
           setSseHeaders(res);
-          const fullText = await generateGroqReply({ user, message: userMessage, language });
+          const fullText = await generateGroqReply({ user, message: userMessage, language, history });
           if (fullText) {
             const chunkSize = 700;
             for (let i = 0; i < fullText.length; i += chunkSize) {
