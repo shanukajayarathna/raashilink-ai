@@ -4,7 +4,7 @@ import os
 import math
 from datetime import datetime
 from zoneinfo import ZoneInfo
-from server.python.compatibility.nakshatra_defs import NAKSHATRAS, GANA_BY_NAKSHATRA, normalize_nakshatra
+from compatibility.nakshatra_defs import NAKSHATRAS, GANA_BY_NAKSHATRA, normalize_nakshatra
 
 try:
     import swisseph as swe
