@@ -101,6 +101,24 @@ const resolveAvatarSrc = (...sources: any[]) => {
   return undefined;
 };
 
+const isDeepEqual = (obj1: any, obj2: any): boolean => {
+  if (obj1 === obj2) return true;
+  if (obj1 == null || obj2 == null) return false;
+  if (typeof obj1 !== 'object' || typeof obj2 !== 'object') return false;
+
+  const keys1 = Object.keys(obj1).filter(k => k !== 'generatedAt');
+  const keys2 = Object.keys(obj2).filter(k => k !== 'generatedAt');
+
+  if (keys1.length !== keys2.length) return false;
+
+  for (const key of keys1) {
+    if (!keys2.includes(key)) return false;
+    if (!isDeepEqual(obj1[key], obj2[key])) return false;
+  }
+
+  return true;
+};
+
 const AdminDashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState('Overview');
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -110,6 +128,7 @@ const AdminDashboard: React.FC = () => {
   const [userGrowthPeriod, setUserGrowthPeriod] = useState<'daily' | 'monthly'>('monthly');
   const [matchTrendsPeriod, setMatchTrendsPeriod] = useState<'daily' | 'monthly'>('monthly');
   const [isSyncing, setIsSyncing] = useState(false);
+  const [lastOverviewSyncTime, setLastOverviewSyncTime] = useState('N/A');
   const theme = useTheme();
   const navigate = useNavigate();
   const dispatch = useDispatch();
@@ -131,7 +150,16 @@ const AdminDashboard: React.FC = () => {
       }
       setOverviewError('');
       const response = await adminService.getOverview();
-      setOverviewData(response?.data || null);
+      const newData = response?.data || null;
+      if (newData?.generatedAt) {
+        setLastOverviewSyncTime(new Date(newData.generatedAt).toLocaleTimeString());
+      }
+      setOverviewData((prev: any) => {
+        if (isDeepEqual(prev, newData)) {
+          return prev;
+        }
+        return newData;
+      });
     } catch (error: any) {
       console.error('Failed to load admin overview', error);
       if (showSpinner) {
@@ -408,8 +436,8 @@ const AdminDashboard: React.FC = () => {
                   <RechartsTooltip
                     contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.1)', background: '#fff' }}
                   />
-                  <Area type="monotone" dataKey="registered" name="Registered" stroke={COLORS.primary} strokeWidth={3} fillOpacity={1} fill="url(#colorReg)" />
-                  <Area type="monotone" dataKey="active" name="Active" stroke={COLORS.accent} strokeWidth={3} fillOpacity={1} fill="url(#colorAct)" />
+                  <Area type="monotone" dataKey="registered" name="Registered" stroke={COLORS.primary} strokeWidth={3} fillOpacity={1} fill="url(#colorReg)" isAnimationActive={false} />
+                  <Area type="monotone" dataKey="active" name="Active" stroke={COLORS.accent} strokeWidth={3} fillOpacity={1} fill="url(#colorAct)" isAnimationActive={false} />
                 </AreaChart>
               </ResponsiveContainer>
             </Box>
@@ -483,7 +511,7 @@ const AdminDashboard: React.FC = () => {
                   <RechartsTooltip
                     contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.1)', background: '#fff' }}
                   />
-                  <Area type="monotone" dataKey="matches" name="Matches Generated" stroke={COLORS.secondary} strokeWidth={3} fillOpacity={1} fill="url(#colorMatches)" />
+                  <Area type="monotone" dataKey="matches" name="Matches Generated" stroke={COLORS.secondary} strokeWidth={3} fillOpacity={1} fill="url(#colorMatches)" isAnimationActive={false} />
                 </AreaChart>
               </ResponsiveContainer>
             </Box>
@@ -547,7 +575,7 @@ const AdminDashboard: React.FC = () => {
             <Box sx={{ mt: 2, p: 2, bgcolor: COLORS.background, borderRadius: '12px', display: 'flex', alignItems: 'center', gap: 2 }}>
               <History size={20} color={COLORS.textSecondary} />
               <Typography variant="body2" sx={{ color: COLORS.textSecondary, display: 'flex', alignItems: 'center', gap: 1 }}>
-                Last sync: {overviewData?.generatedAt ? new Date(overviewData.generatedAt).toLocaleTimeString() : 'N/A'}
+                Last sync: {lastOverviewSyncTime}
                 {isSyncing && <CircularProgress size={12} sx={{ color: COLORS.primary }} />}
               </Typography>
             </Box>

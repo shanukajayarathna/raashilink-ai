@@ -48,23 +48,51 @@ const COLORS = {
 
 const CHART_COLORS = [COLORS.primary, COLORS.secondary, COLORS.accent, '#4A148C', '#004D40', '#BF360C'];
 
+const isDeepEqual = (obj1: any, obj2: any): boolean => {
+  if (obj1 === obj2) return true;
+  if (obj1 == null || obj2 == null) return false;
+  if (typeof obj1 !== 'object' || typeof obj2 !== 'object') return false;
+
+  const keys1 = Object.keys(obj1).filter(k => k !== 'generatedAt');
+  const keys2 = Object.keys(obj2).filter(k => k !== 'generatedAt');
+
+  if (keys1.length !== keys2.length) return false;
+
+  for (const key of keys1) {
+    if (!keys2.includes(key)) return false;
+    if (!isDeepEqual(obj1[key], obj2[key])) return false;
+  }
+
+  return true;
+};
+
 const AdminAnalytics: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [analytics, setAnalytics] = useState<any>(null);
+  const [lastSyncTime, setLastSyncTime] = useState('N/A');
 
   useEffect(() => {
     let mounted = true;
 
-    const loadAnalytics = async () => {
+    const loadAnalytics = async (showSpinner = true) => {
       try {
-        if (!analytics) {
+        if (showSpinner) {
           setLoading(true);
         }
         setError('');
         const response = await adminService.getAnalytics();
         if (mounted) {
-          setAnalytics(response?.data || null);
+          const newData = response?.data || null;
+          if (newData?.generatedAt) {
+            setLastSyncTime(new Date(newData.generatedAt).toLocaleTimeString());
+          }
+          setAnalytics((prev: any) => {
+            if (isDeepEqual(prev, newData)) {
+              return prev;
+            }
+            return newData;
+          });
         }
       } catch (err: any) {
         if (mounted) {
@@ -72,13 +100,17 @@ const AdminAnalytics: React.FC = () => {
         }
       } finally {
         if (mounted) {
-          setLoading(false);
+          if (showSpinner) {
+            setLoading(false);
+          }
         }
       }
     };
 
-    loadAnalytics();
-    const interval = setInterval(loadAnalytics, 15000);
+    void loadAnalytics(true);
+    const interval = setInterval(() => {
+      void loadAnalytics(false);
+    }, 15000);
 
     return () => {
       mounted = false;
@@ -103,7 +135,7 @@ const AdminAnalytics: React.FC = () => {
   const rashiDistribution = analytics?.rashiDistribution || [];
   const matchInterestDistribution = analytics?.matchInterestDistribution || [];
 
-  const generatedAt = analytics?.generatedAt ? new Date(analytics.generatedAt).toLocaleTimeString() : 'N/A';
+  const generatedAt = lastSyncTime;
   const growthDelta = analytics?.users?.growthDelta || 0;
 
   return (
@@ -166,7 +198,7 @@ const AdminAnalytics: React.FC = () => {
                   <XAxis dataKey="range" axisLine={false} tickLine={false} tick={{ fontSize: 12 }} />
                   <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12 }} />
                   <RechartsTooltip cursor={{ fill: 'transparent' }} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }} />
-                  <Bar dataKey="count" fill={COLORS.primary} radius={[4, 4, 0, 0]} barSize={40} />
+                  <Bar dataKey="count" fill={COLORS.primary} radius={[4, 4, 0, 0]} barSize={40} isAnimationActive={false} />
                 </BarChart>
               </ResponsiveContainer>
             </Box>
@@ -190,6 +222,7 @@ const AdminAnalytics: React.FC = () => {
                     outerRadius={100}
                     paddingAngle={5}
                     dataKey="value"
+                    isAnimationActive={false}
                   >
                     {provinceData.map((_: any, index: number) => (
                       <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
@@ -216,7 +249,7 @@ const AdminAnalytics: React.FC = () => {
                   <XAxis type="number" hide />
                   <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} width={100} tick={{ fontSize: 12 }} />
                   <RechartsTooltip cursor={{ fill: 'transparent' }} />
-                  <Bar dataKey="quotes" fill={COLORS.accent} radius={[0, 4, 4, 0]} barSize={24} />
+                  <Bar dataKey="quotes" fill={COLORS.accent} radius={[0, 4, 4, 0]} barSize={24} isAnimationActive={false} />
                 </BarChart>
               </ResponsiveContainer>
             </Box>
@@ -270,6 +303,7 @@ const AdminAnalytics: React.FC = () => {
                     outerRadius={100}
                     paddingAngle={5}
                     dataKey="value"
+                    isAnimationActive={false}
                   >
                     {genderDistribution.map((_: any, index: number) => (
                       <Cell key={`cell-${index}`} fill={CHART_COLORS[(index + 2) % CHART_COLORS.length]} />
@@ -300,6 +334,7 @@ const AdminAnalytics: React.FC = () => {
                     outerRadius={100}
                     paddingAngle={5}
                     dataKey="value"
+                    isAnimationActive={false}
                   >
                     {matchInterestDistribution.map((_: any, index: number) => (
                       <Cell key={`cell-${index}`} fill={[COLORS.primary, COLORS.secondary][index % 2]} />
@@ -326,7 +361,7 @@ const AdminAnalytics: React.FC = () => {
                   <XAxis dataKey="range" axisLine={false} tickLine={false} tick={{ fontSize: 12 }} />
                   <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12 }} />
                   <RechartsTooltip cursor={{ fill: 'transparent' }} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }} />
-                  <Bar dataKey="count" fill={COLORS.accent} radius={[4, 4, 0, 0]} barSize={40} />
+                  <Bar dataKey="count" fill={COLORS.accent} radius={[4, 4, 0, 0]} barSize={40} isAnimationActive={false} />
                 </BarChart>
               </ResponsiveContainer>
             </Box>
@@ -346,7 +381,7 @@ const AdminAnalytics: React.FC = () => {
                   <XAxis type="number" hide />
                   <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} width={100} tick={{ fontSize: 12 }} />
                   <RechartsTooltip cursor={{ fill: 'transparent' }} />
-                  <Bar dataKey="value" fill={COLORS.secondary} radius={[0, 4, 4, 0]} barSize={16} />
+                  <Bar dataKey="value" fill={COLORS.secondary} radius={[0, 4, 4, 0]} barSize={16} isAnimationActive={false} />
                 </BarChart>
               </ResponsiveContainer>
             </Box>
@@ -357,5 +392,5 @@ const AdminAnalytics: React.FC = () => {
   );
 };
 
-export default AdminAnalytics;
+export default React.memo(AdminAnalytics);
 
