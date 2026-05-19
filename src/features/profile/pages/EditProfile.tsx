@@ -178,6 +178,37 @@ export default function EditProfile() {
     fetchProfile();
   }, [user?.id, user?._id]);
 
+  // List of common Sri Lankan locations for fallback
+  const COMMON_SRI_LANKAN_LOCATIONS = [
+    'Colombo', 'Kandy', 'Galle', 'Jaffna', 'Negombo', 'Anuradhapura', 'Kurunegala', 'Matara', 'Ratnapura', 'Badulla',
+    'Trincomalee', 'Batticaloa', 'Polonnaruwa', 'Puttalam', 'Hambantota', 'Nuwara Eliya', 'Vavuniya', 'Kilinochchi',
+    'Mannar', 'Monaragala', 'Matale', 'Kegalle', 'Kalutara', 'Gampaha', 'Ampara', 'Mullaitivu', 'Kilinochchi',
+    'Kalmunai', 'Dehiwala', 'Moratuwa', 'Kotikawatta', 'Wattala', 'Katunayake', 'Beruwala', 'Chilaw', 'Avissawella',
+    'Panadura', 'Kotte', 'Ja-Ela', 'Homagama', 'Maharagama', 'Ambalangoda', 'Embilipitiya', 'Hatton', 'Dambulla',
+    'Weligama', 'Tangalle', 'Haputale', 'Bandarawela', 'Ahangama', 'Akkaraipattu', 'Agalawatta', 'Ahangama', 'Akuressa',
+    'Alawwa', 'Aluthgama', 'Ambalantota', 'Angoda', 'Aranayake', 'Arugam Bay', 'Atchuvely', 'Avissawella', 'Baddegama',
+    'Balangoda', 'Bandarawela', 'Beruwala', 'Bibile', 'Biyagama', 'Boralesgamuwa', 'Buttala', 'Chavakachcheri',
+    'Chenkalady', 'Chilaw', 'Dambulla', 'Dankotuwa', 'Dehiattakandiya', 'Dehiwala', 'Delgoda', 'Deniyaya',
+    'Deraniyagala', 'Dikwella', 'Eheliyagoda', 'Ekala', 'Elpitiya', 'Embilipitiya', 'Eravur', 'Galagedara', 'Galewela',
+    'Galigamuwa', 'Gampola', 'Ganemulla', 'Ginigathhena', 'Giriulla', 'Godakawela', 'Grandpass', 'Hakmana', 'Hanwella',
+    'Haputale', 'Hatton', 'Hikkaduwa', 'Hingurakgoda', 'Homagama', 'Horana', 'Horowpothana', 'Ingiriya', 'Ja-Ela',
+    'Kadawatha', 'Kadugannawa', 'Kaduruwela', 'Kaduwela', 'Kahawatta', 'Kalawana', 'Kalmunai', 'Kamburupitiya',
+    'Kankesanthurai', 'Kantalai', 'Karainagar', 'Karapitiya', 'Kataragama', 'Kattankudy', 'Katunayake', 'Kegalle Town',
+    'Kekirawa', 'Kelaniya', 'Kesbewa', 'Kilinochchi Town', 'Kinniya', 'Kiribathgoda', 'Kodikamam', 'Kohuwala',
+    'Kolonnawa', 'Kopay', 'Kotadeniyawa', 'Kotte', 'Kuliyapitiya', 'Kundasale', 'Lunugala', 'Lunuwila', 'Madampe',
+    'Madawala', 'Madurankuliya', 'Maharagama', 'Maho', 'Malabe', 'Maskeliya', 'Mawanella', 'Medawachchiya',
+    'Menikhinna', 'Middeniya', 'Mihintale', 'Minuwangoda', 'Mirigama', 'Moratuwa', 'Mount Lavinia', 'Muttur',
+    'Nallur', 'Narahenpita', 'Nattandiya', 'Nawalapitiya', 'Negombo', 'Nelundeniya', 'Nikaweratiya', 'Nittambuwa',
+    'Norochcholai', 'Nugegoda', 'Oddusuddan', 'Opanayaka', 'Padiyatalawa', 'Padukka', 'Panadura', 'Pannala',
+    'Peliyagoda', 'Pelmadulla', 'Peradeniya', 'Piliyandala', 'Pitabeddara', 'Point Pedro', 'Pooneryn', 'Pothuhera',
+    'Ragama', 'Rambukkana', 'Ranna', 'Ratmalana', 'Rikillagaskada', 'Ruwanwella', 'Sainthamaruthu', 'Sammanthurai',
+    'Seeduwa', 'Sevanagala', 'Siyambalanduwa', 'Sri Jayawardenepura Kotte', 'Talawakele', 'Talawa', 'Tangalle',
+    'Thalawakele', 'Thambuttegama', 'Theldeniya', 'Thihagoda', 'Thihariya', 'Tissamaharama', 'Trinco Town',
+    'Tumpane', 'Udawalawe', 'Udubaddawa', 'Ukuwela', 'Urubokka', 'Valaichchenai', 'Valvettithurai', 'Vavunativu',
+    'Veyangoda', 'Wadduwa', 'Walasmulla', 'Warakapola', 'Wariyapola', 'Wattala', 'Wellampitiya', 'Weligama',
+    'Weliweriya', 'Wellawaya', 'Welimada', 'Welisara', 'Wennappuwa', 'Werellagama', 'Yakkala', 'Yatiyantota'
+  ];
+
   useEffect(() => {
     const query = String(formData.birthPlace || '').trim();
     const normalizedQuery = normalizeLocationText(query);
@@ -199,11 +230,14 @@ export default function EditProfile() {
         setBirthPlaceSuggestions(
           remotePrefixMatches.length > 0
             ? remotePrefixMatches
-            : []
+            : COMMON_SRI_LANKAN_LOCATIONS.filter((place) => normalizeLocationText(place).includes(normalizedQuery)).slice(0, 5)
         );
       } catch (lookupError) {
         console.error('Birth place suggestion lookup failed:', lookupError);
-        setBirthPlaceSuggestions([]);
+        // Fallback: always show local suggestions if API fails
+        setBirthPlaceSuggestions(
+          COMMON_SRI_LANKAN_LOCATIONS.filter((place) => normalizeLocationText(place).includes(normalizedQuery)).slice(0, 5)
+        );
       } finally {
         setLoadingBirthPlaceSuggestions(false);
       }

@@ -24,6 +24,7 @@ import {
   X,
   ZoomIn,
   ZoomOut,
+  RotateCcw,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import chatService from '../services/chatService';
@@ -65,6 +66,8 @@ interface ChatInterfaceProps {
   language?: 'en' | 'si' | 'ta';
   firstName?: string;
   sessionKey?: string;
+  starterPrompts?: string[];
+  welcomeText?: string;
 }
 
 export type ChatInterfaceHandle = {
@@ -85,7 +88,7 @@ const resolveAvatarSrc = (...sources: any[]) => {
 };
 
 const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>(function ChatInterface(
-  { isCompact, onClose, onScaleUp, onScaleDown, initialMessages = [], language = 'en', firstName = '', sessionKey },
+  { isCompact, onClose, onScaleUp, onScaleDown, initialMessages = [], language = 'en', firstName = '', sessionKey, starterPrompts = [], welcomeText },
   ref
 ) {
   const currentUser = useSelector((state: RootState) => state.auth.user as any);
@@ -110,6 +113,15 @@ const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>(functi
   });
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  // Reset chat handler
+  const handleResetChat = () => {
+    if (sessionKey) {
+      sessionStorage.removeItem(`raashibot_${sessionKey}`);
+    }
+    setMessages([]);
+    setIsWelcomeState(true);
+  };
+
   const [isWelcomeState, setIsWelcomeState] = useState(() => {
     if (sessionKey) {
       try {
@@ -140,8 +152,10 @@ const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>(functi
   };
 
   useEffect(() => {
-    scrollToBottom();
-  }, [messages, isTyping]);
+    if (!isWelcomeState) {
+      scrollToBottom();
+    }
+  }, [messages, isTyping, isWelcomeState]);
 
   const placeholders = {
     en: "Ask anything about matchmaking, weddings...",
@@ -275,6 +289,9 @@ const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>(functi
             </Box>
           </Stack>
           <Stack direction="row" spacing={0.25} alignItems="center">
+            <IconButton size="small" sx={{ color: 'white', opacity: 0.85, '&:hover': { opacity: 1, bgcolor: 'rgba(255,255,255,0.15)' } }} onClick={handleResetChat} title="Reset Chat">
+              <RotateCcw size={16} />
+            </IconButton>
             {onScaleDown && (
               <IconButton size="small" sx={{ color: 'white', opacity: 0.85, '&:hover': { opacity: 1, bgcolor: 'rgba(255,255,255,0.15)' } }} onClick={onScaleDown} title="Shrink">
                 <ZoomOut size={15} />
@@ -294,6 +311,7 @@ const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>(functi
       <Box
         sx={{
           flex: 1,
+          minHeight: 0,
           overflowY: 'auto',
           p: isCompact ? 2 : 4,
           display: 'flex',
@@ -308,6 +326,8 @@ const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>(functi
             <WelcomeScreen
               isCompact={isCompact}
               firstName={firstName}
+              welcomeText={welcomeText}
+              starterPrompts={starterPrompts}
               onTopicClick={(topic) => handleSendMessage(topic)}
             />
           )}
@@ -340,6 +360,7 @@ const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>(functi
           zIndex: 2,
         }}
       >
+        {/* Starter prompts are elegantly displayed inside the WelcomeScreen messages area above, no duplicate container here */}
         <Container maxWidth={isCompact ? false : "md"} disableGutters={isCompact}>
           <Stack direction="row" spacing={1} alignItems="flex-end">
             <TextField
@@ -384,27 +405,43 @@ const ChatInterface = forwardRef<ChatInterfaceHandle, ChatInterfaceProps>(functi
 
 export default ChatInterface;
 
-function WelcomeScreen({ onTopicClick, isCompact, firstName }: { onTopicClick: (topic: string) => void; isCompact?: boolean; firstName?: string }) {
-  const heading = firstName?.trim() ? `Ayubowan ${firstName.trim()}! I'm RaashiBot` : "Ayubowan! I'm RaashiBot";
-
+function WelcomeScreen({ onTopicClick, isCompact, firstName, welcomeText, starterPrompts }: { onTopicClick: (topic: string) => void; isCompact?: boolean; firstName?: string; welcomeText?: string; starterPrompts?: string[] }) {
   return (
-    <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', textAlign: 'center', padding: '20px' }}>
-      <motion.div animate={{ rotate: 360 }} transition={{ duration: 20, repeat: Infinity, ease: "linear" }} style={{ marginBottom: isCompact ? '12px' : '24px' }}>
-        <Flower2 size={isCompact ? 48 : 80} color={COLORS.primary} strokeWidth={1} />
-      </motion.div>
-      <Typography variant={isCompact ? "h6" : "h4"} sx={{ fontWeight: 800, fontFamily: 'Playfair Display', color: COLORS.primary, mb: 1 }}>{heading}</Typography>
-      {!isCompact && <Typography variant="body1" sx={{ color: COLORS.textSecondary, maxWidth: 500, mb: 6 }}>I can help you find your perfect match, understand your horoscope, and plan your wedding.</Typography>}
-      <Stack direction={isCompact ? "column" : "row"} spacing={isCompact ? 1 : 2} sx={{ width: '100%', maxWidth: 800 }}>
-        {WELCOME_TOPICS.map((topic, i) => (
-          <Paper key={topic.id} elevation={0} onClick={() => onTopicClick(topic.title)} sx={{ p: isCompact ? 1.5 : 3, borderRadius: 4, border: '1px solid', borderColor: 'divider', cursor: 'pointer', transition: 'all 0.3s ease', display: 'flex', flexDirection: isCompact ? 'row' : 'column', alignItems: 'center', gap: isCompact ? 2 : 0, '&:hover': { borderColor: topic.color, bgcolor: `${topic.color}05` } }}>
-            <Box sx={{ p: 1, borderRadius: 2, bgcolor: `${topic.color}15`, color: topic.color, mb: isCompact ? 0 : 2 }}>{topic.icon}</Box>
-            <Box sx={{ textAlign: isCompact ? 'left' : 'center' }}>
-              <Typography variant="subtitle2" sx={{ fontWeight: 800, color: COLORS.textPrimary }}>{topic.title}</Typography>
-              {!isCompact && <Typography variant="caption" sx={{ color: COLORS.textSecondary }}>{topic.desc}</Typography>}
+    <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: isCompact ? 'flex-start' : 'center', minHeight: '100%', textAlign: 'center', padding: isCompact ? '4px 10px 10px 10px' : '20px' }}>
+      {welcomeText && (
+        <Typography variant={isCompact ? "subtitle1" : "h5"} sx={{ fontWeight: 800, fontFamily: 'Playfair Display', color: COLORS.primary, mb: isCompact ? 1 : 2, whiteSpace: 'pre-line', fontSize: isCompact ? '1.05rem' : undefined }}>{welcomeText}</Typography>
+      )}
+      {starterPrompts && starterPrompts.length > 0 && (
+        <Stack direction="column" spacing={isCompact ? 1 : 1.5} sx={{ width: '100%', maxWidth: 600, mb: 2 }}>
+          {starterPrompts.map((prompt, idx) => (
+            <Box
+              key={prompt}
+              component="button"
+              onClick={() => onTopicClick(prompt)}
+              sx={{
+                border: 'none',
+                outline: 'none',
+                cursor: 'pointer',
+                px: isCompact ? 1.5 : 2.2,
+                py: isCompact ? 0.8 : 1.2,
+                borderRadius: 99,
+                bgcolor: COLORS.secondary,
+                color: COLORS.primary,
+                fontWeight: isCompact ? 600 : 700,
+                fontSize: isCompact ? '0.88rem' : '1.05rem',
+                boxShadow: '0 2px 8px #c9a84c22',
+                transition: 'background 0.2s, color 0.2s, transform 0.1s',
+                '&:hover': { bgcolor: COLORS.primary, color: COLORS.white },
+                '&:active': { transform: 'scale(0.98)' },
+                width: '100%',
+                textAlign: 'center',
+              }}
+            >
+              {prompt}
             </Box>
-          </Paper>
-        ))}
-      </Stack>
+          ))}
+        </Stack>
+      )}
     </motion.div>
   );
 }

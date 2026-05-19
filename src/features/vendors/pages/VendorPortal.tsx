@@ -658,6 +658,7 @@ export default function VendorPortal() {
               }}
             >
               <Avatar 
+                src={user?.profilePic || user?.personalInfo?.profilePic || undefined}
                 sx={{ 
                   width: 36, 
                   height: 36, 
@@ -666,7 +667,7 @@ export default function VendorPortal() {
                   fontWeight: 600
                 }}
               >
-                {vendorData?.businessName?.charAt(0) || 'V'}
+                {!user?.profilePic && !user?.personalInfo?.profilePic && (vendorData?.businessName?.charAt(0) || 'V')}
               </Avatar>
               {!isMobile && (
                 <Box>

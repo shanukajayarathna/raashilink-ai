@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
+import { motion } from 'motion/react';
 import { Box, Container, Typography, Grid, Stack, Card, CardContent, Divider, Chip } from '@mui/material';
 import MarketingHeader from '../components/MarketingHeader';
 import MarketingFooter from '../components/MarketingFooter';
@@ -14,7 +15,16 @@ const PageHero = ({ title }: { title: string }) => (
   </Box>
 );
 
+const MotionBox = motion(Box);
 export default function AboutUsPage() {
+  const missionRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (window.location.hash === '#mission' && missionRef.current) {
+      setTimeout(() => {
+        missionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 100); // Wait for render
+    }
+  }, []);
   const heroHighlights = [
     'Smart Matchmaking + Cultural Compatibility',
     'Guided Planning from First Chat to Wedding Day',
@@ -56,7 +66,12 @@ export default function AboutUsPage() {
       <MarketingHeader />
       <PageHero title="About Us" />
 
-      <Container sx={{ py: { xs: 6, md: 8 } }}>
+      <MotionBox
+        initial={{ opacity: 0, y: 30 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.7 }}
+      >
+        <Container sx={{ py: { xs: 6, md: 8 } }}>
         <Grid container spacing={{ xs: 4, md: 7 }} alignItems="stretch">
           <Grid size={{ xs: 12, md: 6 }}>
             <Stack spacing={2}>
@@ -128,6 +143,8 @@ export default function AboutUsPage() {
         </Grid>
 
         <Box
+          ref={missionRef}
+          id="mission"
           sx={{
             '@keyframes missionGlowPulse': {
               '0%': {
@@ -241,7 +258,8 @@ export default function AboutUsPage() {
             </Typography>
           </Box>
         </Box>
-      </Container>
+        </Container>
+      </MotionBox>
 
       <MarketingFooter />
     </Box>

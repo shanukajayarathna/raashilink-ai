@@ -122,6 +122,35 @@ function normalizeLocationText(value: string) {
 const MotionBox = motion(Box);
 const MotionCard = motion(Card);
 
+class StepErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean; message: string }
+> {
+  state = { hasError: false, message: '' };
+
+  static getDerivedStateFromError(error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { hasError: true, message };
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <Alert severity="error" sx={{ borderRadius: '12px' }}>
+          <Typography variant="body2" sx={{ fontWeight: 800 }}>
+            Registration step failed to render
+          </Typography>
+          <Typography variant="caption" sx={{ display: 'block', mt: 0.5 }}>
+            {this.state.message}
+          </Typography>
+        </Alert>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
 const RegisterPage = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -136,6 +165,28 @@ const RegisterPage = () => {
   const backLabel = cameFromLogin ? 'Back to Login' : 'Back to Home';
   
   const [activeStep, setActiveStep] = useState(0);
+
+  // --- Guidelines Scroll State ---
+  const [showTermsCheckbox, setShowTermsCheckbox] = useState(false);
+  const guidelinesPaperRef = React.useRef<HTMLDivElement>(null);
+  // Debounced scroll handler to prevent glitchy checkbox appearance
+  const scrollTimeout = React.useRef<NodeJS.Timeout | null>(null);
+  const handleGuidelinesScroll = () => {
+    const el = guidelinesPaperRef.current;
+    if (!el) return;
+    if (scrollTimeout.current) {
+      clearTimeout(scrollTimeout.current);
+    }
+    scrollTimeout.current = setTimeout(() => {
+      if (el.scrollTop + el.clientHeight >= el.scrollHeight - 8) {
+        setShowTermsCheckbox(true);
+      }
+    }, 120); // 120ms debounce
+  };
+  useEffect(() => {
+    setShowTermsCheckbox(false);
+  }, [activeStep]);
+
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -253,6 +304,37 @@ const RegisterPage = () => {
     return () => clearTimeout(timer);
   }, [formData.email, formData.phone]);
 
+  // List of common Sri Lankan locations for fallback
+  const COMMON_SRI_LANKAN_LOCATIONS = [
+    'Colombo', 'Kandy', 'Galle', 'Jaffna', 'Negombo', 'Anuradhapura', 'Kurunegala', 'Matara', 'Ratnapura', 'Badulla',
+    'Trincomalee', 'Batticaloa', 'Polonnaruwa', 'Puttalam', 'Hambantota', 'Nuwara Eliya', 'Vavuniya', 'Kilinochchi',
+    'Mannar', 'Monaragala', 'Matale', 'Kegalle', 'Kalutara', 'Gampaha', 'Ampara', 'Mullaitivu', 'Kilinochchi',
+    'Kalmunai', 'Dehiwala', 'Moratuwa', 'Kotikawatta', 'Wattala', 'Katunayake', 'Beruwala', 'Chilaw', 'Avissawella',
+    'Panadura', 'Kotte', 'Ja-Ela', 'Homagama', 'Maharagama', 'Ambalangoda', 'Embilipitiya', 'Hatton', 'Dambulla',
+    'Weligama', 'Tangalle', 'Haputale', 'Bandarawela', 'Ahangama', 'Akkaraipattu', 'Agalawatta', 'Ahangama', 'Akuressa',
+    'Alawwa', 'Aluthgama', 'Ambalantota', 'Angoda', 'Aranayake', 'Arugam Bay', 'Atchuvely', 'Avissawella', 'Baddegama',
+    'Balangoda', 'Bandarawela', 'Beruwala', 'Bibile', 'Biyagama', 'Boralesgamuwa', 'Buttala', 'Chavakachcheri',
+    'Chenkalady', 'Chilaw', 'Dambulla', 'Dankotuwa', 'Dehiattakandiya', 'Dehiwala', 'Delgoda', 'Deniyaya',
+    'Deraniyagala', 'Dikwella', 'Eheliyagoda', 'Ekala', 'Elpitiya', 'Embilipitiya', 'Eravur', 'Galagedara', 'Galewela',
+    'Galigamuwa', 'Gampola', 'Ganemulla', 'Ginigathhena', 'Giriulla', 'Godakawela', 'Grandpass', 'Hakmana', 'Hanwella',
+    'Haputale', 'Hatton', 'Hikkaduwa', 'Hingurakgoda', 'Homagama', 'Horana', 'Horowpothana', 'Ingiriya', 'Ja-Ela',
+    'Kadawatha', 'Kadugannawa', 'Kaduruwela', 'Kaduwela', 'Kahawatta', 'Kalawana', 'Kalmunai', 'Kamburupitiya',
+    'Kankesanthurai', 'Kantalai', 'Karainagar', 'Karapitiya', 'Kataragama', 'Kattankudy', 'Katunayake', 'Kegalle Town',
+    'Kekirawa', 'Kelaniya', 'Kesbewa', 'Kilinochchi Town', 'Kinniya', 'Kiribathgoda', 'Kodikamam', 'Kohuwala',
+    'Kolonnawa', 'Kopay', 'Kotadeniyawa', 'Kotte', 'Kuliyapitiya', 'Kundasale', 'Lunugala', 'Lunuwila', 'Madampe',
+    'Madawala', 'Madurankuliya', 'Maharagama', 'Maho', 'Malabe', 'Maskeliya', 'Mawanella', 'Medawachchiya',
+    'Menikhinna', 'Middeniya', 'Mihintale', 'Minuwangoda', 'Mirigama', 'Moratuwa', 'Mount Lavinia', 'Muttur',
+    'Nallur', 'Narahenpita', 'Nattandiya', 'Nawalapitiya', 'Negombo', 'Nelundeniya', 'Nikaweratiya', 'Nittambuwa',
+    'Norochcholai', 'Nugegoda', 'Oddusuddan', 'Opanayaka', 'Padiyatalawa', 'Padukka', 'Panadura', 'Pannala',
+    'Peliyagoda', 'Pelmadulla', 'Peradeniya', 'Piliyandala', 'Pitabeddara', 'Point Pedro', 'Pooneryn', 'Pothuhera',
+    'Ragama', 'Rambukkana', 'Ranna', 'Ratmalana', 'Rikillagaskada', 'Ruwanwella', 'Sainthamaruthu', 'Sammanthurai',
+    'Seeduwa', 'Sevanagala', 'Siyambalanduwa', 'Sri Jayawardenepura Kotte', 'Talawakele', 'Talawa', 'Tangalle',
+    'Thalawakele', 'Thambuttegama', 'Theldeniya', 'Thihagoda', 'Thihariya', 'Tissamaharama', 'Trinco Town',
+    'Tumpane', 'Udawalawe', 'Udubaddawa', 'Ukuwela', 'Urubokka', 'Valaichchenai', 'Valvettithurai', 'Vavunativu',
+    'Veyangoda', 'Wadduwa', 'Walasmulla', 'Warakapola', 'Wariyapola', 'Wattala', 'Wellampitiya', 'Weligama',
+    'Weliweriya', 'Wellawaya', 'Welimada', 'Welisara', 'Wennappuwa', 'Werellagama', 'Yakkala', 'Yatiyantota'
+  ];
+
   useEffect(() => {
     const query = String(formData.pob || '').trim();
     const normalizedQuery = normalizeLocationText(query);
@@ -274,11 +356,14 @@ const RegisterPage = () => {
         setBirthPlaceSuggestions(
           remotePrefixMatches.length > 0
             ? remotePrefixMatches
-            : []
+            : COMMON_SRI_LANKAN_LOCATIONS.filter((place) => normalizeLocationText(place).includes(normalizedQuery)).slice(0, 5)
         );
       } catch (lookupError) {
         console.error('Birth place suggestion lookup failed:', lookupError);
-        setBirthPlaceSuggestions([]);
+        // Fallback: always show local suggestions if API fails
+        setBirthPlaceSuggestions(
+          COMMON_SRI_LANKAN_LOCATIONS.filter((place) => normalizeLocationText(place).includes(normalizedQuery)).slice(0, 5)
+        );
       } finally {
         setLoadingBirthPlaceSuggestions(false);
       }
@@ -419,37 +504,45 @@ const RegisterPage = () => {
       }
       if (!/\S+@\S+\.\S+/.test(formData.email)) {
         newFieldErrors.email = 'Invalid email format';
+        setFieldErrors(newFieldErrors);
         return 'Please enter a valid email address.';
       }
       if (!phoneIsValid) {
         newFieldErrors.phone = 'Invalid Sri Lankan mobile number';
+        setFieldErrors(newFieldErrors);
         return 'Please enter a valid Sri Lankan mobile number.';
       }
       // Check availability — skip for Google signups (email belongs to their temp user record)
       if (!isGoogleSignup && availability.emailAvailable === false) {
         newFieldErrors.email = 'Already registered';
+        setFieldErrors(newFieldErrors);
         return 'This email is already registered. Please use a different email.';
       }
       if (availability.phoneAvailable === false) {
         newFieldErrors.phone = 'Already registered';
+        setFieldErrors(newFieldErrors);
         return 'This phone number is already registered. Please use a different number.';
       }
       if (!isGoogleSignup || formData.password) {
         if (!formData.password && !isGoogleSignup) {
           newFieldErrors.password = 'Required';
+          setFieldErrors(newFieldErrors);
           return 'Password is required.';
         }
         if (formData.password && formData.password.length < 8) {
           newFieldErrors.password = 'Must be at least 8 characters';
+          setFieldErrors(newFieldErrors);
           return 'Password must be at least 8 characters.';
         }
         if (formData.password !== formData.confirmPassword) {
           newFieldErrors.confirmPassword = 'Passwords do not match';
+          setFieldErrors(newFieldErrors);
           return 'Passwords do not match.';
         }
       }
       if (formData.role === 'partner' && !formData.gender) {
         newFieldErrors.gender = 'Required for matchmaking';
+        setFieldErrors(newFieldErrors);
         return 'Please select your gender.';
       }
     }
@@ -457,6 +550,7 @@ const RegisterPage = () => {
     if (currentStepLabel === 'Birth Details') {
       if (!formData.dob) {
         newFieldErrors.dob = 'Required';
+        setFieldErrors(newFieldErrors);
         return 'Date of birth is required.';
       }
       if (formData.dob >= todayDateString) {
@@ -466,10 +560,12 @@ const RegisterPage = () => {
       }
       if (!formData.pob) {
         newFieldErrors.pob = 'Required';
+        setFieldErrors(newFieldErrors);
         return 'Place of birth is required.';
       }
       if (!formData.unknownTime && !formData.tob) {
         newFieldErrors.tob = 'Required unless unknown';
+        setFieldErrors(newFieldErrors);
         return 'Time of birth is required unless marked unknown.';
       }
     }
@@ -477,10 +573,12 @@ const RegisterPage = () => {
     if (currentStepLabel === 'Wedding Details') {
       if (!formData.partnerName) {
         newFieldErrors.partnerName = 'Required';
+        setFieldErrors(newFieldErrors);
         return 'Partner name is required.';
       }
       if (!formData.weddingDate) {
         newFieldErrors.weddingDate = 'Required';
+        setFieldErrors(newFieldErrors);
         return 'Wedding date is required.';
       }
       if (formData.weddingDate < todayDateString) {
@@ -493,27 +591,50 @@ const RegisterPage = () => {
     if (currentStepLabel === 'Business Details') {
       if (!formData.businessName) {
         newFieldErrors.businessName = 'Required';
+        setFieldErrors(newFieldErrors);
         return 'Business name is required.';
       }
       if (!formData.businessCategory) {
         newFieldErrors.businessCategory = 'Required';
+        setFieldErrors(newFieldErrors);
         return 'Business category is required.';
       }
-      if (!formData.businessRegistrationNumber?.trim()) {
+      const brn = formData.businessRegistrationNumber?.trim() || '';
+      if (!brn) {
         newFieldErrors.businessRegistrationNumber = 'Required';
+        setFieldErrors(newFieldErrors);
         return 'Business registration number is required.';
       }
+      if (brn.length < 3) {
+        newFieldErrors.businessRegistrationNumber = 'Must be at least 3 characters';
+        setFieldErrors(newFieldErrors);
+        return 'Business registration number is too short.';
+      }
+      if (brn.length > 50) {
+        newFieldErrors.businessRegistrationNumber = 'Cannot exceed 50 characters';
+        setFieldErrors(newFieldErrors);
+        return 'Business registration number cannot exceed 50 characters.';
+      }
+      if (!/^[A-Za-z0-9\s\-\/\(\)\.]+$/.test(brn)) {
+        newFieldErrors.businessRegistrationNumber = 'Only letters, numbers, spaces, dots, dashes, slashes, and parentheses allowed';
+        setFieldErrors(newFieldErrors);
+        return 'Business registration number contains invalid characters.';
+      }
       if (vendorDocumentFiles.length === 0) {
+        setFieldErrors(newFieldErrors);
         return 'Please upload at least one business document.';
       }
     }
 
     if (currentStepLabel === 'Finalize') {
       if (!formData.terms) {
+        setFieldErrors(newFieldErrors);
         return 'You must accept the terms to continue.';
       }
       const otpValue = formData.otp.join('');
       if (otpValue.length > 0 && otpValue.length !== 6) {
+        newFieldErrors.otp = 'Must be a 6-digit code';
+        setFieldErrors(newFieldErrors);
         return 'If you enter OTP now, it must be a full 6-digit code.';
       }
     }
@@ -646,8 +767,19 @@ const RegisterPage = () => {
 
       await authService.register(registerPayload);
       setSuccess(true);
-      dispatch(showToast({ type: 'success', message: 'Registration completed. Please log in with your credentials.' }));
-      setTimeout(() => navigate('/login'), 1000);
+      if (formData.role === 'vendor') {
+        dispatch(showToast({ 
+          type: 'success', 
+          message: 'Registration completed! Your account is pending admin approval and gets access after verification.' 
+        }));
+        setTimeout(() => navigate('/login'), 6000);
+      } else {
+        dispatch(showToast({ 
+          type: 'success', 
+          message: 'Registration completed. Please log in with your credentials.' 
+        }));
+        setTimeout(() => navigate('/login'), 1500);
+      }
     } catch (err: any) {
       const details = Array.isArray(err.response?.data?.details) ? err.response.data.details : [];
       const message =
@@ -657,6 +789,49 @@ const RegisterPage = () => {
           : 'Registration failed. Please check the highlighted details.');
       setError(message);
       setErrorDetails(details);
+
+      // Parse detailed field errors from the server
+      const newFieldErrors: {[key: string]: string} = {};
+      let firstErrorStep = -1;
+
+      details.forEach((detail: string) => {
+        if (detail.includes(':')) {
+          const parts = detail.split(':');
+          const field = parts[0].trim();
+          const msg = parts.slice(1).join(':').trim();
+          newFieldErrors[field] = msg;
+
+          // Determine step index for this field
+          let fieldStep = -1;
+          if (['firstName', 'lastName', 'email', 'phone', 'password', 'confirmPassword', 'profilePic'].includes(field)) {
+            fieldStep = 1; // Basic Info
+          } else if (['businessName', 'businessCategory', 'businessRegistrationNumber', 'portfolioUrl'].includes(field)) {
+            fieldStep = 2; // Business Details
+          } else if (['partnerName', 'weddingDate', 'budget'].includes(field)) {
+            fieldStep = 2; // Wedding Details
+          } else if (['dob', 'tob', 'pob', 'unknownTime'].includes(field)) {
+            fieldStep = 2; // Birth Details
+          } else if (['personality'].includes(field)) {
+            fieldStep = 3; // Personality
+          } else if (['religion', 'ethnicity', 'terms'].includes(field)) {
+            fieldStep = steps.indexOf('Finalize');
+          }
+
+          if (fieldStep !== -1 && (firstErrorStep === -1 || fieldStep < firstErrorStep)) {
+            firstErrorStep = fieldStep;
+          }
+        }
+      });
+
+      if (Object.keys(newFieldErrors).length > 0) {
+        setFieldErrors(newFieldErrors);
+      }
+
+      // If we found an error associated with a specific step, navigate the user to that step!
+      if (firstErrorStep !== -1) {
+        setActiveStep(firstErrorStep);
+      }
+
       dispatch(showToast({ type: 'error', message }));
     } finally {
       setIsLoading(false);
@@ -749,7 +924,7 @@ const RegisterPage = () => {
         Basic Information
       </Typography>
       
-      <Box sx={{ display: 'flex', justifyContent: 'center', mb: 6 }}>
+      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mb: 6 }}>
         <>
           <Badge
             overlap="circular"
@@ -775,6 +950,12 @@ const RegisterPage = () => {
               {!formData.profilePic && <AccountCircle sx={{ fontSize: 80 }} />}
             </Avatar>
           </Badge>
+
+          {fieldErrors.profilePic && (
+            <Typography variant="caption" sx={{ color: 'error.main', mt: 1.5, fontWeight: 700 }}>
+              {fieldErrors.profilePic}
+            </Typography>
+          )}
 
           <RegistrationImageCropper
             open={profileImageCropOpen}
@@ -1215,9 +1396,10 @@ const RegisterPage = () => {
             placeholder="e.g., REG-2024-001" 
             value={formData.businessRegistrationNumber} 
             onChange={(e) => setFormData({ ...formData, businessRegistrationNumber: e.target.value })} 
+            inputProps={{ maxLength: 50 }}
             sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} 
             error={!!fieldErrors.businessRegistrationNumber} 
-            helperText={fieldErrors.businessRegistrationNumber || 'Required for verification'} 
+            helperText={fieldErrors.businessRegistrationNumber || 'Required for verification (Max 50 characters)'} 
           />
         </Grid>
         <Grid size={{ xs: 12 }}>
@@ -1228,6 +1410,8 @@ const RegisterPage = () => {
             onChange={(e) => setFormData({ ...formData, portfolioUrl: e.target.value })} 
             InputProps={{ startAdornment: <InputAdornment position="start"><CloudUpload /></InputAdornment> }} 
             sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} 
+            error={!!fieldErrors.portfolioUrl}
+            helperText={fieldErrors.portfolioUrl || 'Optional website or online portfolio link'}
           />
         </Grid>
 
@@ -1380,75 +1564,163 @@ const RegisterPage = () => {
       transition={{ duration: 0.5 }}
     >
       <Typography variant="h5" sx={{ fontFamily: 'Playfair Display', fontWeight: 700, mb: 4, textAlign: 'center' }}>
-        Privacy & Verification
+        Privacy & Guidelines
       </Typography>
       <Grid container spacing={4}>
-        <Grid size={{ xs: 12, md: 6 }}>
-          <Stack spacing={3}>
-            <Autocomplete options={['Everyone', 'Matches Only', 'Private']} renderInput={(params) => <TextField {...params} label="Who can see your profile?" sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} />} value={formData.visibility} onChange={(_, v) => setFormData({ ...formData, visibility: v || 'Everyone' })} />
-            <TextField
-              fullWidth
-              select
-              label="Religion"
-              value={formData.religion}
-              onChange={(e) => setFormData({ ...formData, religion: e.target.value })}
-              helperText="Saved to your user profile for better cultural matching."
-              sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }}
-            >
-              {SRI_LANKAN_RELIGIONS.map((option) => (
-                <MenuItem key={option} value={option}>{option}</MenuItem>
-              ))}
-            </TextField>
-            <TextField
-              fullWidth
-              select
-              label="Ethnicity"
-              value={formData.ethnicity}
-              onChange={(e) => setFormData({ ...formData, ethnicity: e.target.value })}
-              helperText="Saved to your user profile and can be changed later."
-              sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }}
-            >
-              {SRI_LANKAN_ETHNICITIES.map((option) => (
-                <MenuItem key={option} value={option}>{option}</MenuItem>
-              ))}
-            </TextField>
-
-          </Stack>
-        </Grid>
-        <Grid size={{ xs: 12, md: 6 }}>
-          <Paper sx={{ p: 3, borderRadius: '24px', bgcolor: COLORS.cream }}>
-            <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 700 }}>Optional Verification</Typography>
-            <Typography variant="caption" sx={{ display: 'block', mb: 2 }}>
-              Verify your account now for immediate access, or skip and verify later from your dashboard.
-            </Typography>
-            <Button
-              variant="outlined"
-              onClick={handleSendOtp}
-              disabled={otpSending}
-              sx={{ mb: 2, borderRadius: '10px' }}
-            >
-              {otpSending ? 'Sending OTP...' : otpRequested ? 'Resend OTP' : 'Send Verification OTP'}
-            </Button>
-            <Stack direction="row" spacing={1} justifyContent="center">
-              {formData.otp.map((digit, i) => (
-                <TextField key={i} value={digit} onChange={(e) => {
-                  const val = e.target.value.slice(-1);
-                  const newOtp = [...formData.otp];
-                  newOtp[i] = val;
-                  setFormData({ ...formData, otp: newOtp });
-                  if (val && i < 5) {
-                    const next = document.getElementById(`otp-${i + 1}`);
-                    next?.focus();
-                  }
-                }} id={`otp-${i}`} variant="outlined" sx={{ width: 60, '& .MuiOutlinedInput-root': { borderRadius: '8px', textAlign: 'center' } }} inputProps={{ style: { textAlign: 'center' } }} />
-              ))}
+        {formData.role !== 'vendor' && (
+          <Grid size={{ xs: 12, md: 6 }}>
+            <Stack spacing={3}>
+              <Autocomplete options={['Everyone', 'Matches Only', 'Private']} renderInput={(params) => <TextField {...params} label="Who can see your profile?" sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} />} value={formData.visibility} onChange={(_, v) => setFormData({ ...formData, visibility: v || 'Everyone' })} />
+              <TextField
+                fullWidth
+                select
+                label="Religion"
+                value={formData.religion}
+                onChange={(e) => setFormData({ ...formData, religion: e.target.value })}
+                helperText="Saved to your user profile for better cultural matching."
+                sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }}
+              >
+                {SRI_LANKAN_RELIGIONS.map((option) => (
+                  <MenuItem key={option} value={option}>{option}</MenuItem>
+                ))}
+              </TextField>
+              <TextField
+                fullWidth
+                select
+                label="Ethnicity"
+                value={formData.ethnicity}
+                onChange={(e) => setFormData({ ...formData, ethnicity: e.target.value })}
+                helperText="Saved to your user profile and can be changed later."
+                sx={{ '& .MuiOutlinedInput-root': { borderRadius: '12px' } }}
+              >
+                {SRI_LANKAN_ETHNICITIES.map((option) => (
+                  <MenuItem key={option} value={option}>{option}</MenuItem>
+                ))}
+              </TextField>
             </Stack>
-            <Typography variant="caption" sx={{ display: 'block', mt: 2, color: COLORS.textSecondary }}>
-              Enter OTP only if you requested one now. Your account will still be created without OTP verification.
+          </Grid>
+        )}
+        <Grid size={{ xs: 12, md: formData.role === 'vendor' ? 12 : 6 }}>
+          <Paper
+            sx={{
+              p: 3,
+              borderRadius: '24px',
+              bgcolor: COLORS.cream,
+              mb: 3,
+              maxHeight: 320,
+              minHeight: 220,
+              overflow: 'auto',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'flex-start',
+              position: 'relative',
+            }}
+            ref={guidelinesPaperRef}
+            onScroll={handleGuidelinesScroll}
+          >
+            <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 800 }}>
+              {formData.role === 'vendor' ? 'Vendor Terms, Guidelines & Verification' : 'Privacy, Safety & What Happens Next'}
             </Typography>
-            <Box sx={{ mt: 4 }}>
-              <FormControlLabel control={<Checkbox checked={formData.terms} onChange={(e) => setFormData({ ...formData, terms: e.target.checked })} />} label={<Typography variant="caption">I agree to the Terms of Service and Privacy Policy</Typography>} />
-            </Box>
+            <Typography variant="body2" sx={{ color: COLORS.textSecondary, mb: 2 }}>
+              Please read these guidelines. Scroll to the bottom to enable the approval checkbox.
+            </Typography>
+
+            <Stack spacing={1.25} sx={{ pb: 2 }}>
+              {formData.role !== 'vendor' && (
+                <>
+                  <Typography variant="body2" sx={{ fontWeight: 800, color: COLORS.primary }}>
+                    1) Profile visibility (who can see you)
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
+                    You can choose <b>Everyone</b>, <b>Matches Only</b>, or <b>Private</b>. You can change this later in <b>Profile → Edit Profile</b>.
+                  </Typography>
+                </>
+              )}
+
+              <Typography variant="body2" sx={{ fontWeight: 800, color: COLORS.primary, mt: 1 }}>
+                {formData.role === 'vendor' ? '1) Business Verification & Listing' : '2) Horoscope & Birth Data / Wedding Details'}
+              </Typography>
+              <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
+                {formData.role === 'vendor' ? (
+                  <>Your business details and uploaded documents are strictly confidential and used solely for vendor verification. Once approved, your listing will be visible to couples in the marketplace.</>
+                ) : formData.role === 'couple' ? (
+                  <>Partner name, wedding date, and budget help personalize planning features. You can update these later from your profile/dashboard.</>
+                ) : (
+                  <>Your birth date/time/place is used to calculate your horoscope and improve match quality. If you want to update these later, go to <b>Profile → Edit Profile</b>.</>
+                )}
+              </Typography>
+
+              <Typography variant="body2" sx={{ fontWeight: 800, color: COLORS.primary, mt: 1 }}>
+                {formData.role === 'vendor' ? '2) Branding & Logo' : '3) Profile Picture & Media'}
+              </Typography>
+              <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
+                {formData.role === 'vendor' ? (
+                  <>Your business profile picture or brand logo helps couples recognize your services. You can manage and update your portfolio gallery anytime from your Vendor Portal.</>
+                ) : (
+                  <>Your profile picture helps others recognize you. You can change or remove it anytime in <b>Profile → Edit Profile</b>.</>
+                )}
+              </Typography>
+
+              {formData.role !== 'vendor' && (
+                <>
+                  <Typography variant="body2" sx={{ fontWeight: 800, color: COLORS.primary, mt: 1 }}>
+                    4) Religion / ethnicity (optional)
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
+                    These are used only to improve recommendations and filtering. You can edit them later in <b>Profile → Edit Profile</b>.
+                  </Typography>
+                </>
+              )}
+
+              <Typography variant="body2" sx={{ fontWeight: 800, color: COLORS.primary, mt: 1 }}>
+                {formData.role === 'vendor' ? '3) Admin Approval Required' : '5) After you complete registration'}
+              </Typography>
+              <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
+                {formData.role === 'vendor' ? (
+                  <><b>An administrator must review and approve your registration first.</b> Once verified and approved by our administrators, your vendor account is activated and you will gain access to log in to your Vendor Portal to create packages, showcase work, and manage quote requests.</>
+                ) : (
+                  <>Your account is created, then you can access your dashboard. You can review and change your privacy settings and profile details anytime from <b>Profile → Edit Profile</b>.</>
+                )}
+              </Typography>
+
+              <Typography variant="body2" sx={{ fontWeight: 800, color: COLORS.primary, mt: 1 }}>
+                {formData.role === 'vendor' ? '4) Public Visibility' : '6) What other people can view'}
+              </Typography>
+              <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
+                {formData.role === 'vendor' ? (
+                  <>Couples and website visitors can view your business name, category, portfolio link, descriptions, and verified badges. Your uploaded tax and identity documents are never shown publicly.</>
+                ) : formData.role === 'couple' ? (
+                  <>Other users may see your <b>profile details</b> and <b>profile picture</b> (based on your visibility). Wedding details are used for planning features and can be updated later.</>
+                ) : (
+                  <>Other users may see your <b>basic profile details</b> and <b>profile picture</b> (based on your visibility). Horoscope insights are generated using your birth details.</>
+                )}
+              </Typography>
+
+              <Typography variant="body2" sx={{ fontWeight: 800, color: COLORS.primary, mt: 1 }}>
+                {formData.role === 'vendor' ? '5) Professional Standards' : '7) Safety reminders'}
+              </Typography>
+              <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
+                {formData.role === 'vendor' ? (
+                  <>All registered vendors are expected to provide high-quality services and maintain professional conduct when communicating with prospective couples. Never share account passwords or verified details.</>
+                ) : (
+                  <>Do not share passwords, OTPs, or sensitive financial information. Use in-app chat and report suspicious activity.</>
+                )}
+              </Typography>
+            </Stack>
+
+            {showTermsCheckbox && (
+              <Box sx={{ mt: 2, alignSelf: 'flex-start', position: 'sticky', bottom: 0, bgcolor: 'inherit', zIndex: 2, pt: 1 }}>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={formData.terms}
+                      onChange={(e) => setFormData({ ...formData, terms: e.target.checked })}
+                    />
+                  }
+                  label={<Typography variant="caption">I have read and understand the Privacy & Usage Guidelines</Typography>}
+                />
+              </Box>
+            )}
           </Paper>
         </Grid>
       </Grid>
@@ -1531,12 +1803,21 @@ const RegisterPage = () => {
                 sx={{ textAlign: 'center', py: 8 }}
               >
                 <CheckCircle sx={{ fontSize: 80, color: '#388E3C', mb: 3 }} />
-                <Typography variant="h4" sx={{ fontFamily: 'Playfair Display', fontWeight: 700, mb: 2 }}>Registration Complete!</Typography>
-                <Typography variant="body1" sx={{ color: COLORS.textSecondary }}>Welcome to the family. Redirecting you now...</Typography>
+                <Typography variant="h4" sx={{ fontFamily: 'Playfair Display', fontWeight: 700, mb: 2 }}>
+                  {formData.role === 'vendor' ? 'Verification Pending!' : 'Registration Complete!'}
+                </Typography>
+                <Typography variant="body1" sx={{ color: COLORS.textSecondary }}>
+                  {formData.role === 'vendor' 
+                    ? 'Your business account is pending administrator approval. Once approved, your account gets full access. Redirecting you now...'
+                    : 'Welcome to the family. Redirecting you now...'
+                  }
+                </Typography>
               </MotionBox>
             ) : (
               <Box key={activeStep} sx={{ minHeight: 450 }}>
-                {renderStepContent(activeStep)}
+                <StepErrorBoundary>
+                  {renderStepContent(activeStep)}
+                </StepErrorBoundary>
                 
                 {error && (
                   <Alert severity="error" sx={{ mt: 4, borderRadius: '12px' }}>
@@ -1609,7 +1890,11 @@ const RegisterPage = () => {
                   <Button
                     variant="contained"
                     onClick={handleNext}
-                    disabled={isLoading || (activeStep === 0 && !formData.role)}
+                    disabled={
+                      isLoading ||
+                      (activeStep === 0 && !formData.role) ||
+                      (activeStep === steps.length - 1 && !formData.terms)
+                    }
                     endIcon={isLoading ? <CircularProgress size={20} color="inherit" /> : <ArrowForward />}
                     sx={{ 
                       bgcolor: COLORS.primary, 

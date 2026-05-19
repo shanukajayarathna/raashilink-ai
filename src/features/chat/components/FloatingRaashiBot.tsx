@@ -32,7 +32,7 @@ const SIZES = [
 
 export default function FloatingRaashiBot() {
   const [isOpen, setIsOpen] = useState(false);
-  const [sizeIndex, setSizeIndex] = useState(0);
+  const [sizeIndex, setSizeIndex] = useState(1);
   const containerRef = useRef<HTMLDivElement>(null);
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
@@ -42,9 +42,20 @@ export default function FloatingRaashiBot() {
   const userId = (currentUser?._id || currentUser?.id || 'guest') as string;
   const firstName = (currentUser?.firstName || currentUser?.personalInfo?.firstName || '').trim();
 
-  const welcomeText = firstName
-    ? `Ayubowan ${firstName}! 🌺 I'm RaashiBot, your Sri Lankan wedding assistant. How can I help you explore RaashiLink.AI today?`
-    : "Ayubowan! 🌺 I'm RaashiBot, your Sri Lankan wedding assistant. How can I help you explore RaashiLink.AI today?";
+
+  // Starter prompts for horoscope/life guidance
+  const STARTER_PROMPTS = [
+    'What does my horoscope say about my life direction this year?',
+    'Based on my moon sign and nakshatra, what should I focus on this month?',
+    'What are my emotional strengths and blind spots according to my chart?',
+    'When is a good time window for important decisions in the next 30 days?',
+    'What career themes are highlighted for me right now based on transits?',
+    'How can I improve my relationships and communication patterns?',
+    'Suggest practical remedies or habits based on my horoscope.',
+  ];
+
+  // Enhanced welcome text for both wedding and horoscope/life guidance
+  const welcomeText = "Here are some things you can try:";
 
   // Detect logout → close panel and clear this user's chat from sessionStorage
   const prevUserIdRef = useRef<string | null>(null);
@@ -112,14 +123,9 @@ export default function FloatingRaashiBot() {
               onScaleDown={sizeIndex > 0 ? () => setSizeIndex((i) => i - 1) : undefined}
               firstName={firstName}
               sessionKey={userId}
-              initialMessages={[
-                {
-                  id: 'welcome',
-                  role: 'bot',
-                  content: welcomeText,
-                  timestamp: new Date().toISOString(),
-                },
-              ]}
+              initialMessages={[]}
+              starterPrompts={STARTER_PROMPTS}
+              welcomeText={welcomeText}
             />
           </motion.div>
         )}

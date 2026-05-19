@@ -45,7 +45,7 @@ import {
   YAxis, 
   Tooltip 
 } from 'recharts';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 
 import MarketingHeader from '../components/MarketingHeader';
 import MarketingFooter from '../components/MarketingFooter';
@@ -430,8 +430,6 @@ const AboutUsSection = () => (
             Our team of engineers and astrologers came together to build a platform that doesn't just "match" profiles—it connects souls through a deep understanding of Vedic compatibility and shared life values.
           </Typography>
           <Button
-            component={Link}
-            to="/about-us"
             variant="contained"
             sx={{
               bgcolor: COLORS.primary,
@@ -441,6 +439,9 @@ const AboutUsSection = () => (
               borderRadius: '30px',
               fontWeight: 700,
               '&:hover': { bgcolor: '#6B1422' }
+            }}
+            onClick={() => {
+              window.location.href = '/about-us#mission';
             }}
           >
             Our Mission

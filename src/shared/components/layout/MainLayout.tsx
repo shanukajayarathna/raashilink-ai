@@ -461,7 +461,7 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
   ];
   const horoscopeSeekerNavItems = [
     { name: 'Dashboard', path: '/horoscope', icon: Star },
-    { name: 'Life AI', path: '/life-guidance', icon: MessageSquare },
+    // { name: 'Life AI', path: '/life-guidance', icon: MessageSquare },
   ];
   const navItems = isHoroscopeSeeker
     ? horoscopeSeekerNavItems
@@ -662,7 +662,7 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
       </main>
 
       {/* Floating RaashiBot */}
-      {!isHoroscopeSeeker && <FloatingRaashiBot />}
+      <FloatingRaashiBot />
 
       {/* Notification Panel */}
       <NotificationPanel

@@ -1,4 +1,5 @@
 import React from 'react';
+import { motion } from 'motion/react';
 import {
   Box,
   Container,
@@ -59,6 +60,7 @@ const PageHero = ({ title }: { title: string }) => (
   </Box>
 );
 
+const MotionBox = motion(Box);
 export default function FeaturesPage() {
   const featureList = [
     {
@@ -91,12 +93,12 @@ export default function FeaturesPage() {
       desc: 'Explore vendors by category, location, pricing, and availability, then request and manage quotes.',
       path: '/vendors',
     },
-    {
-      icon: <Psychology />,
-      title: 'AI Life Guidance',
-      desc: 'Chat-based assistant for relationship and planning guidance with language-aware, streaming responses.',
-      path: '/life-guidance',
-    },
+    // {
+    //   icon: <Psychology />,
+    //   title: 'AI Life Guidance',
+    //   desc: 'Chat-based assistant for relationship and planning guidance with language-aware, streaming responses.',
+    //   path: '/life-guidance',
+    // },
     {
       icon: <Notifications />,
       title: 'Realtime Notifications',
@@ -151,7 +153,12 @@ export default function FeaturesPage() {
       <MarketingHeader />
       <PageHero title="Platform Features" />
 
-      <Container sx={{ py: { xs: 6, md: 8 } }}>
+      <MotionBox
+        initial={{ opacity: 0, y: 30 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.7 }}
+      >
+        <Container sx={{ py: { xs: 6, md: 8 } }}>
         <Stack spacing={2} sx={{ textAlign: 'center', mb: { xs: 4, md: 5 } }}>
           <Typography variant="overline" sx={{ color: COLORS.secondary, letterSpacing: 2, fontWeight: 800 }}>
             PRODUCT CAPABILITIES
@@ -310,38 +317,44 @@ export default function FeaturesPage() {
             </Card>
           </Grid>
         </Grid>
-      </Container>
-
-      <Box sx={{ py: { xs: 6, md: 8 }, bgcolor: COLORS.primary, color: 'white' }}>
-        <Container maxWidth="md" sx={{ textAlign: 'center' }}>
-          <Typography variant="h3" sx={{ fontFamily: 'Playfair Display', mb: 2.5 }}>
-            Ready to explore the full journey?
-          </Typography>
-          <Typography variant="body1" sx={{ mb: 3, opacity: 0.86 }}>
-            Create your account and move from compatibility checks to real conversations and wedding planning,
-            all inside one platform.
-          </Typography>
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} justifyContent="center">
-            <Button
-              component={Link}
-              to="/register"
-              variant="contained"
-              sx={{ bgcolor: COLORS.secondary, color: COLORS.primary, fontWeight: 800, px: 5, py: 1.4, borderRadius: '30px' }}
-            >
-              Create Account
-            </Button>
-            <Button
-              component={Link}
-              to="/how-it-works"
-              variant="outlined"
-              sx={{ borderColor: 'rgba(255,255,255,0.75)', color: 'white', fontWeight: 700, px: 4.5, py: 1.4, borderRadius: '30px' }}
-            >
-              See How It Works
-            </Button>
-          </Stack>
         </Container>
-      </Box>
+      </MotionBox>
 
+      <MotionBox
+        initial={{ opacity: 0, y: 30 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.7, delay: 0.2 }}
+      >
+        <Box sx={{ py: { xs: 6, md: 8 }, bgcolor: COLORS.primary, color: 'white' }}>
+          <Container maxWidth="md" sx={{ textAlign: 'center' }}>
+            <Typography variant="h3" sx={{ fontFamily: 'Playfair Display', mb: 2.5 }}>
+              Ready to explore the full journey?
+            </Typography>
+            <Typography variant="body1" sx={{ mb: 3, opacity: 0.86 }}>
+              Create your account and move from compatibility checks to real conversations and wedding planning,
+              all inside one platform.
+            </Typography>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} justifyContent="center">
+              <Button
+                component={Link}
+                to="/register"
+                variant="contained"
+                sx={{ bgcolor: COLORS.secondary, color: COLORS.primary, fontWeight: 800, px: 5, py: 1.4, borderRadius: '30px' }}
+              >
+                Create Account
+              </Button>
+              <Button
+                component={Link}
+                to="/how-it-works"
+                variant="outlined"
+                sx={{ borderColor: 'rgba(255,255,255,0.75)', color: 'white', fontWeight: 700, px: 4.5, py: 1.4, borderRadius: '30px' }}
+              >
+                See How It Works
+              </Button>
+            </Stack>
+          </Container>
+        </Box>
+      </MotionBox>
       <MarketingFooter />
     </Box>
   );

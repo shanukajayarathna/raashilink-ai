@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Autocomplete,
+  Avatar,
   Box,
   Button,
   Chip,
@@ -33,6 +34,10 @@ import {
   Save,
   Trash2,
 } from 'lucide-react';
+import { useDispatch, useSelector } from 'react-redux';
+import { RootState } from '@/app/store/store';
+import { updateUser } from '@/features/auth/store/authSlice';
+import { showToast } from '@/app/store/uiSlice';
 import vendorService from '../../services/vendorService';
 import userService from '@/features/profile/services/userService';
 
@@ -127,6 +132,8 @@ function buildPackages(vendorData: any): PricingPackage[] {
 }
 
 export default function ProfileManagement({ vendorData, onSaved }: ProfileManagementProps) {
+  const dispatch = useDispatch();
+  const { user } = useSelector((state: RootState) => state.auth);
   const [isEditing, setIsEditing] = useState(false);
   const [businessInfo, setBusinessInfo] = useState<BusinessInfo>(() => buildBusinessInfo(vendorData));
   const [packages, setPackages] = useState<PricingPackage[]>(() => buildPackages(vendorData));
@@ -347,22 +354,36 @@ export default function ProfileManagement({ vendorData, onSaved }: ProfileManage
         </Box>
 
         <Grid container spacing={3} sx={{ mb: 3 }}>
-          <Grid size={{ xs: 12, md: 6, lg: 4 }}>
-            <Paper elevation={0} sx={{ p: 3, borderRadius: '18px', border: '1px solid rgba(139,26,46,0.08)' }}>
+          <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
+            <Paper elevation={0} sx={{ p: 3.2, borderRadius: '18px', border: '1px solid rgba(139,26,46,0.08)', display: 'flex', alignItems: 'center', gap: 2, minHeight: 90 }}>
+              <Avatar 
+                src={user?.profilePic || user?.personalInfo?.profilePic || undefined}
+                sx={{ width: 42, height: 42, bgcolor: COLORS.primary, fontSize: '1.1rem', fontWeight: 600 }}
+              >
+                {!user?.profilePic && !user?.personalInfo?.profilePic && (businessInfo.name?.charAt(0) || 'V')}
+              </Avatar>
+              <Box>
+                <Typography variant="caption" color="textSecondary" sx={{ textTransform: 'uppercase', fontWeight: 700 }}>Profile Photo</Typography>
+                <Typography variant="body2" sx={{ fontWeight: 600, color: 'text.secondary', mt: 0.2 }}>Active Image</Typography>
+              </Box>
+            </Paper>
+          </Grid>
+          <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
+            <Paper elevation={0} sx={{ p: 3, borderRadius: '18px', border: '1px solid rgba(139,26,46,0.08)', minHeight: 90 }}>
               <Typography variant="caption" color="textSecondary" sx={{ textTransform: 'uppercase', fontWeight: 700 }}>Business Name</Typography>
-              <Typography variant="h6" sx={{ fontWeight: 700, mt: 0.5 }}>{businessInfo.name || 'Not set'}</Typography>
+              <Typography variant="h6" sx={{ fontWeight: 700, mt: 0.5, fontSize: '1.05rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{businessInfo.name || 'Not set'}</Typography>
             </Paper>
           </Grid>
-          <Grid size={{ xs: 12, md: 6, lg: 4 }}>
-            <Paper elevation={0} sx={{ p: 3, borderRadius: '18px', border: '1px solid rgba(139,26,46,0.08)' }}>
+          <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
+            <Paper elevation={0} sx={{ p: 3, borderRadius: '18px', border: '1px solid rgba(139,26,46,0.08)', minHeight: 90 }}>
               <Typography variant="caption" color="textSecondary" sx={{ textTransform: 'uppercase', fontWeight: 700 }}>Category</Typography>
-              <Typography variant="h6" sx={{ fontWeight: 700, mt: 0.5 }}>{businessInfo.category || 'Not set'}</Typography>
+              <Typography variant="h6" sx={{ fontWeight: 700, mt: 0.5, fontSize: '1.05rem' }}>{businessInfo.category || 'Not set'}</Typography>
             </Paper>
           </Grid>
-          <Grid size={{ xs: 12, md: 6, lg: 4 }}>
-            <Paper elevation={0} sx={{ p: 3, borderRadius: '18px', border: '1px solid rgba(139,26,46,0.08)' }}>
+          <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
+            <Paper elevation={0} sx={{ p: 3, borderRadius: '18px', border: '1px solid rgba(139,26,46,0.08)', minHeight: 90 }}>
               <Typography variant="caption" color="textSecondary" sx={{ textTransform: 'uppercase', fontWeight: 700 }}>Profile Strength</Typography>
-              <Typography variant="h6" sx={{ fontWeight: 700, mt: 0.5, color: strength >= 70 ? '#2e7d32' : COLORS.primary }}>{strength}%</Typography>
+              <Typography variant="h6" sx={{ fontWeight: 700, mt: 0.5, color: strength >= 70 ? '#2e7d32' : COLORS.primary, fontSize: '1.05rem' }}>{strength}%</Typography>
             </Paper>
           </Grid>
         </Grid>
@@ -444,6 +465,83 @@ export default function ProfileManagement({ vendorData, onSaved }: ProfileManage
 
       <Grid container spacing={4}>
         <Grid size={{ xs: 12, lg: 7 }}>
+          <Paper elevation={0} sx={{ p: 4, borderRadius: '20px', border: '1px solid rgba(139,26,46,0.08)', mb: 3 }}>
+            <Typography variant="h6" sx={{ fontWeight: 700, mb: 3 }}>
+              Profile Photo / Logo
+            </Typography>
+            <Stack direction="row" alignItems="center" spacing={3}>
+              <Avatar
+                src={user?.profilePic || user?.personalInfo?.profilePic || undefined}
+                sx={{ width: 72, height: 72, bgcolor: COLORS.primary, fontSize: '1.8rem', fontWeight: 600 }}
+              >
+                {!user?.profilePic && !user?.personalInfo?.profilePic && (businessInfo.name?.charAt(0) || 'V')}
+              </Avatar>
+              <Box>
+                <Typography variant="body2" color="textSecondary" sx={{ mb: 1.5 }}>
+                  Upload a high-quality square logo or profile picture representing your business. Max size 6MB.
+                </Typography>
+                <Stack direction="row" spacing={1.5}>
+                  <Button
+                    variant="outlined"
+                    component="label"
+                    size="small"
+                    sx={{ color: COLORS.primary, borderColor: COLORS.primary, textTransform: 'none', borderRadius: '8px', fontWeight: 600 }}
+                  >
+                    Choose Photo
+                    <input
+                      type="file"
+                      hidden
+                      accept="image/*"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          if (file.size > 6 * 1024 * 1024) {
+                            dispatch(showToast({ type: 'error', message: 'Image must be under 6MB' }));
+                            return;
+                          }
+                          const formData = new FormData();
+                          formData.append('photo', file);
+                          try {
+                            setSaving(true);
+                            const res = await userService.uploadPhoto(formData);
+                            dispatch(updateUser({ profilePic: res.profilePic }));
+                            dispatch(showToast({ type: 'success', message: 'Profile picture uploaded successfully' }));
+                          } catch (err: any) {
+                            dispatch(showToast({ type: 'error', message: err?.response?.data?.message || 'Failed to upload photo' }));
+                          } finally {
+                            setSaving(false);
+                          }
+                        }
+                      }}
+                    />
+                  </Button>
+                  {(user?.profilePic || user?.personalInfo?.profilePic) && (
+                    <Button
+                      variant="text"
+                      color="error"
+                      size="small"
+                      sx={{ textTransform: 'none', fontWeight: 600 }}
+                      onClick={async () => {
+                        try {
+                          setSaving(true);
+                          await userService.removePhoto();
+                          dispatch(updateUser({ profilePic: null }));
+                          dispatch(showToast({ type: 'success', message: 'Profile picture removed successfully' }));
+                        } catch (err: any) {
+                          dispatch(showToast({ type: 'error', message: err?.response?.data?.message || 'Failed to remove photo' }));
+                        } finally {
+                          setSaving(false);
+                        }
+                      }}
+                    >
+                      Remove
+                    </Button>
+                  )}
+                </Stack>
+              </Box>
+            </Stack>
+          </Paper>
+
           <Paper elevation={0} sx={{ p: 4, borderRadius: '20px', border: '1px solid rgba(139,26,46,0.08)' }}>
             <Typography variant="h6" sx={{ fontWeight: 700, mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
               <Briefcase size={20} color={COLORS.primary} /> Business Details

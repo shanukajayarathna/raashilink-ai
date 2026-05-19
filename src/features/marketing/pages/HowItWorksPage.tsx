@@ -1,4 +1,5 @@
 import React from 'react';
+import { motion } from 'motion/react';
 import { Box, Container, Typography, Grid, Stack, Button, Card, CardContent } from '@mui/material';
 import { Link } from 'react-router-dom';
 import { AccountCircle, Star, Favorite, CalendarMonth, Checklist, Store, TravelExplore } from '@mui/icons-material';
@@ -16,6 +17,7 @@ const PageHero = ({ title }: { title: string }) => (
   </Box>
 );
 
+const MotionBox = motion(Box);
 export default function HowItWorksPage() {
   const steps = [
     {
@@ -55,7 +57,12 @@ export default function HowItWorksPage() {
       <MarketingHeader />
       <PageHero title="How It Works" />
 
-      <Container sx={{ py: { xs: 6, md: 8 } }}>
+      <MotionBox
+        initial={{ opacity: 0, y: 30 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.7 }}
+      >
+        <Container sx={{ py: { xs: 6, md: 8 } }}>
         {/* Sri Lankan Wedding Visual Intro */}
         <Grid container spacing={4} alignItems="center" sx={{ mb: { xs: 4, md: 6 } }}>
           <Grid size={{ xs: 12, md: 6 }}>
@@ -143,7 +150,8 @@ export default function HowItWorksPage() {
             View Platform Features
           </Button>
         </Stack>
-      </Container>
+        </Container>
+      </MotionBox>
 
       <MarketingFooter />
     </Box>

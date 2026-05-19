@@ -2,91 +2,56 @@ const SINHALA_UNICODE_RE = /[\u0D80-\u0DFF]/;
 const TAMIL_UNICODE_RE = /[\u0B80-\u0BFF]/;
 
 const SINGLISH_HINTS = [
-  'kohomada',
-  'kohomd',
-  'mage',
-  'oya',
-  'oyage',
-  'oyata',
-  'obata',
-  'oba',
-  'ane',
-  'hari',
-  'mata',
-  'mama',
-  'kawada',
-  'kawda',
-  'mokak',
-  'mona',
-  'monawada',
-  'ehema',
-  'neda',
-  'puluwan',
-  'puluwanda',
-  'puluwannam',
-  'wenna',
-  'thiyenawa',
-  'thiyen',
-  'nathi',
-  'wage',
-  'ayada',
-  'galapenne',
-  'kiyanna',
-  'kiyanne',
+  'kohomada', 'kohomd', 'mage', 'oya', 'oyage', 'oyata', 'obata', 'oba', 'ane', 'hari',
+  'mata', 'mama', 'kawada', 'kawda', 'mokak', 'mona', 'monawada', 'ehema', 'neda',
+  'puluwan', 'puluwanda', 'puluwannam', 'wenna', 'thiyenawa', 'thiyen', 'nathi', 'wage',
+  'ayada', 'galapenne', 'kiyanna', 'kiyanne', 'subha', 'ayubowan', 'lasana', 'lassana', 
+  'karanna', 'nangi', 'malli', 'akki', 'aiya', 'amma', 'thaththa', 'lanka', 'srilanka'
 ];
 
+const TANGLISH_HINTS = [
+  'vanakkam', 'epadi', 'epdi', 'enna', 'yenna', 'nalla', 'irukingala', 'irukkeenga',
+  'romba', 'rompa', 'nandri', 'nanri', 'unoda', 'ungha', 'unka', 'enakku', 'enaku',
+  'teriyum', 'theriyum', 'theriyuma', 'teriyuma', 'illai', 'porutham', 'athirshtham',
+  'kalai', 'vanakam', 'macha', 'machan', 'thambi', 'anna', 'akka'
+];
+
+/**
+ * Robustly detects whether a message is in English, Sinhala (including Singlish), or Tamil (including Tanglish).
+ * Returns strict ISO codes: 'si' for Sinhala, 'ta' for Tamil, and 'en' for English.
+ */
 export function detectChatLanguage({ message, requestedLanguage } = {}) {
   const text = String(message || '').trim();
-  // Strong signals override any requested language (some UIs always send "en").
+  const lower = text.toLowerCase();
+
+  // 1. Direct Unicode Script Match (Highest Priority & 100% Reliable)
   if (SINHALA_UNICODE_RE.test(text)) return 'si';
   if (TAMIL_UNICODE_RE.test(text)) return 'ta';
 
-  const explicit = String(requestedLanguage || '').trim().toLowerCase();
-  // If UI explicitly sets a non-English language, respect it.
-  if (explicit && explicit !== 'en') return explicit;
+  // 2. Transliterated Script Match (Singlish & Tanglish)
+  const isLatinOnly = /^[\x00-\x7F\s\p{P}]+$/u.test(text);
+  if (isLatinOnly && text) {
+    // Check Singlish signals
+    const singlishHits = SINGLISH_HINTS.filter(hint => lower.includes(hint)).length;
+    const isCommonSinglish = /^(kohomada|kohomd|ayubowan|subha prathana|subha chithana)\??$/i.test(lower.trim());
+    
+    // Check Tanglish signals
+    const tanglishHits = TANGLISH_HINTS.filter(hint => lower.includes(hint)).length;
+    const isCommonTanglish = /^(vanakkam|vanakam|nandri|nanri)\??$/i.test(lower.trim());
 
-  if (!text) return 'en';
+    if (singlishHits >= 1 || isCommonSinglish) {
+      return 'si';
+    }
 
-  const lower = text.toLowerCase();
-  const isLatinOnly = /^[\x00-\x7F]+$/.test(text);
-  if (!isLatinOnly) return 'en';
-
-  // Singlish (Sinhala typed in English letters): allow overriding explicit "en" only when signal is strong.
-  const strongSinglishAnchors = [
-    'kohomada',
-    'kohomd',
-    'oya',
-    'oyage',
-    'oyata',
-    'oba',
-    'obata',
-    'mama',
-    'mata',
-    'mokak',
-    'mona',
-    'monawada',
-    'kawda',
-    'ane',
-    'hari',
-    'wage',
-    'galapenne',
-    'kiyanna',
-    'kiyanne',
-  ];
-  const anchorHit = strongSinglishAnchors.some((hint) => lower.includes(hint));
-  const hits = SINGLISH_HINTS.reduce((count, hint) => (lower.includes(hint) ? count + 1 : count), 0);
-
-  // Common singlish greetings should always be treated as Sinhala.
-  const normalized = lower.replace(/[^\p{L}\p{N}\s]/gu, '').trim();
-  if (normalized === 'kohomada' || normalized === 'kohomd' || normalized === 'kohomada?' || normalized === 'kohomd?') {
-    return 'si';
+    if (tanglishHits >= 1 || isCommonTanglish) {
+      return 'ta';
+    }
   }
 
-  // If user typed Singlish, answer in Sinhala. Keep this conservative enough to avoid normal English sentences.
-  if (anchorHit || hits >= 2) return 'si';
-
-  // If UI explicitly requested English, keep English unless we detected Sinhala/Tamil above.
-  if (explicit === 'en') return 'en';
-
+  // 3. Fallback to requestedLanguage if provided and strictly matching our supported list
+  const explicit = String(requestedLanguage || '').trim().toLowerCase();
+  if (explicit === 'si' || explicit === 'sinhala') return 'si';
+  if (explicit === 'ta' || explicit === 'tamil') return 'ta';
+  
   return 'en';
 }

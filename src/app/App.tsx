@@ -17,7 +17,7 @@ const HoroscopeView = lazy(() => import('@/features/horoscope/pages/HoroscopeVie
 const MatchRecommendations = lazy(() => import('@/features/matchmaking/pages/MatchRecommendations'));
 const WeddingDashboard = lazy(() => import('@/features/wedding/pages/WeddingDashboard'));
 const AIChatbot = lazy(() => import('@/features/chat/pages/AIChatbot'));
-const HoroscopeLifeGuidancePage = lazy(() => import('@/features/chat/pages/HoroscopeLifeGuidancePage'));
+// Removed: HoroscopeLifeGuidancePage (feature deleted)
 const MessagesPage = lazy(() => import('@/features/chat/pages/MessagesPage'));
 const HoneymoonDestinations = lazy(() => import('@/features/honeymoon/pages/HoneymoonDestinations'));
 const DestinationDetail = lazy(() => import('@/features/honeymoon/pages/DestinationDetailPage'));
@@ -129,7 +129,7 @@ function AppShell() {
             <Route element={<MainLayout />}>
               <Route path="/dashboard" element={<ProtectedRoute><DashboardRouter /></ProtectedRoute>} />
               <Route path="/horoscope" element={<ProtectedRoute><HoroscopeView /></ProtectedRoute>} />
-              <Route path="/life-guidance" element={<ProtectedRoute><HoroscopeLifeGuidancePage /></ProtectedRoute>} />
+              {/* Life Guidance feature removed */}
               <Route path="/matches" element={<NonHoroscopeSeekerRoute><MatchRecommendations /></NonHoroscopeSeekerRoute>} />
               <Route path="/wedding" element={<NonHoroscopeSeekerRoute><WeddingDashboard /></NonHoroscopeSeekerRoute>} />
               <Route path="/chat" element={<NonHoroscopeSeekerRoute><AIChatbot /></NonHoroscopeSeekerRoute>} />

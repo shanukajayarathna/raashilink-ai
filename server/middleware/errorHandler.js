@@ -14,9 +14,29 @@ export default function errorHandler(err, req, res, next) {
     message = 'Image upload must be under 6 MB.';
   } else if (err?.name === 'ValidationError') {
     statusCode = 400;
-    const validationMessages = Object.values(err.errors || {}).map((entry) => entry.message);
+    const validationMessages = Object.entries(err.errors || {}).map(([key, entry]) => {
+      const fieldName = key.split('.').pop();
+      let cleanMessage = entry.message;
+      const humanField = fieldName
+        .replace(/([A-Z])/g, ' $1')
+        .replace(/^./, (str) => str.toUpperCase());
+
+      if (entry.kind === 'maxlength') {
+        const maxLen = entry.properties?.maxlength || 100;
+        cleanMessage = `${humanField} is too long. The maximum allowed length is ${maxLen} characters.`;
+      } else if (entry.kind === 'minlength') {
+        const minLen = entry.properties?.minlength || 3;
+        cleanMessage = `${humanField} is too short. It must be at least ${minLen} characters.`;
+      } else if (entry.kind === 'required') {
+        cleanMessage = `${humanField} is required.`;
+      }
+      return `${fieldName}: ${cleanMessage}`;
+    });
     details = validationMessages;
-    message = validationMessages[0] || 'Submitted data is invalid.';
+    const firstDetail = validationMessages[0] || '';
+    message = firstDetail.includes(':') 
+      ? firstDetail.split(':').slice(1).join(':').trim() 
+      : 'Submitted data is invalid.';
   } else if (err?.code === 11000) {
     statusCode = 409;
     const duplicateFields = Object.keys(err.keyPattern || {});

@@ -429,8 +429,19 @@ function validateRegistrationInput(input) {
       if (!input.businessName?.trim()) vendorMissing.push('Enter your business name');
       if (!input.businessCategory?.trim()) vendorMissing.push('Select your business category');
     }
-    if (!input.businessRegistrationNumber?.trim()) {
+    const brn = input.businessRegistrationNumber?.trim() || '';
+    if (!brn) {
       vendorMissing.push('Enter your business registration number');
+    } else {
+      if (brn.length < 3) {
+        vendorMissing.push('Business registration number must be at least 3 characters');
+      }
+      if (brn.length > 50) {
+        vendorMissing.push('Business registration number cannot exceed 50 characters');
+      }
+      if (!/^[A-Za-z0-9\s\-\/\(\)\.]+$/.test(brn)) {
+        vendorMissing.push('Business registration number contains invalid characters (only letters, numbers, spaces, dots, dashes, slashes, and parentheses allowed)');
+      }
     }
     const uploadedDocCount = Number(input.documentsCount || 0);
     if (uploadedDocCount < 1) {
