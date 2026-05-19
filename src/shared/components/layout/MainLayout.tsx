@@ -68,7 +68,7 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
   const currentUserId = (user as any)?._id || (user as any)?.id || '';
   const theme = useTheme();
   const isLargeScreen = useMediaQuery(theme.breakpoints.up('lg'));
-  const isCouple = user?.profileType === 'couple';
+  const isCouple = user?.profileType === 'couple' || user?.userType === 'couple';
   const isHoroscopeSeeker = user?.profileType === 'horoscope_seeker' || user?.userType === 'horoscope_seeker';
   const avatarSrc = resolveAvatarSrc(
     user?.profilePic,
@@ -454,7 +454,6 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
   ];
   const coupleNavItems = [
     { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
-    { name: 'Horoscope', path: '/horoscope', icon: Star },
     { name: 'Wedding', path: '/wedding', icon: Calendar },
     { name: 'Vendors', path: '/vendors', icon: Search },
     { name: 'Honeymoon', path: '/honeymoon', icon: MapPin },

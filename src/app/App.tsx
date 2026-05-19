@@ -93,6 +93,19 @@ const AdminProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   return <>{children}</>;
 };
 
+const CoupleProtectedRoute = ({ children }: { children: React.ReactNode }) => {
+  const { token, user } = useSelector((state: RootState) => state.auth);
+  
+  if (!token) return <Navigate to="/login" replace />;
+  
+  const isCouple = user?.profileType === 'couple' || user?.userType === 'couple';
+  if (isCouple) {
+    return <Navigate to="/dashboard" replace />;
+  }
+  
+  return <>{children}</>;
+};
+
 function ScrollToTop() {
   const { pathname } = useLocation();
 
@@ -128,7 +141,7 @@ function AppShell() {
             {/* User Routes with MainLayout */}
             <Route element={<MainLayout />}>
               <Route path="/dashboard" element={<ProtectedRoute><DashboardRouter /></ProtectedRoute>} />
-              <Route path="/horoscope" element={<ProtectedRoute><HoroscopeView /></ProtectedRoute>} />
+              <Route path="/horoscope" element={<CoupleProtectedRoute><HoroscopeView /></CoupleProtectedRoute>} />
               {/* Life Guidance feature removed */}
               <Route path="/matches" element={<NonHoroscopeSeekerRoute><MatchRecommendations /></NonHoroscopeSeekerRoute>} />
               <Route path="/wedding" element={<NonHoroscopeSeekerRoute><WeddingDashboard /></NonHoroscopeSeekerRoute>} />

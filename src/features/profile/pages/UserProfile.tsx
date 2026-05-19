@@ -207,8 +207,8 @@ const LANGUAGE_OPTIONS = [
 
 interface TabPanelProps {
   children?: React.ReactNode;
-  index: number;
-  value: number;
+  index: string | number;
+  value: string | number;
 }
 
 function CustomTabPanel(props: TabPanelProps) {
@@ -289,13 +289,19 @@ export default function UserProfile() {
   const location = useLocation();
   const { user, token } = useSelector((state: RootState) => state.auth);
   const isHoroscopeSeeker = user?.profileType === 'horoscope_seeker' || user?.userType === 'horoscope_seeker';
+  const isCouple = user?.profileType === 'couple' || user?.userType === 'couple';
   const dispatch = useDispatch();
   const searchParams = new URLSearchParams(location.search);
   const initialTab = parseInt(searchParams.get('tab') || '0', 10);
   const initialEdit = searchParams.get('edit') === 'true';
-  const [tabValue, setTabValue] = useState(
-    isNaN(initialTab) ? 0 : Math.min(initialTab, isHoroscopeSeeker ? 0 : 4)
-  );
+  const [tabValue, setTabValue] = useState<string>(() => {
+    if (isHoroscopeSeeker) return 'about';
+    if (initialTab === 1) return isCouple ? 'about' : 'astrology';
+    if (initialTab === 2) return isCouple ? 'about' : 'lifestyle';
+    if (initialTab === 3) return isCouple ? 'about' : 'photos';
+    if (initialTab === 4) return 'privacy';
+    return 'about';
+  });
   const [loading, setLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [savingPrivacyField, setSavingPrivacyField] = useState<string | null>(null);
@@ -353,8 +359,8 @@ export default function UserProfile() {
   }, [galleryPreviewUrl]);
 
   useEffect(() => {
-    if (isHoroscopeSeeker && tabValue !== 0) {
-      setTabValue(0);
+    if (isHoroscopeSeeker && tabValue !== 'about') {
+      setTabValue('about');
     }
   }, [isHoroscopeSeeker, tabValue]);
 
@@ -515,7 +521,7 @@ export default function UserProfile() {
     fetchProfile();
   }, [user?.id, user?._id]);
 
-  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
+  const handleTabChange = (event: React.SyntheticEvent, newValue: string) => {
     setTabValue(newValue);
   };
 
@@ -1168,11 +1174,11 @@ export default function UserProfile() {
               }
             }}
           >
-            <Tab label="About" />
-            {!isHoroscopeSeeker && <Tab label="Astrology" />}
-            {!isHoroscopeSeeker && <Tab label="Lifestyle" />}
-            {!isHoroscopeSeeker && <Tab label="Photos" />}
-            {!isHoroscopeSeeker && <Tab label="Privacy" />}
+            <Tab label="About" value="about" />
+            {!isHoroscopeSeeker && !isCouple && <Tab label="Astrology" value="astrology" />}
+            {!isHoroscopeSeeker && !isCouple && <Tab label="Lifestyle" value="lifestyle" />}
+            {!isHoroscopeSeeker && !isCouple && <Tab label="Photos" value="photos" />}
+            {!isHoroscopeSeeker && <Tab label="Privacy" value="privacy" />}
           </Tabs>
         </Box>
       </MotionPaper>
@@ -1186,9 +1192,9 @@ export default function UserProfile() {
           exit={{ opacity: 0, y: -10 }}
           transition={{ duration: 0.2 }}
         >
-          <CustomTabPanel value={tabValue} index={0}>
+          <CustomTabPanel value={tabValue} index="about">
             <Grid container spacing={4}>
-              <Grid size={{ xs: 12, md: isHoroscopeSeeker ? 12 : 7 }}>
+              <Grid size={{ xs: 12, md: (isHoroscopeSeeker || isCouple) ? 12 : 7 }}>
                 <Stack spacing={4}>
                   <Paper sx={{ p: 4, borderRadius: '24px', boxShadow: '0 2px 16px rgba(0,0,0,0.03)' }}>
                     <Typography variant="h6" sx={{ mb: 3, fontWeight: 800, color: COLORS.primary }}>About Me</Typography>
@@ -1326,7 +1332,7 @@ export default function UserProfile() {
                     )}
                   </Paper>
 
-                  {!isHoroscopeSeeker && (
+                  {!isHoroscopeSeeker && !isCouple && (
                     <Paper sx={{ p: 4, borderRadius: '24px', boxShadow: '0 2px 16px rgba(0,0,0,0.03)' }}>
                       <Typography variant="h6" sx={{ mb: 3, fontWeight: 800, color: COLORS.primary }}>Personal Information</Typography>
                       <Grid container spacing={3}>
@@ -1547,7 +1553,7 @@ export default function UserProfile() {
                 </Stack>
               </Grid>
 
-              {!isHoroscopeSeeker && (
+              {!isHoroscopeSeeker && !isCouple && (
                 <Grid size={{ xs: 12, md: 5 }}>
                   <Paper sx={{ p: 4, borderRadius: '24px', boxShadow: '0 2px 16px rgba(0,0,0,0.03)', height: '100%' }}>
                   <Typography variant="h6" sx={{ mb: 1, fontWeight: 800, color: COLORS.primary }}>Personality Traits</Typography>
@@ -1611,7 +1617,7 @@ export default function UserProfile() {
             </Grid>
           </CustomTabPanel>
 
-          {!isHoroscopeSeeker && <CustomTabPanel value={tabValue} index={1}>
+          {!isHoroscopeSeeker && !isCouple && <CustomTabPanel value={tabValue} index="astrology">
             <Grid container spacing={4}>
               <Grid size={{ xs: 12, md: 6 }}>
                 <Paper sx={{ p: 4, borderRadius: '24px', boxShadow: '0 2px 16px rgba(0,0,0,0.03)' }}>
@@ -1769,7 +1775,7 @@ export default function UserProfile() {
             </Grid>
           </CustomTabPanel>}
 
-          {!isHoroscopeSeeker && <CustomTabPanel value={tabValue} index={2}>
+          {!isHoroscopeSeeker && !isCouple && <CustomTabPanel value={tabValue} index="lifestyle">
             <Grid container spacing={4}>
               <Grid size={{ xs: 12, md: 6 }}>
                 <Paper sx={{ p: 4, borderRadius: '24px', boxShadow: '0 2px 16px rgba(0,0,0,0.03)' }}>
@@ -1963,7 +1969,7 @@ export default function UserProfile() {
             </Grid>
           </CustomTabPanel>}
 
-          {!isHoroscopeSeeker && <CustomTabPanel value={tabValue} index={3}>
+          {!isHoroscopeSeeker && !isCouple && <CustomTabPanel value={tabValue} index="photos">
             <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <Typography variant="h6" sx={{ fontWeight: 800, color: COLORS.primary }}>Photo Gallery</Typography>
               <Button 
@@ -2087,7 +2093,7 @@ export default function UserProfile() {
             </Grid>
           </CustomTabPanel>}
 
-          {!isHoroscopeSeeker && <CustomTabPanel value={tabValue} index={4}>
+          {!isHoroscopeSeeker && <CustomTabPanel value={tabValue} index="privacy">
             <Grid container spacing={4}>
               <Grid size={{ xs: 12, md: 7 }}>
                 <Paper sx={{ p: 4, borderRadius: '24px', boxShadow: '0 2px 16px rgba(0,0,0,0.03)' }}>

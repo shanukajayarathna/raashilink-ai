@@ -13,12 +13,13 @@ import CoupleDashboard from './CoupleDashboard';
 export default function DashboardRouter() {
   const { user } = useSelector((state: RootState) => state.auth);
 
-  if (user?.profileType === 'horoscope_seeker') {
+  const isHoroscopeSeeker = user?.profileType === 'horoscope_seeker' || user?.userType === 'horoscope_seeker';
+  if (isHoroscopeSeeker) {
     return <Navigate to="/horoscope" replace />;
   }
 
-  // Determine if user is a couple based on wedding project
-  const isCouple = user?.profileType === 'couple' || !!user?.weddingProject?.partnerName;
+  // Determine if user is a couple based on wedding project or user fields
+  const isCouple = user?.profileType === 'couple' || user?.userType === 'couple' || !!user?.weddingProject?.partnerName;
 
   return isCouple ? <CoupleDashboard /> : <UserDashboard />;
 }
