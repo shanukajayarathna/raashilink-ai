@@ -1352,72 +1352,82 @@ export default function UserDashboard() {
   return (
     <Box sx={{ p: { xs: 2, md: 4 }, bgcolor: alpha(COLORS.background, 0.85), minHeight: '100vh', position: 'relative' }}>
       <BlockingBackdrop open={interestBlocking} message="Sending interest…" />
-      {/* Header Section */}
-      <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: { xs: 1, md: 3 }, flexWrap: 'wrap' }}>
-        <Avatar
-          src={liveProfilePic || undefined}
-          alt={data.summary.name}
-          sx={{ width: 64, height: 64, border: `3px solid ${alpha(COLORS.secondary, 0.5)}`, boxShadow: '0 8px 24px rgba(139,26,46,0.12)', flexShrink: 0, bgcolor: alpha(COLORS.secondary, 0.16), color: COLORS.primary, fontWeight: 700 }}
-        >
-          {data.summary.name?.charAt(0) || 'U'}
-        </Avatar>
-        <MotionBox
-          initial={{ opacity: 0, x: -20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.8 }}
-          sx={{ display: 'flex', flexDirection: 'column', gap: 1, flex: 1, minWidth: 0 }}
-        >
-          <Typography variant="h4" sx={{ fontFamily: 'Playfair Display', fontWeight: 700, color: COLORS.primary, wordWrap: 'break-word', overflowWrap: 'break-word', whiteSpace: 'normal' }}>
-            {getGreeting()}, {data.summary.name} ✨
-          </Typography>
-          <Stack direction="row" spacing={1} alignItems="center" sx={{ flexWrap: 'wrap', gap: 1.5 }}>
-            <Typography variant="body1" sx={{ color: COLORS.textSecondary, fontSize: '1.05rem', fontWeight: 500, whiteSpace: 'nowrap' }}>
-              {getGregorianDate()} ·{' '}
-              <Box component="span" sx={{ fontFamily: 'monospace', fontVariantNumeric: 'tabular-nums', display: 'inline-block', minWidth: '7.5ch' }}>
-                {getLiveTimeString()}
-              </Box>{' '}|
+      {/* Header Section as a tile */}
+      <Paper
+        sx={{
+          mb: 4,
+          p: { xs: 2, md: 3 },
+          borderRadius: '24px',
+          background: 'linear-gradient(135deg, rgba(139,26,46,0.08) 0%, rgba(201,168,76,0.18) 100%)',
+          border: '1px solid rgba(139,26,46,0.14)',
+          boxShadow: '0 12px 30px rgba(139,26,46,0.08)',
+        }}
+      >
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: { xs: 1, md: 3 }, flexWrap: 'wrap' }}>
+          <Avatar
+            src={liveProfilePic || undefined}
+            alt={data.summary.name}
+            sx={{ width: 64, height: 64, border: `3px solid ${alpha(COLORS.secondary, 0.5)}`, boxShadow: '0 8px 24px rgba(139,26,46,0.12)', flexShrink: 0, bgcolor: alpha(COLORS.secondary, 0.16), color: COLORS.primary, fontWeight: 700 }}
+          >
+            {data.summary.name?.charAt(0) || 'U'}
+          </Avatar>
+          <MotionBox
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.8 }}
+            sx={{ display: 'flex', flexDirection: 'column', gap: 1, flex: 1, minWidth: 0 }}
+          >
+            <Typography variant="h4" sx={{ fontFamily: 'Playfair Display', fontWeight: 700, color: COLORS.primary, wordWrap: 'break-word', overflowWrap: 'break-word', whiteSpace: 'normal' }}>
+              {getGreeting()}, {data.summary.name} ✨
             </Typography>
-            <Chip 
-              label={`${data.summary.nakshatra} Nakshatra`} 
-              sx={{ bgcolor: COLORS.secondary, color: COLORS.primary, fontWeight: 700, height: 32, fontSize: '0.95rem' }} 
-            />
-            <Chip
-              label={`Gana: ${data.summary.gana}`}
-              sx={{ bgcolor: alpha(COLORS.accent, 0.12), color: COLORS.accent, fontWeight: 800, height: 32, fontSize: '0.95rem' }}
-            />
-            <Chip
-              label={`ලග්නය (Ascendant): ${
-                data.summary.ascendant && data.summary.ascendant !== 'Pending'
-                  ? `${translateZodiacSign(data.summary.ascendant, 'si')} (${data.summary.ascendant})`
-                  : 'බලාපොරොත්තු වේ (Pending)'
-              }`}
-              sx={{
-                bgcolor: alpha(COLORS.primary, 0.08),
-                color: COLORS.primary,
-                fontWeight: 800,
-                height: 32,
-                fontSize: '0.95rem',
-                '& .MuiChip-label': {
-                  fontFamily: '"Noto Sans Sinhala", "Iskoola Pota", "Segoe UI", sans-serif',
-                },
-              }}
-            />
-            <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 1, bgcolor: alpha(COLORS.accent, 0.06), px: 2, py: 1, borderRadius: '12px', border: `1px solid ${alpha(COLORS.accent, 0.15)}` }}>
-              <AccessTime sx={{ color: COLORS.accent, fontSize: 18 }} />
-              <Typography variant="body2" sx={{ color: COLORS.accent, fontWeight: 700, fontSize: '0.95rem' }}>
-                Today's Focus: {data.summary.auspiciousTime}
+            <Stack direction="row" spacing={1} alignItems="center" sx={{ flexWrap: 'wrap', gap: 1.5 }}>
+              <Typography variant="body1" sx={{ color: COLORS.textSecondary, fontSize: '1.05rem', fontWeight: 500, whiteSpace: 'nowrap' }}>
+                {getGregorianDate()} ·{' '}
+                <Box component="span" sx={{ fontFamily: 'monospace', fontVariantNumeric: 'tabular-nums', display: 'inline-block', minWidth: '7.5ch' }}>
+                  {getLiveTimeString()}
+                </Box>{' '}|
               </Typography>
-            </Box>
-          </Stack>
-        </MotionBox>
-        
-        <IconButton 
-          onClick={() => navigate('/profile?edit=true')}
-          sx={{ bgcolor: COLORS.white, boxShadow: '0 4px 12px rgba(0,0,0,0.05)', flexShrink: 0, '&:hover': { bgcolor: alpha(COLORS.secondary, 0.08) } }}
-        >
-          <Settings sx={{ color: COLORS.primary }} />
-        </IconButton>
-      </Box>
+              <Chip 
+                label={`${data.summary.nakshatra} Nakshatra`} 
+                sx={{ bgcolor: COLORS.secondary, color: COLORS.primary, fontWeight: 700, height: 32, fontSize: '0.95rem' }} 
+              />
+              <Chip
+                label={`Gana: ${data.summary.gana}`}
+                sx={{ bgcolor: alpha(COLORS.accent, 0.12), color: COLORS.accent, fontWeight: 800, height: 32, fontSize: '0.95rem' }}
+              />
+              <Chip
+                label={`ලග්නය (Ascendant): ${
+                  data.summary.ascendant && data.summary.ascendant !== 'Pending'
+                    ? `${translateZodiacSign(data.summary.ascendant, 'si')} (${data.summary.ascendant})`
+                    : 'බලාපොරොත්තු වේ (Pending)'
+                }`}
+                sx={{
+                  bgcolor: alpha(COLORS.primary, 0.08),
+                  color: COLORS.primary,
+                  fontWeight: 800,
+                  height: 32,
+                  fontSize: '0.95rem',
+                  '& .MuiChip-label': {
+                    fontFamily: '"Noto Sans Sinhala", "Iskoola Pota", "Segoe UI", sans-serif',
+                  },
+                }}
+              />
+              <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 1, bgcolor: alpha(COLORS.accent, 0.06), px: 2, py: 1, borderRadius: '12px', border: `1px solid ${alpha(COLORS.accent, 0.15)}` }}>
+                <AccessTime sx={{ color: COLORS.accent, fontSize: 18 }} />
+                <Typography variant="body2" sx={{ color: COLORS.accent, fontWeight: 700, fontSize: '0.95rem' }}>
+                  Today's Focus: {data.summary.auspiciousTime}
+                </Typography>
+              </Box>
+            </Stack>
+          </MotionBox>
+          <IconButton 
+            onClick={() => navigate('/profile?edit=true')}
+            sx={{ bgcolor: COLORS.white, boxShadow: '0 4px 12px rgba(0,0,0,0.05)', flexShrink: 0, '&:hover': { bgcolor: alpha(COLORS.secondary, 0.08) } }}
+          >
+            <Settings sx={{ color: COLORS.primary }} />
+          </IconButton>
+        </Box>
+      </Paper>
 
       {/* Grid Layout */}
       <Grid container spacing={3}>

@@ -493,11 +493,11 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
           >
             <Menu className="w-6 h-6 text-primary" />
           </button>
-          <Link to="/dashboard" className="flex items-center gap-0">
+          <Link to="/dashboard" className="flex items-center gap-0 flex-shrink-0">
             <img 
               src="/RaashiLink_Logo.png" 
               alt="RaashiLink Logo" 
-              className="w-20 h-20 object-contain drop-shadow-md -mr-6 -ml-2"
+              className="w-20 h-20 object-contain drop-shadow-md -mr-6 -ml-2 flex-shrink-0 max-w-none"
             />
             <span className="text-lg xl:text-xl font-serif font-bold text-primary hidden sm:block">RaashiLink.AI</span>
           </Link>

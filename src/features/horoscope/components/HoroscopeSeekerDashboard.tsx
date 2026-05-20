@@ -414,7 +414,9 @@ export default function HoroscopeSeekerDashboard({
                     {headerTime}
                   </Box>
                 </Box>
+                <Chip label={`${chartSummary?.nakshatra || texts.pending} Nakshatra`} sx={{ bgcolor: COLORS.secondary, color: COLORS.primary, fontWeight: 700 }} />
                 <Chip label={`Gana: ${translateHoroscopeValue(chartSummary?.gana || texts.pending, language)}`} sx={{ bgcolor: alpha(COLORS.accent, 0.12), color: COLORS.accent, fontWeight: 800 }} />
+                <Chip label={`ලග්නය (Ascendant): ${chartSummary?.ascendant ? translateHoroscopeValue(chartSummary.ascendant, language) + ' (' + chartSummary.ascendant + ')' : texts.pending}`} sx={{ bgcolor: alpha(COLORS.primary, 0.08), color: COLORS.primary, fontWeight: 800, fontFamily: '"Noto Sans Sinhala", "Iskoola Pota", "Segoe UI", sans-serif' }} />
                 <Chip label={`Today's Focus: ${chartSummary?.auspiciousTime || texts.pending}`} sx={{ bgcolor: alpha(COLORS.secondary, 0.22), color: COLORS.primary, fontWeight: 800 }} />
               </Stack>
             </Box>
