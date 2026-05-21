@@ -218,12 +218,29 @@ export default function DestinationDetail() {
           </Stack>
         </Container>
 
-        <IconButton
-          onClick={() => navigate(-1)}
-          sx={{ position: 'absolute', top: 100, left: 24, bgcolor: 'rgba(255,255,255,0.2)', color: 'white', backdropFilter: 'blur(8px)', '&:hover': { bgcolor: 'rgba(255,255,255,0.3)' } }}
+        <Button
+          onClick={() => navigate('/honeymoon')}
+          startIcon={<ArrowLeft size={20} />}
+          sx={{
+            position: 'absolute',
+            top: { xs: 80, md: 90 },
+            left: 24,
+            bgcolor: 'rgba(0,0,0,0.55)',
+            color: 'white',
+            backdropFilter: 'blur(10px)',
+            borderRadius: 3,
+            px: 2.5,
+            py: 1,
+            fontWeight: 700,
+            fontSize: '0.875rem',
+            textTransform: 'none',
+            border: '1px solid rgba(255,255,255,0.25)',
+            '&:hover': { bgcolor: 'rgba(0,0,0,0.75)', borderColor: 'rgba(255,255,255,0.5)' },
+            zIndex: 10,
+          }}
         >
-          <ArrowLeft size={24} />
-        </IconButton>
+          Top Picks
+        </Button>
       </Box>
 
       {/* Tabs Section */}

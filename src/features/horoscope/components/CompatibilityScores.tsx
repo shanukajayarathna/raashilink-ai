@@ -106,9 +106,9 @@ const CompatibilityScores: React.FC<CompatibilityScoresProps> = ({ overallScore,
   return (
     <Box>
       {/* Overall Score Section */}
-      <Grid container spacing={4} alignItems="center" sx={{ mb: 8 }}>
+      <Grid container spacing={{ xs: 2, md: 4 }} alignItems="center" sx={{ mb: { xs: 4, md: 8 } }}>
         <Grid size={{ xs: 12, md: 5 }} sx={{ display: 'flex', justifyContent: 'center' }}>
-          <Box sx={{ position: 'relative', width: 240, height: 240 }}>
+          <Box sx={{ position: 'relative', width: { xs: 180, sm: 220, md: 240 }, height: { xs: 180, sm: 220, md: 240 } }}>
             <svg viewBox="0 0 100 100" style={{ transform: 'rotate(-90deg)', width: '100%', height: '100%' }}>
               <circle cx="50" cy="50" r="45" fill="none" stroke={COLORS.background} strokeWidth="8" />
               <motion.circle 
@@ -174,28 +174,35 @@ const CompatibilityScores: React.FC<CompatibilityScoresProps> = ({ overallScore,
       </Grid>
 
       {/* Comparison View */}
-      <Box sx={{ mb: 8 }}>
-        <Typography variant="h6" sx={{ fontFamily: 'Playfair Display', fontWeight: 700, mb: 4, textAlign: 'center' }}>
+      <Box sx={{ mb: { xs: 4, md: 8 }, overflowX: 'hidden', width: '100%', minWidth: 0 }}>
+        <Typography variant="h6" sx={{ fontFamily: 'Playfair Display', fontWeight: 700, mb: { xs: 2, md: 4 }, textAlign: 'center' }}>
           Chart Comparison
         </Typography>
-        <Grid container spacing={3}>
+        <Grid container spacing={2} sx={{ width: '100%', minWidth: 0 }}>
           {[userA, userB].map((user, idx) => (
             <Grid size={{ xs: 12, md: 6 }} key={idx}>
-              <Paper sx={{ 
-                p: 3, 
-                borderRadius: '24px', 
-                bgcolor: 'white', 
+              <Paper sx={{
+                p: { xs: 2, md: 3 },
+                borderRadius: '24px',
+                bgcolor: 'white',
                 border: '1px solid',
                 borderColor: COLORS.background,
                 display: 'flex',
-                alignItems: 'center',
-                gap: 3
+                flexDirection: { xs: 'column', sm: 'row' },
+                alignItems: { xs: 'flex-start', sm: 'center' },
+                gap: { xs: 1.5, sm: 2.5 },
+                overflow: 'hidden',
+                minWidth: 0,
+                width: '100%',
+                boxSizing: 'border-box',
               }}>
                 <Avatar
                   src={user.photo || undefined}
                   alt={user.name}
                   sx={{
-                    width: 64, height: 64,
+                    width: { xs: 48, sm: 64 },
+                    height: { xs: 48, sm: 64 },
+                    flexShrink: 0,
                     border: `2px solid ${COLORS.secondary}`,
                     bgcolor: `${COLORS.primary}22`,
                     color: COLORS.primary,
@@ -205,14 +212,14 @@ const CompatibilityScores: React.FC<CompatibilityScoresProps> = ({ overallScore,
                 >
                   {!user.photo && user.name ? user.name.slice(0, 2).toUpperCase() : null}
                 </Avatar>
-                <Box>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 800, color: COLORS.primary }}>{user.name}</Typography>
+                <Box sx={{ minWidth: 0, width: '100%' }}>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 800, color: COLORS.primary, wordBreak: 'break-word', overflowWrap: 'break-word' }}>{user.name}</Typography>
                   <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>{user.sign} Moon Sign</Typography>
-                  <Box sx={{ mt: 1, display: 'flex', gap: 1 }}>
+                  <Box sx={{ mt: 1, display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
                     <Chip label={`Manglik: ${user.manglik || 'Pending'}`} size="small" sx={{ fontSize: '10px', height: 20 }} />
                     <Chip label={`Gana: ${user.gana || 'Pending'}`} size="small" sx={{ fontSize: '10px', height: 20 }} />
                   </Box>
-                  <Box sx={{ mt: 1, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                  <Box sx={{ mt: 0.75, display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
                     <Chip label={`Rajju: ${user.rajju || 'Pending'}`} size="small" sx={{ fontSize: '10px', height: 20 }} />
                     <Chip label={`Nadi: ${user.nadi || 'Pending'}`} size="small" sx={{ fontSize: '10px', height: 20 }} />
                     <Chip label={`Yoni: ${user.yoni || 'Pending'}`} size="small" sx={{ fontSize: '10px', height: 20 }} />
@@ -223,11 +230,11 @@ const CompatibilityScores: React.FC<CompatibilityScoresProps> = ({ overallScore,
           ))}
         </Grid>
 
-        <Paper sx={{ mt: 2.5, p: 2.5, borderRadius: '18px', border: '1px solid', borderColor: COLORS.background, bgcolor: COLORS.white }}>
+        <Paper sx={{ mt: 2, p: { xs: 1.5, md: 2.5 }, borderRadius: '18px', border: '1px solid', borderColor: COLORS.background, bgcolor: COLORS.white, overflowX: 'hidden' }}>
           <Typography variant="subtitle2" sx={{ fontWeight: 800, color: COLORS.primary, mb: 1.5 }}>
             Porutham Comparison (Both Sides)
           </Typography>
-          <Grid container spacing={1.25}>
+          <Grid container spacing={1.25} sx={{ width: '100%', minWidth: 0 }}>
             {[
               {
                 label: 'Rajju',
@@ -251,22 +258,22 @@ const CompatibilityScores: React.FC<CompatibilityScoresProps> = ({ overallScore,
               const same = row.left !== 'Pending' && row.right !== 'Pending' && row.left === row.right;
               const caution = row.cautionOnSame && same;
               return (
-                <Grid size={{ xs: 12, md: 4 }} key={row.label}>
-                  <Box sx={{ p: 1.5, borderRadius: '12px', bgcolor: caution ? `${COLORS.error}10` : `${COLORS.accent}10`, border: '1px solid', borderColor: caution ? `${COLORS.error}66` : `${COLORS.accent}44` }}>
+                <Grid size={{ xs: 12, sm: 4 }} key={row.label}>
+                  <Box sx={{ p: { xs: 1.25, md: 1.5 }, borderRadius: '12px', bgcolor: caution ? `${COLORS.error}10` : `${COLORS.accent}10`, border: '1px solid', borderColor: caution ? `${COLORS.error}66` : `${COLORS.accent}44`, width: '100%', minWidth: 0 }}>
                     <Typography variant="caption" sx={{ display: 'block', fontWeight: 800, color: caution ? COLORS.error : COLORS.accent, mb: 0.5 }}>
                       {row.label.toUpperCase()}
                     </Typography>
-                    <Typography variant="body2" sx={{ fontWeight: 700, color: COLORS.textPrimary }}>
-                      {userA.name}: {row.left}
+                    <Typography variant="body2" sx={{ fontWeight: 700, color: COLORS.textPrimary, wordBreak: 'break-word' }}>
+                      {userA.name}: <Box component="span" sx={{ color: COLORS.primary }}>{row.left}</Box>
                     </Typography>
-                    <Typography variant="body2" sx={{ fontWeight: 700, color: COLORS.textPrimary }}>
-                      {userB.name}: {row.right}
+                    <Typography variant="body2" sx={{ fontWeight: 700, color: COLORS.textPrimary, wordBreak: 'break-word' }}>
+                      {userB.name}: <Box component="span" sx={{ color: COLORS.primary }}>{row.right}</Box>
                     </Typography>
                     <Typography variant="caption" sx={{ display: 'block', mt: 0.75, color: COLORS.textSecondary, lineHeight: 1.35 }}>
                       {PORUTHAM_MEANINGS[row.label]}
                     </Typography>
-                    <Typography variant="caption" sx={{ color: COLORS.textSecondary }}>
-                      {caution ? 'Same value detected (traditional caution)' : 'Compared in overall astrological score'}
+                    <Typography variant="caption" sx={{ color: caution ? COLORS.error : COLORS.textSecondary, fontWeight: caution ? 700 : 400 }}>
+                      {caution ? '⚠ Same value — traditional caution' : 'Compared in overall astrological score'}
                     </Typography>
                   </Box>
                 </Grid>

@@ -120,13 +120,19 @@ export default function MatchDetailPanel({
       anchor="right"
       open={open}
       onClose={onClose}
+      sx={{ zIndex: 2100 }}
       PaperProps={{
         sx: {
+          position: 'fixed',
+          top: 0,
+          right: 0,
+          height: '100%',
           width: { xs: '100%', sm: 500, md: 600 },
           bgcolor: 'background.default',
           borderTopLeftRadius: { xs: 24, sm: 0 },
           borderBottomLeftRadius: { xs: 24, sm: 0 },
           overflow: 'hidden',
+          zIndex: 2110,
         },
       }}
     >
@@ -134,20 +140,52 @@ export default function MatchDetailPanel({
         <Box
           sx={{
             p: 2,
+            position: 'sticky',
+            top: 0,
+            zIndex: 3,
             display: 'flex',
-            justifyContent: 'space-between',
             alignItems: 'center',
             bgcolor: 'white',
             borderBottom: '1px solid',
             borderColor: 'divider',
           }}
         >
-          <Typography variant="h6" sx={{ fontFamily: 'FONTS.heading', fontWeight: 'bold', color: 'primary.main' }}>
+          <Button
+            startIcon={<X size={18} />}
+            onClick={onClose}
+            variant="text"
+            sx={{
+              textTransform: 'none',
+              fontWeight: 700,
+              color: 'text.primary',
+              minWidth: 0,
+              px: 1.25,
+              whiteSpace: 'nowrap',
+              zIndex: 2,
+            }}
+          >
+            Back
+          </Button>
+          <Typography
+            variant="h6"
+            sx={{
+              position: 'absolute',
+              left: '50%',
+              top: '50%',
+              transform: 'translate(-50%, -50%)',
+              fontFamily: 'FONTS.heading',
+              fontWeight: 'bold',
+              color: 'primary.main',
+              maxWidth: 'calc(100% - 140px)',
+              textAlign: 'center',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              pointerEvents: 'none',
+            }}
+          >
             Profile Details
           </Typography>
-          <IconButton onClick={onClose}>
-            <X size={20} />
-          </IconButton>
         </Box>
 
         <Box

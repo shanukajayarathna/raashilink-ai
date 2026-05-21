@@ -138,16 +138,29 @@ function mapDestinationCard(destination: any, index: number) {
   };
 }
 
+const SESSION_KEY_PREFS = 'honeymoon_preferences';
+const SESSION_KEY_DESTS = 'honeymoon_destinations';
+
 export default function HoneymoonDestinations() {
   const navigate = useNavigate();
-  const [showQuiz, setShowQuiz] = useState(true);
+  const [showQuiz, setShowQuiz] = useState(() => {
+    // Restore results view if we have saved data (e.g. returning from detail page)
+    const savedDests = sessionStorage.getItem(SESSION_KEY_DESTS);
+    return !savedDests;
+  });
   const [viewMode, setViewMode] = useState<'grid' | 'map'>('grid');
   const [loading, setLoading] = useState(false);
-  const [destinations, setDestinations] = useState<any[]>([]);
-  const [preferences, setPreferences] = useState({
-    vibe: '',
-    budget: '',
-    duration: '',
+  const [destinations, setDestinations] = useState<any[]>(() => {
+    try {
+      const saved = sessionStorage.getItem(SESSION_KEY_DESTS);
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
+  const [preferences, setPreferences] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem(SESSION_KEY_PREFS);
+      return saved ? JSON.parse(saved) : { vibe: '', budget: '', duration: '' };
+    } catch { return { vibe: '', budget: '', duration: '' }; }
   });
   const [planningAccessGranted, setPlanningAccessGranted] = useState(false);
   const [planningCheckLoading, setPlanningCheckLoading] = useState(true);
@@ -217,8 +230,12 @@ export default function HoneymoonDestinations() {
       });
 
       const items = Array.isArray(response?.data?.items) ? response.data.items : [];
-      setDestinations(items.map((item: any, index: number) => mapDestinationCard(item, index)));
+      const mapped = items.map((item: any, index: number) => mapDestinationCard(item, index));
+      setDestinations(mapped);
       setShowQuiz(false);
+      // Persist so returning from detail page restores this view
+      sessionStorage.setItem(SESSION_KEY_PREFS, JSON.stringify(preferences));
+      sessionStorage.setItem(SESSION_KEY_DESTS, JSON.stringify(mapped));
     } catch (err) {
       console.error('Failed to load honeymoon recommendations', err);
       setDestinations([]);
@@ -386,7 +403,7 @@ export default function HoneymoonDestinations() {
                 <Box>
                   <Button
                     startIcon={<ArrowRight size={18} style={{ transform: 'rotate(180deg)' }} />}
-                    onClick={() => setShowQuiz(true)}
+                    onClick={() => { sessionStorage.removeItem(SESSION_KEY_PREFS); sessionStorage.removeItem(SESSION_KEY_DESTS); setShowQuiz(true); }}
                     sx={{ mb: 2, color: COLORS.primary, fontWeight: 700, textTransform: 'none', p: 0 }}
                   >
                     Back to preferences
@@ -452,7 +469,7 @@ export default function HoneymoonDestinations() {
               <Box sx={{ textAlign: 'center', mt: 8 }}>
                 <Button
                   variant="outlined"
-                  onClick={() => setShowQuiz(true)}
+                  onClick={() => { sessionStorage.removeItem(SESSION_KEY_PREFS); sessionStorage.removeItem(SESSION_KEY_DESTS); setShowQuiz(true); }}
                   sx={{ borderRadius: 3, px: 4, borderColor: COLORS.primary, color: COLORS.primary, fontWeight: 700, textTransform: 'none' }}
                 >
                   ← Back to preferences

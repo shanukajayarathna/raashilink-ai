@@ -182,6 +182,7 @@ const HoroscopeView = () => {
   const texts = HOROSCOPE_TEXT[language];
   const { myChart, compatibility, isLoading, isCalculating, error } = useSelector((state: RootState) => state.horoscope);
   const [selectedMatch, setSelectedMatch] = useState<any>(null);
+  const [selectedMatchDetail, setSelectedMatchDetail] = useState<any>(null);
   const [matches, setMatches] = useState<any[]>([]);
   const [loadingMatches, setLoadingMatches] = useState(true);
   const [editorOpen, setEditorOpen] = useState(false);
@@ -423,6 +424,37 @@ const HoroscopeView = () => {
 
     fetchMatches();
   }, [isHoroscopeSeeker]);
+
+  useEffect(() => {
+    let active = true;
+
+    if (!selectedMatch?.id) {
+      setSelectedMatchDetail(null);
+      return;
+    }
+
+    const loadMatchDetail = async () => {
+      if (selectedMatch?.horoscope || selectedMatch?.poruthamComparison) {
+        setSelectedMatchDetail(selectedMatch);
+        return;
+      }
+
+      try {
+        const response = await matchService.getMatchDetail(selectedMatch.id);
+        if (!active) return;
+        setSelectedMatchDetail(response.data);
+      } catch {
+        if (!active) return;
+        setSelectedMatchDetail(selectedMatch);
+      }
+    };
+
+    loadMatchDetail();
+
+    return () => {
+      active = false;
+    };
+  }, [selectedMatch]);
 
   useEffect(() => {
     if (!isHoroscopeSeeker) return;
@@ -1726,16 +1758,58 @@ const HoroscopeView = () => {
                     userA={{
                       name: compatibility.userA?.name || user?.name || 'You',
                       photo: compatibility.userA?.photo || (user as any)?.profilePic || null,
-                      sign: compatibility.userA?.sign || '',
-                      gana: compatibility.userA?.gana || 'Pending',
-                      manglik: compatibility.userA?.manglik || 'Pending',
+                      sign: compatibility.userA?.sign || chartSummary?.moonSign || '',
+                      gana: compatibility.userA?.gana || chartSummary?.gana || chartDetails?.gana || 'Pending',
+                      manglik: compatibility.userA?.manglik || chartSummary?.manglik || 'Pending',
+                      rajju: compatibility.userA?.rajju || chartSummary?.rajju || 'Pending',
+                      nadi: compatibility.userA?.nadi || chartSummary?.nadi || 'Pending',
+                      yoni: compatibility.userA?.yoni || chartSummary?.yoni || 'Pending',
                     }}
                     userB={{
                       name: compatibility.userB?.name || selectedMatch?.name || 'Match',
-                      photo: compatibility.userB?.photo || selectedMatch?.photo || null,
-                      sign: compatibility.userB?.sign || selectedMatch?.sign || '',
-                      gana: compatibility.userB?.gana || 'Pending',
-                      manglik: compatibility.userB?.manglik || 'Pending',
+                      photo:
+                        compatibility.userB?.photo ||
+                        selectedMatchDetail?.photo ||
+                        selectedMatch?.photo ||
+                        selectedMatch?.img ||
+                        null,
+                      sign:
+                        compatibility.userB?.sign ||
+                        selectedMatchDetail?.sign ||
+                        selectedMatchDetail?.horoscope?.rashi ||
+                        selectedMatchDetail?.horoscope?.ascendant ||
+                        selectedMatch?.sign ||
+                        selectedMatch?.moonSign ||
+                        '',
+                      gana:
+                        compatibility.userB?.gana ||
+                        selectedMatchDetail?.gana ||
+                        selectedMatchDetail?.horoscope?.gana ||
+                        selectedMatch?.gana ||
+                        'Pending',
+                      manglik:
+                        compatibility.userB?.manglik ||
+                        selectedMatchDetail?.manglik ||
+                        selectedMatchDetail?.horoscope?.manglik ||
+                        'Pending',
+                      rajju:
+                        compatibility.userB?.rajju ||
+                        selectedMatchDetail?.rajju ||
+                        selectedMatchDetail?.poruthamComparison?.other?.rajju ||
+                        selectedMatchDetail?.horoscope?.rajju ||
+                        'Pending',
+                      nadi:
+                        compatibility.userB?.nadi ||
+                        selectedMatchDetail?.nadi ||
+                        selectedMatchDetail?.poruthamComparison?.other?.nadi ||
+                        selectedMatchDetail?.horoscope?.nadi ||
+                        'Pending',
+                      yoni:
+                        compatibility.userB?.yoni ||
+                        selectedMatchDetail?.yoni ||
+                        selectedMatchDetail?.poruthamComparison?.other?.yoni ||
+                        selectedMatchDetail?.horoscope?.yoni ||
+                        'Pending',
                     }}
                     explanation={compatibility.explanation}
                   />
