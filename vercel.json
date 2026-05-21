@@ -1,5 +1,16 @@
 {
-  "rewrites": [
-    { "source": "/(.*)", "destination": "/index.html" }
+  "routes": [
+    {
+      "src": "^/api/v1/(.*)$",
+      "dest": "https://raashilink-api.onrender.com/api/v1/$1"
+    },
+    {
+      "handle": "filesystem"
+    },
+    {
+      "src": "^(?!/api/).*$",
+      "methods": ["GET", "HEAD"],
+      "dest": "/index.html"
+    }
   ]
 }
