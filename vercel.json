@@ -2,7 +2,7 @@
   "routes": [
     {
       "src": "^/api/v1/(.*)$",
-      "dest": "https://raashilink-api.onrender.com/api/v1/$1"
+      "dest": "https://web-production-4040d.up.railway.app/api/v1/$1"
     },
     {
       "handle": "filesystem"
