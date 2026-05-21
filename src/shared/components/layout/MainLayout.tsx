@@ -254,6 +254,7 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
     const socket = connectSocket(token);
 
     const onMutualMatch = (payload: any) => {
+      if (isCouple) return;
       fetchNotifications(true);
       fetchPendingMatchCount();
       fetchPendingWeddingCount();
@@ -262,6 +263,7 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
       showEventNotifRef.current('🎉', "It's a Match!", `You and ${payload.fromUserName || 'someone'} are now connected!`, '/messages', '#f59e0b');
     };
     const onInterestReceived = (payload: any) => {
+      if (isCouple) return;
       fetchNotifications(true);
       fetchPendingMatchCount();
       fetchPendingWeddingCount();
@@ -270,6 +272,7 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
       showEventNotifRef.current('💛', `${payload.fromUserName || 'Someone'} liked you!`, 'They expressed interest in you — check your matches.', '/matches', '#f59e0b');
     };
     const onInterestAccepted = (payload: any) => {
+      if (isCouple) return;
       fetchNotifications(true);
       fetchPendingMatchCount();
       fetchPendingWeddingCount();
@@ -278,6 +281,7 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
       showEventNotifRef.current('🥳', `${payload.fromUserName || 'Someone'} accepted your interest!`, 'You can now message each other.', '/messages', '#16a34a');
     };
     const onInterestDeclined = (payload: any) => {
+      if (isCouple) return;
       fetchNotifications(true);
       fetchPendingMatchCount();
       fetchPendingWeddingCount();
@@ -286,6 +290,7 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
       showEventNotifRef.current('💔', 'Interest declined', `${payload.fromUserName || 'Someone'} has declined your interest.`, '/matches', '#6b7280');
     };
     const onMatchRemoved = (payload: any) => {
+      if (isCouple) return;
       fetchNotifications(true);
       fetchPendingMatchCount();
       fetchPendingWeddingCount();
@@ -307,6 +312,9 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
 
     // Real-time server-pushed notifications (e.g. wedding invites)
     const onNotification = (payload: AppNotification) => {
+      if (isCouple && (payload.type === 'message_received' || payload.type === 'mutual_match' || payload.type === 'interest_accepted' || payload.type === 'interest_declined' || payload.type === 'match_removed')) {
+        return;
+      }
       if (payload.type === 'message_received' && shouldSuppressMessageNotif(payload.conversationId)) {
         if (payload.id) {
           notificationService.markRead(payload.id).catch(() => {});
@@ -415,7 +423,7 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
       socket.off('wedding_reset', onWeddingReset);
       window.removeEventListener('wedding:accepted', onWeddingAcceptedSelf);
     };
-  }, [token, fetchNotifications, fetchPendingMatchCount, fetchPendingWeddingCount, shouldSuppressMessageNotif, showMsgNotif]);
+  }, [token, fetchNotifications, fetchPendingMatchCount, fetchPendingWeddingCount, shouldSuppressMessageNotif, showMsgNotif, isCouple]);
 
   const handleMarkRead = async (id: string) => {
     await notificationService.markRead(id);
@@ -485,7 +493,7 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
       <div className="fixed inset-0 mandala-bg opacity-[0.4] pointer-events-none z-0" />
       
       {/* Top Navigation */}
-      <header className="fixed top-0 left-0 right-0 h-16 bg-white/80 backdrop-blur-md border-b border-primary/10 z-[1100] px-4 md:px-8 flex items-center justify-between">
+      <header className="fixed top-0 left-0 right-0 h-16 bg-white/90 md:bg-white/80 backdrop-blur-none md:backdrop-blur-md border-b border-primary/10 z-[2000] px-4 md:px-8 flex items-center justify-between">
         <div className="flex items-center gap-0">
           <button 
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
@@ -497,7 +505,7 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
             <img 
               src="/RaashiLink_Logo.png" 
               alt="RaashiLink Logo" 
-              className="w-20 h-20 object-contain drop-shadow-md -mr-6 -ml-2 flex-shrink-0 max-w-none"
+              className="w-14 h-14 sm:w-20 sm:h-20 object-contain drop-shadow-md -mr-2 sm:-mr-6 -ml-1 sm:-ml-2 flex-shrink-0 max-w-none"
             />
             <span className="text-lg xl:text-xl font-serif font-bold text-primary hidden sm:block">RaashiLink.AI</span>
           </Link>
@@ -640,6 +648,15 @@ export default function MainLayout({ children }: { children?: React.ReactNode })
                   </Link>
                 ))}
               </nav>
+              <div className="p-4 border-t border-primary/10">
+                <button
+                  onClick={() => { setIsSidebarOpen(false); handleLogout(); }}
+                  className="w-full flex items-center gap-4 px-4 py-3 rounded-xl text-sm font-semibold text-red-600 hover:bg-red-50 transition-colors"
+                >
+                  <LogOut className="w-5 h-5" />
+                  <span>Logout</span>
+                </button>
+              </div>
             </motion.aside>
           </>
         )}

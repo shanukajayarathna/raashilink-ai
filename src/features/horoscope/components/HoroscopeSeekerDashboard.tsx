@@ -406,18 +406,18 @@ export default function HoroscopeSeekerDashboard({
               <Typography variant="body2" sx={{ color: COLORS.textSecondary, mt: 0.5 }}>
                 Your Horoscope Dashboard
               </Typography>
-              <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" sx={{ mt: 1.25 }}>
-                <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.75, px: 1.25, py: 0.6, borderRadius: '999px', bgcolor: alpha(COLORS.accent, 0.1), border: `1px solid ${alpha(COLORS.accent, 0.24)}` }}>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} useFlexGap flexWrap="wrap" sx={{ mt: 1.25, width: '100%', minWidth: 0, alignItems: { xs: 'stretch', sm: 'center' } }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0.75, px: 1.25, py: 0.6, width: { xs: '100%', sm: 'auto' }, maxWidth: '100%', minWidth: 0, boxSizing: 'border-box', overflow: 'hidden', borderRadius: { xs: '16px', sm: '999px' }, bgcolor: alpha(COLORS.accent, 0.1), border: `1px solid ${alpha(COLORS.accent, 0.24)}` }}>
                   <CalendarMonth sx={{ fontSize: 16, color: COLORS.accent }} />
-                  <Typography variant="body2" sx={{ color: COLORS.accent, fontWeight: 700 }}>{headerDate}</Typography>
-                  <Box component="span" sx={{ color: COLORS.accent, fontWeight: 800, fontFamily: 'monospace', fontVariantNumeric: 'tabular-nums', minWidth: '11ch', display: 'inline-block' }}>
+                  <Typography variant="body2" sx={{ color: COLORS.accent, fontWeight: 700, overflowWrap: 'anywhere', minWidth: 0, flex: '1 1 auto' }}>{headerDate}</Typography>
+                  <Box component="span" sx={{ color: COLORS.accent, fontWeight: 800, fontFamily: 'monospace', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', display: 'inline-block', flexBasis: { xs: '100%', sm: 'auto' } }}>
                     {headerTime}
                   </Box>
                 </Box>
-                <Chip label={`${chartSummary?.nakshatra || texts.pending} Nakshatra`} sx={{ bgcolor: COLORS.secondary, color: COLORS.primary, fontWeight: 700 }} />
-                <Chip label={`Gana: ${translateHoroscopeValue(chartSummary?.gana || texts.pending, language)}`} sx={{ bgcolor: alpha(COLORS.accent, 0.12), color: COLORS.accent, fontWeight: 800 }} />
-                <Chip label={`ලග්නය (Ascendant): ${chartSummary?.ascendant ? translateHoroscopeValue(chartSummary.ascendant, language) + ' (' + chartSummary.ascendant + ')' : texts.pending}`} sx={{ bgcolor: alpha(COLORS.primary, 0.08), color: COLORS.primary, fontWeight: 800, fontFamily: '"Noto Sans Sinhala", "Iskoola Pota", "Segoe UI", sans-serif' }} />
-                <Chip label={`Today's Focus: ${chartSummary?.auspiciousTime || texts.pending}`} sx={{ bgcolor: alpha(COLORS.secondary, 0.22), color: COLORS.primary, fontWeight: 800 }} />
+                <Chip label={`${chartSummary?.nakshatra || texts.pending} Nakshatra`} sx={{ bgcolor: COLORS.secondary, color: COLORS.primary, fontWeight: 700, maxWidth: '100%', height: 'auto', '& .MuiChip-label': { whiteSpace: 'normal', lineHeight: 1.2, py: 0.5, overflowWrap: 'anywhere' } }} />
+                <Chip label={`Gana: ${translateHoroscopeValue(chartSummary?.gana || texts.pending, language)}`} sx={{ bgcolor: alpha(COLORS.accent, 0.12), color: COLORS.accent, fontWeight: 800, maxWidth: '100%', height: 'auto', '& .MuiChip-label': { whiteSpace: 'normal', lineHeight: 1.2, py: 0.5, overflowWrap: 'anywhere' } }} />
+                <Chip label={`ලග්නය (Ascendant): ${chartSummary?.ascendant ? translateHoroscopeValue(chartSummary.ascendant, language) + ' (' + chartSummary.ascendant + ')' : texts.pending}`} sx={{ bgcolor: alpha(COLORS.primary, 0.08), color: COLORS.primary, fontWeight: 800, maxWidth: '100%', height: 'auto', '& .MuiChip-label': { fontFamily: '"Noto Sans Sinhala", "Iskoola Pota", "Segoe UI", sans-serif', whiteSpace: 'normal', lineHeight: 1.2, py: 0.5, overflowWrap: 'anywhere' } }} />
+                <Chip label={`Today's Focus: ${chartSummary?.auspiciousTime || texts.pending}`} sx={{ bgcolor: alpha(COLORS.secondary, 0.22), color: COLORS.primary, fontWeight: 800, maxWidth: '100%', height: 'auto', '& .MuiChip-label': { whiteSpace: 'normal', lineHeight: 1.2, py: 0.5, overflowWrap: 'anywhere' } }} />
               </Stack>
             </Box>
           </Stack>

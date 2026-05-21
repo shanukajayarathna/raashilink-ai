@@ -273,6 +273,7 @@ export default function VendorMarketplace() {
   const [page, setPage] = useState(1);
 
   const { token, user } = useSelector((state: RootState) => state.auth);
+  const isCoupleUser = user?.profileType === 'couple' || user?.userType === 'couple';
 
   useEffect(() => {
     const fetchVendors = async () => {
@@ -287,11 +288,11 @@ export default function VendorMarketplace() {
         setRawProject(project);
 
         const isCoupled = Array.isArray(project?.coupleUserIds) && project.coupleUserIds.length >= 2;
-        setPlanningAccessGranted(isCoupled);
+        setPlanningAccessGranted(isCoupled || isCoupleUser);
         setVendors(items.map(mapVendorCard));
       } catch (err) {
         console.error('Failed to load vendors', err);
-        setPlanningAccessGranted(false);
+        setPlanningAccessGranted(isCoupleUser);
         setVendors([]);
       } finally {
         setLoading(false);
@@ -331,7 +332,7 @@ export default function VendorMarketplace() {
         const projectResponse = await weddingService.getProject();
         const project = projectResponse?.data;
         const isCoupled = Array.isArray(project?.coupleUserIds) && project.coupleUserIds.length >= 2;
-        if (isCoupled) setPlanningAccessGranted(true);
+        if (isCoupled || isCoupleUser) setPlanningAccessGranted(true);
       } catch { /* silent */ }
     };
     const socket = connectSocket(token);

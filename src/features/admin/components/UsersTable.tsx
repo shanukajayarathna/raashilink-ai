@@ -90,6 +90,7 @@ const UsersTable: React.FC = () => {
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [adminDialogOpen, setAdminDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [bulkDeleteDialogOpen, setBulkDeleteDialogOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [adminForm, setAdminForm] = useState({
     firstName: '',
@@ -162,6 +163,21 @@ const UsersTable: React.FC = () => {
       } finally {
       setSubmitting(false);
       }
+  };
+
+  const handleBulkDelete = async () => {
+    try {
+      setSubmitting(true);
+      setError('');
+      await Promise.all(selectedUsers.map(id => adminService.deleteUser(id)));
+      setSelectedUsers([]);
+      setBulkDeleteDialogOpen(false);
+      await loadUsers();
+    } catch (err: any) {
+      setError(err?.response?.data?.message || 'Failed to delete some users');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -248,7 +264,7 @@ const UsersTable: React.FC = () => {
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5 }}>
-      <Paper sx={{ p: 3, borderRadius: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.05)' }}>
+      <Paper sx={{ p: { xs: 2, sm: 3 }, borderRadius: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.05)', overflow: 'hidden', width: '100%', boxSizing: 'border-box' }}>
         {/* Header & Actions */}
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, flexWrap: 'wrap', gap: 2 }}>
           <Typography variant="h6" sx={{ fontWeight: 700, fontFamily: 'Playfair Display' }}>
@@ -321,15 +337,25 @@ const UsersTable: React.FC = () => {
           </Grid>
           <Grid size={{ xs: 12, md: 4 }} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
             {selectedUsers.length > 0 && (
-              <Stack direction="row" spacing={1}>
-                <Typography variant="body2" sx={{ mr: 1, fontWeight: 600 }}>{selectedUsers.length} selected</Typography>
+              <Stack direction="row" spacing={2} alignItems="center">
+                <Typography variant="body2" sx={{ fontWeight: 600 }}>{selectedUsers.length} selected</Typography>
+                <Button 
+                  variant="contained" 
+                  color="error" 
+                  size="small" 
+                  startIcon={<Trash2 size={16} />}
+                  onClick={() => setBulkDeleteDialogOpen(true)}
+                  disabled={submitting}
+                >
+                  Remove Selected
+                </Button>
               </Stack>
             )}
           </Grid>
         </Grid>
 
         {/* Table */}
-        <TableContainer>
+        <TableContainer sx={{ width: '100%', overflowX: 'auto' }}>
           <Table sx={{ minWidth: 800 }}>
             <TableHead sx={{ bgcolor: COLORS.background }}>
               <TableRow>
@@ -497,6 +523,21 @@ const UsersTable: React.FC = () => {
           <Button onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
           <Button color="error" variant="contained" onClick={handleDeleteUser} disabled={submitting}>
             Remove
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={bulkDeleteDialogOpen} onClose={() => setBulkDeleteDialogOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700 }}>Remove Selected Users</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
+            Are you sure you want to remove the {selectedUsers.length} selected users? This action cannot be undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setBulkDeleteDialogOpen(false)}>Cancel</Button>
+          <Button color="error" variant="contained" onClick={handleBulkDelete} disabled={submitting}>
+            Remove Selected
           </Button>
         </DialogActions>
       </Dialog>

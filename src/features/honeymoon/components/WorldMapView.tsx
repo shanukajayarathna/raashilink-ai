@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Box,
   Typography,
@@ -23,6 +23,21 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+
+import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
+import markerIcon from 'leaflet/dist/images/marker-icon.png';
+import markerShadow from 'leaflet/dist/images/marker-shadow.png';
+
+// Fix default marker icons when bundling with Vite/Webpack.
+delete (L.Icon.Default.prototype as any)._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: markerIcon2x,
+  iconUrl: markerIcon,
+  shadowUrl: markerShadow,
+});
 
 const COLORS = {
   primary: '#8B1A2E',
@@ -38,6 +53,10 @@ interface DestinationPin {
   id: string;
   name: string;
   country: string;
+  coordinates?: {
+    lat: number;
+    lng: number;
+  };
   x: number; // Percentage from left
   y: number; // Percentage from top
   type: 'beach' | 'nature' | 'culture';
@@ -55,63 +74,87 @@ interface WorldMapViewProps {
   destinations: DestinationPin[];
 }
 
+function MapBounds({ destinations }: { destinations: DestinationPin[] }) {
+  const map = useMap();
+
+  const bounds = useMemo(() =>
+    destinations
+      .filter((dest) => dest.coordinates?.lat != null && dest.coordinates?.lng != null)
+      .map((dest) => [dest.coordinates!.lat, dest.coordinates!.lng] as [number, number]),
+    [destinations]
+  );
+
+  if (bounds.length === 0) {
+    map.setView([7.8731, 80.7718], 7);
+  } else if (bounds.length === 1) {
+    map.setView(bounds[0], 8);
+  } else {
+    map.fitBounds(bounds, { padding: [40, 40] });
+  }
+
+  return null;
+}
+
 export default function WorldMapView({ destinations }: WorldMapViewProps) {
   const [selectedPin, setSelectedPin] = useState<DestinationPin | null>(null);
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const navigate = useNavigate();
 
-  return (
-    <Box sx={{ position: 'relative', width: '100%', height: isMobile ? 400 : 600, bgcolor: '#E3F2FD', borderRadius: 6, overflow: 'hidden', border: '8px solid white', boxShadow: '0 12px 32px rgba(0,0,0,0.05)' }}>
-      {/* Simple SVG World Map Placeholder */}
-      <svg
-        viewBox="0 0 1000 500"
-        style={{ width: '100%', height: '100%', fill: '#CFD8DC', stroke: '#FFFFFF', strokeWidth: 0.5 }}
-      >
-        {/* Simplified World Map Paths */}
-        <path d="M150,100 Q200,80 250,120 T350,150 L380,250 Q300,350 200,300 Z" fill="#B0BEC5" /> {/* N. America */}
-        <path d="M300,350 Q350,450 400,480 L450,400 Q400,300 350,320 Z" fill="#B0BEC5" /> {/* S. America */}
-        <path d="M500,150 Q550,100 650,120 T750,100 L800,200 Q700,250 600,220 Z" fill="#B0BEC5" /> {/* Eurasia */}
-        <path d="M520,250 Q580,220 650,280 T600,450 L550,400 Q500,350 520,250 Z" fill="#B0BEC5" /> {/* Africa */}
-        <path d="M800,350 Q850,320 900,380 T850,450 L800,420 Z" fill="#B0BEC5" /> {/* Australia */}
-        
-        {/* Grid Lines */}
-        <line x1="0" y1="250" x2="1000" y2="250" stroke={alpha('#FFFFFF', 0.5)} strokeDasharray="5,5" />
-      </svg>
+  const mapDestinations = destinations.filter(
+    (dest) => dest.coordinates?.lat != null && dest.coordinates?.lng != null
+  );
 
-      {/* Destination Pins */}
-      {destinations.map((pin) => (
-        <motion.div
-          key={pin.id}
-          initial={{ scale: 0, y: -20 }}
-          animate={{ scale: 1, y: 0 }}
-          transition={{ type: 'spring', damping: 12, stiffness: 200, delay: Math.random() * 0.5 }}
-          style={{
-            position: 'absolute',
-            left: `${pin.x}%`,
-            top: `${pin.y}%`,
-            transform: 'translate(-50%, -100%)',
-            zIndex: selectedPin?.id === pin.id ? 10 : 1,
-          }}
-        >
-          <Tooltip title={pin.name} arrow>
-            <IconButton
-              onClick={() => setSelectedPin(pin)}
-              sx={{
-                p: 0.5,
-                bgcolor: 'white',
-                color: PIN_COLORS[pin.type],
-                boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                border: `2px solid ${PIN_COLORS[pin.type]}`,
-                '&:hover': { transform: 'scale(1.2)', bgcolor: 'white' },
-                transition: 'transform 0.2s ease',
-              }}
-            >
-              <MapPin size={isMobile ? 16 : 24} fill={PIN_COLORS[pin.type]} />
-            </IconButton>
-          </Tooltip>
-        </motion.div>
-      ))}
+  if (!Array.isArray(destinations) || destinations.length === 0 || mapDestinations.length === 0) {
+    return (
+      <Box sx={{ width: '100%', height: isMobile ? 320 : 500, bgcolor: '#E3F2FD', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '8px solid white', boxShadow: '0 12px 32px rgba(0,0,0,0.05)' }}>
+        <Typography variant="h6" sx={{ color: COLORS.textSecondary, textAlign: 'center', px: 3 }}>
+          No locations are available on the map yet. Try a different preference or refresh the recommendations.
+        </Typography>
+      </Box>
+    );
+  }
+
+  return (
+    <Box sx={{ position: 'relative', width: '100%', height: isMobile ? 400 : 600, bgcolor: '#E3F2FD', borderRadius: 6, overflow: 'hidden', border: '8px solid white', boxShadow: '0 12px 32px rgba(0,0,0,0.05)', '& .leaflet-control-attribution': { display: 'none !important' } }}>
+      <MapContainer
+        center={[7.8731, 80.7718]}
+        zoom={7}
+        scrollWheelZoom
+        attributionControl={false}
+        style={{ width: '100%', height: '100%' }}
+      >
+        <TileLayer
+          attribution=""
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        />
+
+        <MapBounds destinations={mapDestinations} />
+
+        {mapDestinations.map((pin) => (
+          <Marker
+            key={pin.id}
+            position={[pin.coordinates!.lat, pin.coordinates!.lng]}
+            eventHandlers={{
+              click: () => setSelectedPin(pin),
+            }}
+          >
+            <Popup>
+              <Box>
+                <Typography sx={{ fontWeight: 700 }}>{pin.name}</Typography>
+                <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>{pin.country}</Typography>
+                <Button
+                  size="small"
+                  sx={{ mt: 1, textTransform: 'none' }}
+                  onClick={() => navigate(`/honeymoon/${pin.id}`)}
+                >
+                  View details
+                </Button>
+              </Box>
+            </Popup>
+          </Marker>
+        ))}
+      </MapContainer>
 
       {/* Mini Card Overlay */}
       <AnimatePresence>

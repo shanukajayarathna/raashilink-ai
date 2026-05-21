@@ -159,6 +159,11 @@ export default function WeddingDashboard() {
   const [accessNoticeTick, setAccessNoticeTick] = useState(0);
 
   const { token, user } = useSelector((state: RootState) => state.auth);
+  const isCoupleUser = user?.profileType === 'couple' || user?.userType === 'couple';
+
+  useEffect(() => {
+    if (isCoupleUser) setPlanningAccessGranted(true);
+  }, [isCoupleUser]);
 
   const fetchData = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -179,11 +184,9 @@ export default function WeddingDashboard() {
       setRawVendors(vendorList);
       setPendingInvite(pendingInviteData);
       
-      if (project) {
-        const couples = project.coupleUserIds || [];
-        const isCoupled = couples.length >= 2;
-        setPlanningAccessGranted(isCoupled);
-      }
+      const couples = project?.coupleUserIds || [];
+      const isCoupled = Array.isArray(couples) && couples.length >= 2;
+      setPlanningAccessGranted(isCoupled || isCoupleUser);
 
       setWeddingData(
         buildWeddingDashboardData(project, budgetResponse, vendorsResponse, user)

@@ -33,6 +33,7 @@ import { RootState } from '@/app/store/store';
 import { showToast } from '@/app/store/uiSlice';
 import { updateUser } from '@/features/auth/store/authSlice';
 import userService from '@/features/profile/services/userService';
+import weddingService from '@/features/wedding/services/weddingService';
 import DashboardSkeleton from '@/components/skeletons/DashboardSkeleton';
 
 const COLORS = {
@@ -144,9 +145,26 @@ export default function CoupleDashboard() {
     const fetchProfile = async () => {
       setLoading(true);
       try {
-        const response = await userService.getProfile({ includeMedia: false });
-        setProfile(response);
-        dispatch(updateUser({ profilePic: response.profilePic || null }));
+        const [response, weddingProjectRes, weddingBudgetRes] = await Promise.all([
+          userService.getProfile({ includeMedia: false }),
+          weddingService.getProject().catch(() => ({ data: null } as any)),
+          weddingService.getBudget().catch(() => ({ data: null } as any)),
+        ]);
+
+        const weddingProject = weddingProjectRes?.data;
+        const weddingBudget = weddingBudgetRes?.data;
+
+        const mergedProfile = {
+          ...response,
+          weddingProject: {
+            ...(response as any)?.weddingProject,
+            ...(weddingProject || {}),
+            budget: (weddingBudget?.totalBudget ?? (response as any)?.weddingProject?.budget) || undefined,
+          },
+        };
+
+        setProfile(mergedProfile);
+        dispatch(updateUser({ profilePic: mergedProfile.profilePic || null }));
       } catch (error) {
         console.error('Failed to load couple dashboard profile', error);
       } finally {
@@ -223,7 +241,21 @@ export default function CoupleDashboard() {
     );
   }
 
-  const partnerName = profile.weddingProject?.partnerName || 'Your Partner';
+  const currentUserId = String((user as any)?._id || (user as any)?.id || '');
+  const partnerName =
+    profile.weddingProject?.partnerName ||
+    (() => {
+      const coupleUserIds = profile.weddingProject?.coupleUserIds;
+      if (!Array.isArray(coupleUserIds)) return null;
+      const partner = coupleUserIds
+        .map((entry: any) => (typeof entry === 'object' ? entry : null))
+        .find((entry: any) => {
+          const id = String(entry?._id || entry?.id || '');
+          return id && id !== currentUserId;
+        });
+      return (partner?.firstName || partner?.name || partner?.personalInfo?.firstName || '').trim() || null;
+    })() ||
+    'Your Partner';
   const cards = [
     {
       title: 'Wedding Planning',

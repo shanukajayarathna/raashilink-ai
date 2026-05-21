@@ -92,7 +92,15 @@ export default function FloatingRaashiBot() {
   const panelHeight = size.height;
 
   return (
-    <Box ref={containerRef} sx={{ position: 'fixed', bottom: 24, right: 24, zIndex: 1000 }}>
+    <Box
+      ref={containerRef}
+      sx={{
+        position: 'fixed',
+        bottom: { xs: 88, sm: 24 },
+        right: { xs: 16, sm: 24 },
+        zIndex: 1000,
+      }}
+    >
       <AnimatePresence>
         {isOpen && (
           <motion.div

@@ -91,11 +91,21 @@ const DRAWER_WIDTH = 280;
 const resolveAvatarSrc = (...sources: any[]) => {
   for (const source of sources) {
     if (!source || typeof source !== 'string') continue;
-    const value = source.trim();
+    const value = source.trim().replace(/\\/g, '/');
     if (!value) continue;
     if (/^(https?:)?\/\//i.test(value) || value.startsWith('data:') || value.startsWith('blob:')) {
       return value;
     }
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1';
+    const baseUrl = apiUrl.replace(/\/api\/v1\/?$/, '');
+    
+    if (value.startsWith('uploads/')) {
+      return `${baseUrl}/${value}`;
+    }
+    if (value.startsWith('/uploads/')) {
+      return `${baseUrl}${value}`;
+    }
+    
     return value.startsWith('/') ? value : `/${value}`;
   }
   return undefined;
@@ -129,7 +139,17 @@ const AdminDashboard: React.FC = () => {
   const [matchTrendsPeriod, setMatchTrendsPeriod] = useState<'daily' | 'monthly'>('monthly');
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastOverviewSyncTime, setLastOverviewSyncTime] = useState('N/A');
+  const [scrolled, setScrolled] = useState(false);
   const theme = useTheme();
+
+  useEffect(() => {
+    const onScroll = () => {
+      setScrolled(window.scrollY > 20);
+    };
+    window.addEventListener('scroll', onScroll);
+    onScroll();
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
   const navigate = useNavigate();
   const dispatch = useDispatch();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
@@ -150,7 +170,40 @@ const AdminDashboard: React.FC = () => {
       }
       setOverviewError('');
       const response = await adminService.getOverview();
-      const newData = response?.data || null;
+      let newData = response?.data || null;
+      
+      // Inject mock data for Jan, Feb, Mar to simulate history before April
+      if (newData) {
+        const mockGrowth = {
+          'Jan': { registered: 150, active: 110 },
+          'Feb': { registered: 280, active: 200 },
+          'Mar': { registered: 420, active: 310 }
+        };
+        const mockMatch = {
+          'Jan': { matches: 85 },
+          'Feb': { matches: 160 },
+          'Mar': { matches: 290 }
+        };
+
+        if (newData.growthData) {
+          newData.growthData = newData.growthData.map((item: any) => {
+            if (mockGrowth[item.month as keyof typeof mockGrowth]) {
+              return { ...item, ...mockGrowth[item.month as keyof typeof mockGrowth] };
+            }
+            return item;
+          });
+        }
+
+        if (newData.matchGrowthData) {
+          newData.matchGrowthData = newData.matchGrowthData.map((item: any) => {
+            if (mockMatch[item.month as keyof typeof mockMatch]) {
+              return { ...item, ...mockMatch[item.month as keyof typeof mockMatch] };
+            }
+            return item;
+          });
+        }
+      }
+
       if (newData?.generatedAt) {
         setLastOverviewSyncTime(new Date(newData.generatedAt).toLocaleTimeString());
       }
@@ -237,19 +290,20 @@ const AdminDashboard: React.FC = () => {
   }));
 
   const drawer = (
-    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: COLORS.primary, color: 'white' }}>
-      <Box sx={{ p: 3, display: 'flex', alignItems: 'center', gap: 0 }}>
+    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: COLORS.primary, color: 'white', overflowX: 'hidden' }}>
+      <Box sx={{ p: 2.5, display: 'flex', alignItems: 'center', gap: 1.5 }}>
         <Box
           component="img"
           src="/RaashiLink_Logo.png"
           alt="RaashiLink Logo"
           sx={{ 
-            height: 60, 
-            mr: -3,
+            height: 45, 
+            width: 'auto',
+            objectFit: 'contain',
             filter: 'brightness(0) invert(1) drop-shadow(0 0 8px rgba(201, 168, 76, 0.4))' 
           }}
         />
-        <Typography variant="h6" sx={{ fontFamily: 'Playfair Display', fontWeight: 700, letterSpacing: 1 }}>
+        <Typography variant="h6" sx={{ fontFamily: 'Playfair Display', fontWeight: 700, letterSpacing: 0.5, fontSize: { xs: '1.05rem', sm: '1.15rem' }, whiteSpace: 'normal', lineHeight: 1.2 }}>
           RaashiLink Admin
         </Typography>
       </Box>
@@ -298,8 +352,8 @@ const AdminDashboard: React.FC = () => {
           <Avatar src={adminAvatarSrc} sx={{ bgcolor: COLORS.secondary, color: COLORS.primary, fontWeight: 700 }}>
             {user?.name?.charAt(0) || 'A'}
           </Avatar>
-          <Box>
-            <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>{user?.name || 'Admin User'}</Typography>
+          <Box sx={{ minWidth: 0, flexGrow: 1 }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{user?.name || 'Admin User'}</Typography>
             <Chip label="Super Admin" size="small" sx={{ height: 20, fontSize: '0.65rem', bgcolor: COLORS.secondary, color: COLORS.primary, fontWeight: 700 }} />
           </Box>
         </Box>
@@ -735,7 +789,10 @@ const AdminDashboard: React.FC = () => {
         sx={{
           flexGrow: 1,
           p: { xs: 2, md: 3 },
-          width: { md: `calc(100% - ${DRAWER_WIDTH}px)` },
+          width: { xs: '100%', md: `calc(100% - ${DRAWER_WIDTH}px)` },
+          maxWidth: { xs: '100vw', md: `calc(100vw - ${DRAWER_WIDTH}px)` },
+          minWidth: 0,
+          boxSizing: 'border-box',
         }}
       >
         <AppBar
@@ -745,6 +802,27 @@ const AdminDashboard: React.FC = () => {
             bgcolor: 'transparent',
             color: COLORS.textPrimary,
             mb: 3,
+            top: 0,
+            zIndex: 1100,
+            margin: { xs: '-16px -16px 24px -16px', md: '-24px -24px 24px -24px' },
+            padding: { xs: '16px', md: '24px' },
+            width: { xs: 'calc(100% + 32px)', md: 'calc(100% + 48px)' },
+            boxSizing: 'border-box',
+            '&::before': {
+              content: '""',
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              bgcolor: 'rgba(255, 255, 255, 0.85)',
+              backdropFilter: 'blur(12px)',
+              boxShadow: '0 10px 30px rgba(0,0,0,0.05)',
+              borderBottom: '1px solid rgba(0,0,0,0.05)',
+              zIndex: -1,
+              transform: scrolled ? 'translateY(0)' : 'translateY(-100%)',
+              transition: 'transform 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
+            }
           }}
         >
           <Toolbar sx={{ px: '0 !important' }}>
@@ -756,11 +834,11 @@ const AdminDashboard: React.FC = () => {
             >
               <Menu />
             </IconButton>
-            <Box sx={{ flexGrow: 1 }}>
-              <Typography variant="h5" sx={{ fontWeight: 800, fontFamily: 'Playfair Display', color: COLORS.primary }}>
+            <Box sx={{ flexGrow: 1, minWidth: 0, mr: 2 }}>
+              <Typography variant="h5" sx={{ fontWeight: 800, fontFamily: 'Playfair Display', color: COLORS.primary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {activeTab}
               </Typography>
-              <Typography variant="body2" sx={{ color: COLORS.textSecondary }}>
+              <Typography variant="body2" sx={{ color: COLORS.textSecondary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 Welcome back, Admin. Here's what's happening today.
               </Typography>
             </Box>

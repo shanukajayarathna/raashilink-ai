@@ -159,6 +159,7 @@ export default function VendorDetailPage() {
   const [planningAccessGranted, setPlanningAccessGranted] = useState(false);
   const [planningCheckLoading, setPlanningCheckLoading] = useState(true);
   const { user, token } = useSelector((state: RootState) => state.auth);
+  const isCoupleUser = user?.profileType === 'couple' || user?.userType === 'couple';
 
   useEffect(() => {
     const fetchVendorDetail = async () => {
@@ -186,8 +187,8 @@ export default function VendorDetailPage() {
   }, [id]);
 
   useEffect(() => {
-    const fetchPlanningAccess = async () => {
-      if (!token) {
+      const fetchPlanningAccess = async () => {
+        if (!token) {
         setPlanningAccessGranted(false);
         setPlanningCheckLoading(false);
         return;
@@ -196,9 +197,9 @@ export default function VendorDetailPage() {
         const projectResponse = await weddingService.getProject();
         const project = projectResponse?.data;
         const isCoupled = Array.isArray(project?.coupleUserIds) && project.coupleUserIds.length >= 2;
-        setPlanningAccessGranted(isCoupled);
+        setPlanningAccessGranted(isCoupled || isCoupleUser);
       } catch {
-        setPlanningAccessGranted(false);
+        setPlanningAccessGranted(isCoupleUser);
       } finally {
         setPlanningCheckLoading(false);
       }
@@ -217,7 +218,7 @@ export default function VendorDetailPage() {
         const projectResponse = await weddingService.getProject();
         const project = projectResponse?.data;
         const isCoupled = Array.isArray(project?.coupleUserIds) && project.coupleUserIds.length >= 2;
-        if (isCoupled) setPlanningAccessGranted(true);
+        if (isCoupled || isCoupleUser) setPlanningAccessGranted(true);
       } catch { /* silent */ }
     };
     const socket = connectSocket(token);

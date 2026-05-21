@@ -74,6 +74,32 @@ const DURATIONS = [
 
 const FALLBACK_DESTINATION_IMAGE = 'https://picsum.photos/seed/honeymoon-default/800/600';
 
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function getSriLankaMapPosition(coordinates: any, index: number) {
+  if (!coordinates || typeof coordinates.lat !== 'number' || typeof coordinates.lng !== 'number') {
+    return {
+      x: 18 + ((index * 17) % 62),
+      y: 22 + ((index * 11) % 46),
+    };
+  }
+
+  const minLat = 5.9;
+  const maxLat = 9.9;
+  const minLng = 79.5;
+  const maxLng = 82.0;
+
+  const normalizedX = ((coordinates.lng - minLng) / (maxLng - minLng)) * 70 + 15;
+  const normalizedY = ((maxLat - coordinates.lat) / (maxLat - minLat)) * 70 + 15;
+
+  return {
+    x: clamp(normalizedX, 10, 90),
+    y: clamp(normalizedY, 10, 90),
+  };
+}
+
 function mapDestinationType(activityTags: string[] = []): 'beach' | 'nature' | 'culture' {
   if (activityTags.some((tag) => /beach|island|sea|surf|swim/i.test(tag))) return 'beach';
   if (activityTags.some((tag) => /mountain|nature|forest|wildlife|hike|adventure/i.test(tag))) return 'nature';
@@ -86,6 +112,7 @@ function mapDestinationCard(destination: any, index: number) {
   const type = mapDestinationType(activityTags);
   const priceRange = destination?.priceRangeLKR || { min: 150000, max: 300000 };
   const avgPrice = Math.floor((priceRange.min + priceRange.max) / 2);
+  const { x, y } = getSriLankaMapPosition(destination?.coordinates, index);
 
   return {
     id: String(destination?._id || destination?.id || index + 1),
@@ -104,8 +131,9 @@ function mapDestinationCard(destination: any, index: number) {
     highlights: highlights.slice(0, 4).map((label: string) => ({ icon: 'Sparkles', label })),
     contactPhone: destination?.contactPhone || '',
     contactEmail: destination?.contactEmail || '',
-    x: 18 + ((index * 17) % 62),
-    y: 22 + ((index * 11) % 46),
+    x,
+    y,
+    coordinates: destination?.coordinates,
     type,
   };
 }
@@ -125,7 +153,8 @@ export default function HoneymoonDestinations() {
   const [planningCheckLoading, setPlanningCheckLoading] = useState(true);
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
-  const { token } = useSelector((state: RootState) => state.auth);
+  const { token, user } = useSelector((state: RootState) => state.auth);
+  const isCoupleUser = user?.profileType === 'couple' || user?.userType === 'couple';
 
   useEffect(() => {
     const fetchPlanningAccess = async () => {
@@ -138,9 +167,9 @@ export default function HoneymoonDestinations() {
         const projectResponse = await weddingService.getProject();
         const project = projectResponse?.data;
         const isCoupled = Array.isArray(project?.coupleUserIds) && project.coupleUserIds.length >= 2;
-        setPlanningAccessGranted(isCoupled);
+        setPlanningAccessGranted(isCoupled || isCoupleUser);
       } catch {
-        setPlanningAccessGranted(false);
+        setPlanningAccessGranted(isCoupleUser);
       } finally {
         setPlanningCheckLoading(false);
       }
@@ -163,7 +192,7 @@ export default function HoneymoonDestinations() {
         const projectResponse = await weddingService.getProject();
         const project = projectResponse?.data;
         const isCoupled = Array.isArray(project?.coupleUserIds) && project.coupleUserIds.length >= 2;
-        if (isCoupled) setPlanningAccessGranted(true);
+        if (isCoupled || isCoupleUser) setPlanningAccessGranted(true);
       } catch { /* silent */ }
     };
     const socket = connectSocket(token);
@@ -453,5 +482,4 @@ export default function HoneymoonDestinations() {
     </Box>
   );
 }
-
 

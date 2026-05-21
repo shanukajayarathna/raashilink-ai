@@ -9,6 +9,7 @@ import {
   Tab, 
   IconButton, 
   Avatar, 
+  Drawer,
   Menu, 
   MenuItem, 
   Divider,
@@ -39,10 +40,12 @@ import {
   User,
   CheckCircle2,
   Clock,
+  BookOpen,
   Star,
   Eye,
   TrendingUp,
-  Briefcase
+  Briefcase,
+  Menu as MenuIcon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useDispatch, useSelector } from 'react-redux';
@@ -137,6 +140,7 @@ export default function VendorPortal() {
   const [vendorData, setVendorData] = useState<any>(null);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [notifAnchorEl, setNotifAnchorEl] = useState<null | HTMLElement>(null);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [quoteNotifications, setQuoteNotifications] = useState<AppNotification[]>([]);
   const [verifyDialog, setVerifyDialog] = useState<{ open: boolean; channel: 'email' | 'phone' | null }>({
     open: false,
@@ -500,6 +504,7 @@ export default function VendorPortal() {
     { label: 'Portfolio', icon: <ImageIcon size={20} /> },
     { label: 'Profile', icon: <User size={20} /> },
     { label: 'Analytics', icon: <BarChart3 size={20} /> },
+    { label: 'Resources', icon: <BookOpen size={20} /> },
   ];
 
   return (
@@ -528,9 +533,9 @@ export default function VendorPortal() {
               src="/RaashiLink_Logo.png"
               alt="RaashiLink Logo"
               sx={{
-                width: 60,
-                height: 60,
-                mr: -2.5,
+                width: 72,
+                height: 72,
+                mr: -1,
                 objectFit: 'contain',
                 filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.1))'
               }}
@@ -618,7 +623,7 @@ export default function VendorPortal() {
         {/* Header */}
         <Box
           sx={{
-            height: 70,
+            height: { xs: 80, md: 70 },
             bgcolor: 'white',
             borderBottom: '1px solid rgba(139,26,46,0.08)',
             display: 'flex',
@@ -630,9 +635,35 @@ export default function VendorPortal() {
             zIndex: 1100
           }}
         >
-          <Typography variant="h6" sx={{ fontWeight: 600, color: COLORS.textPrimary }}>
-            {tabs[activeTab].label}
-          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1, sm: 1.5 }, minWidth: 0 }}>
+            {isMobile && (
+              <IconButton
+                size="small"
+                onClick={() => setMobileNavOpen(true)}
+                sx={{ p: 1, bgcolor: 'rgba(0,0,0,0.04)', mr: 1 }}
+              >
+                <MenuIcon size={20} />
+              </IconButton>
+            )}
+            {isMobile && (
+              <Box
+                component="img"
+                src="/RaashiLink_Logo.png"
+                alt="RaashiLink Logo"
+                sx={{ 
+                  width: 48, 
+                  height: 48, 
+                  objectFit: 'contain', 
+                  flexShrink: 0,
+                  filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.1))',
+                  mr: -1
+                }}
+              />
+            )}
+            <Typography variant="h6" sx={{ fontWeight: 600, color: COLORS.textPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {tabs[activeTab].label}
+            </Typography>
+          </Box>
 
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
             <Tooltip title="Quote Notifications">
@@ -683,16 +714,91 @@ export default function VendorPortal() {
           </Box>
         </Box>
 
+        {/* Mobile Drawer Navigation */}
+        {isMobile && (
+          <Drawer
+            anchor="left"
+            open={mobileNavOpen}
+            onClose={() => setMobileNavOpen(false)}
+            PaperProps={{ sx: { width: 280, bgcolor: COLORS.background } }}
+          >
+            <Box sx={{ p: 2.5, display: 'flex', alignItems: 'center', gap: 1.25, borderBottom: '1px solid rgba(0,0,0,0.05)', bgcolor: 'white' }}>
+              <Box component="img" src="/RaashiLink_Logo.png" alt="RaashiLink Logo" sx={{ width: 56, height: 56, objectFit: 'contain', filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.1))' }} />
+              <Box sx={{ minWidth: 0 }}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 800, color: COLORS.primary, lineHeight: 1.1 }}>
+                  Vendor Menu
+                </Typography>
+                <Typography variant="caption" color="textSecondary">
+                  {vendorData?.businessName || 'Vendor'}
+                </Typography>
+              </Box>
+            </Box>
+
+            <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 1 }}>
+              {tabs.map((tab, index) => (
+                <Button
+                  key={tab.label}
+                  fullWidth
+                  onClick={() => { setActiveTab(index); setMobileNavOpen(false); }}
+                  startIcon={tab.icon}
+                  sx={{
+                    justifyContent: 'flex-start',
+                    px: 2,
+                    py: 1.25,
+                    borderRadius: '12px',
+                    color: activeTab === index ? COLORS.primary : COLORS.textSecondary,
+                    bgcolor: activeTab === index ? `${COLORS.primary}10` : 'transparent',
+                    fontWeight: activeTab === index ? 700 : 600,
+                    textTransform: 'none',
+                  }}
+                >
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%' }}>
+                    <span>{tab.label}</span>
+                    {index === 1 && unreadQuoteCount > 0 && (
+                      <Chip
+                        label={unreadQuoteCount > 99 ? '99+' : unreadQuoteCount}
+                        size="small"
+                        sx={{ ml: 'auto', height: 18, fontSize: '0.65rem', fontWeight: 800, bgcolor: 'error.main', color: 'white' }}
+                      />
+                    )}
+                  </Box>
+                </Button>
+              ))}
+            </Box>
+
+            <Box sx={{ mt: 'auto', p: 2 }}>
+              <Divider sx={{ mb: 1.5 }} />
+              <Button
+                fullWidth
+                onClick={() => { setMobileNavOpen(false); handleLogout(); }}
+                startIcon={<LogOut size={20} />}
+                sx={{
+                  justifyContent: 'flex-start',
+                  px: 2,
+                  py: 1.25,
+                  borderRadius: '12px',
+                  color: '#d32f2f',
+                  fontWeight: 700,
+                  textTransform: 'none',
+                  '&:hover': { bgcolor: 'rgba(211, 47, 47, 0.06)' },
+                }}
+              >
+                Logout
+              </Button>
+            </Box>
+          </Drawer>
+        )}
+
         {/* Content */}
-        <Box sx={{ flex: 1, overflowY: 'auto', p: { xs: 2, md: 4 } }}>
+        <Box sx={{ flex: 1, overflowY: 'auto', p: { xs: 2, md: 4 }, pb: { xs: 12, md: 4 } }}>
           <Box sx={{ maxWidth: '1400px', mx: 'auto' }}>
             <AnimatePresence mode="wait">
               <motion.div
                 key={activeTab}
-                initial={{ opacity: 0, y: 10 }}
+                initial={{ opacity: 0, y: isMobile ? 0 : 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={{ duration: 0.2 }}
+                exit={{ opacity: 0, y: isMobile ? 0 : -10 }}
+                transition={{ duration: isMobile ? 0 : 0.2 }}
               >
                 {activeTab === 0 && (
                   <DashboardOverview
@@ -706,6 +812,7 @@ export default function VendorPortal() {
                       setOtpValue('');
                     }}
                     busyChannel={busyChannel}
+                    onViewResources={() => setActiveTab(7)}
                   />
                 )}
                 {activeTab === 1 && <QuoteInbox />}
@@ -748,6 +855,21 @@ export default function VendorPortal() {
                     quoteItems={vendorData.quoteItems || []}
                     vendorProfile={vendorData.vendorProfile || null}
                   />
+                )}
+                {activeTab === 7 && (
+                  <Paper elevation={0} sx={{ p: 3, borderRadius: '16px', border: '1px solid rgba(139,26,46,0.08)' }}>
+                    <Typography variant="h5" sx={{ fontWeight: 700, mb: 1, color: COLORS.primary }}>
+                      Resources
+                    </Typography>
+                    <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
+                      Helpful quick guides for managing quotes, availability, and your portfolio.
+                    </Typography>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                      <Typography variant="body2">• How to respond to quotes faster</Typography>
+                      <Typography variant="body2">• Keeping your availability calendar updated</Typography>
+                      <Typography variant="body2">• Portfolio checklist for better conversions</Typography>
+                    </Box>
+                  </Paper>
                 )}
               </motion.div>
             </AnimatePresence>
@@ -921,6 +1043,7 @@ export const DashboardOverview = ({
   onRequestOtp,
   onOpenVerify,
   busyChannel,
+  onViewResources,
 }: any) => {
   if (!stats) return (
     <Grid container spacing={3}>
@@ -1073,6 +1196,7 @@ export const DashboardOverview = ({
               </Typography>
               <Button 
                 variant="contained" 
+                onClick={onViewResources}
                 sx={{ 
                   mt: 2, 
                   bgcolor: COLORS.secondary, 
@@ -1090,4 +1214,3 @@ export const DashboardOverview = ({
     </Box>
   );
 };
-

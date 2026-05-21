@@ -1380,20 +1380,23 @@ export default function UserDashboard() {
             <Typography variant="h4" sx={{ fontFamily: 'Playfair Display', fontWeight: 700, color: COLORS.primary, wordWrap: 'break-word', overflowWrap: 'break-word', whiteSpace: 'normal' }}>
               {getGreeting()}, {data.summary.name} ✨
             </Typography>
-            <Stack direction="row" spacing={1} alignItems="center" sx={{ flexWrap: 'wrap', gap: 1.5 }}>
-              <Typography variant="body1" sx={{ color: COLORS.textSecondary, fontSize: '1.05rem', fontWeight: 500, whiteSpace: 'nowrap' }}>
-                {getGregorianDate()} ·{' '}
-                <Box component="span" sx={{ fontFamily: 'monospace', fontVariantNumeric: 'tabular-nums', display: 'inline-block', minWidth: '7.5ch' }}>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} useFlexGap flexWrap="wrap" sx={{ width: '100%', minWidth: 0, gap: 1.5, alignItems: { xs: 'stretch', sm: 'center' } }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0.75, px: 1.25, py: 0.75, width: { xs: '100%', sm: 'auto' }, maxWidth: '100%', minWidth: 0, boxSizing: 'border-box', overflow: 'hidden', borderRadius: { xs: '16px', sm: '999px' }, bgcolor: alpha(COLORS.accent, 0.1), border: `1px solid ${alpha(COLORS.accent, 0.15)}` }}>
+                <CalendarMonth sx={{ fontSize: 16, color: COLORS.accent }} />
+                <Typography variant="body1" sx={{ color: COLORS.textSecondary, fontSize: '1.05rem', fontWeight: 500, overflowWrap: 'anywhere', minWidth: 0, flex: '1 1 auto' }}>
+                  {getGregorianDate()} ·
+                </Typography>
+                <Box component="span" sx={{ fontFamily: 'monospace', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', display: 'inline-block', flexBasis: { xs: '100%', sm: 'auto' } }}>
                   {getLiveTimeString()}
-                </Box>{' '}|
-              </Typography>
-              <Chip 
-                label={`${data.summary.nakshatra} Nakshatra`} 
-                sx={{ bgcolor: COLORS.secondary, color: COLORS.primary, fontWeight: 700, height: 32, fontSize: '0.95rem' }} 
+                </Box>
+              </Box>
+              <Chip
+                label={`${data.summary.nakshatra} Nakshatra`}
+                sx={{ bgcolor: COLORS.secondary, color: COLORS.primary, fontWeight: 700, maxWidth: '100%', height: 'auto', '& .MuiChip-label': { whiteSpace: 'normal', lineHeight: 1.2, py: 0.5, overflowWrap: 'anywhere' } }}
               />
               <Chip
                 label={`Gana: ${data.summary.gana}`}
-                sx={{ bgcolor: alpha(COLORS.accent, 0.12), color: COLORS.accent, fontWeight: 800, height: 32, fontSize: '0.95rem' }}
+                sx={{ bgcolor: alpha(COLORS.accent, 0.12), color: COLORS.accent, fontWeight: 800, maxWidth: '100%', height: 'auto', '& .MuiChip-label': { whiteSpace: 'normal', lineHeight: 1.2, py: 0.5, overflowWrap: 'anywhere' } }}
               />
               <Chip
                 label={`ලග්නය (Ascendant): ${
@@ -1405,16 +1408,20 @@ export default function UserDashboard() {
                   bgcolor: alpha(COLORS.primary, 0.08),
                   color: COLORS.primary,
                   fontWeight: 800,
-                  height: 32,
-                  fontSize: '0.95rem',
+                  maxWidth: '100%',
+                  height: 'auto',
                   '& .MuiChip-label': {
                     fontFamily: '"Noto Sans Sinhala", "Iskoola Pota", "Segoe UI", sans-serif',
+                    whiteSpace: 'normal',
+                    lineHeight: 1.2,
+                    py: 0.5,
+                    overflowWrap: 'anywhere',
                   },
                 }}
               />
-              <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 1, bgcolor: alpha(COLORS.accent, 0.06), px: 2, py: 1, borderRadius: '12px', border: `1px solid ${alpha(COLORS.accent, 0.15)}` }}>
+              <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 1, bgcolor: alpha(COLORS.accent, 0.06), px: 2, py: 1, borderRadius: '12px', border: `1px solid ${alpha(COLORS.accent, 0.15)}`, width: { xs: '100%', sm: 'auto' }, maxWidth: '100%', boxSizing: 'border-box' }}>
                 <AccessTime sx={{ color: COLORS.accent, fontSize: 18 }} />
-                <Typography variant="body2" sx={{ color: COLORS.accent, fontWeight: 700, fontSize: '0.95rem' }}>
+                <Typography variant="body2" sx={{ color: COLORS.accent, fontWeight: 700, fontSize: '0.95rem', overflowWrap: 'anywhere' }}>
                   Today's Focus: {data.summary.auspiciousTime}
                 </Typography>
               </Box>

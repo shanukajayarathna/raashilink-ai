@@ -34,15 +34,16 @@ export default function DestinationMapView({
   height = 520,
 }: DestinationMapViewProps) {
   return (
-    <Box sx={{ borderRadius: 3, overflow: 'hidden', border: '1px solid rgba(0,0,0,0.12)' }}>
+    <Box sx={{ borderRadius: 3, overflow: 'hidden', border: '1px solid rgba(0,0,0,0.12)', '& .leaflet-control-attribution': { display: 'none !important' } }}>
       <MapContainer
         center={[latitude, longitude]}
         zoom={11}
         scrollWheelZoom
+        attributionControl={false}
         style={{ height: typeof height === 'number' ? `${height}px` : height, width: '100%' }}
       >
         <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+          attribution=""
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
         <Marker position={[latitude, longitude]}>
