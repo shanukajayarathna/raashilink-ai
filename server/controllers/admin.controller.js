@@ -758,6 +758,7 @@ export const getAnalytics = asyncHandler(async (req, res) => {
     allMatches,
     allUsers,
     vendorCategoryCounts,
+    partnerHoroscopeCompatibility,
   ] = await Promise.all([
     Match.find({}).select('compatibilityScore').lean(),
     User.find({ role: 'user' }).select('personalInfo.location createdAt verification').lean(),
@@ -765,6 +766,54 @@ export const getAnalytics = asyncHandler(async (req, res) => {
       { $group: { _id: '$category', quotes: { $sum: 1 } } },
       { $project: { _id: 0, name: '$_id', quotes: 1 } },
       { $sort: { quotes: -1 } },
+    ]),
+    Match.aggregate([
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'userAId',
+          foreignField: '_id',
+          as: 'userA',
+        },
+      },
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'userBId',
+          foreignField: '_id',
+          as: 'userB',
+        },
+      },
+      { $unwind: '$userA' },
+      { $unwind: '$userB' },
+      {
+        $match: {
+          'userA.role': 'user',
+          'userA.userType': 'partner',
+          'userB.role': 'user',
+          'userB.userType': 'partner',
+          'dimensionScores.astro': { $type: 'number' },
+        },
+      },
+      {
+        $group: {
+          _id: {
+            $cond: [
+              { $gte: ['$dimensionScores.astro', 55] },
+              'Compatible',
+              'Not Compatible',
+            ],
+          },
+          value: { $sum: 1 },
+        },
+      },
+      {
+        $project: {
+          _id: 0,
+          name: '$_id',
+          value: 1,
+        },
+      },
     ]),
   ]);
 
@@ -784,6 +833,20 @@ export const getAnalytics = asyncHandler(async (req, res) => {
     else if (score >= 20) compatibilityDistribution[3].count += 1;
     else compatibilityDistribution[4].count += 1;
   });
+
+  const horoscopeCompatibilityBuckets = {
+    Compatible: 0,
+    'Not Compatible': 0,
+  };
+
+  partnerHoroscopeCompatibility.forEach((item) => {
+    if (Object.prototype.hasOwnProperty.call(horoscopeCompatibilityBuckets, item.name)) {
+      horoscopeCompatibilityBuckets[item.name] = Number(item.value || 0);
+    }
+  });
+
+  const horoscopeCompatibilityDistribution = Object.entries(horoscopeCompatibilityBuckets)
+    .map(([name, value]) => ({ name, value }));
 
   const provinceBuckets = {
     Western: 0,
@@ -932,6 +995,7 @@ export const getAnalytics = asyncHandler(async (req, res) => {
       matches: totalMatches,
       projects: totalProjects,
       compatibilityDistribution,
+      horoscopeCompatibilityDistribution,
       provinceDistribution,
       vendorCategoryDistribution: vendorCategoryCounts,
       retentionFunnel,

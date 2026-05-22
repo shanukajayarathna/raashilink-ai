@@ -74,6 +74,7 @@ const PLANET_FRIENDSHIPS = {
 
 function nakIdx(n) { return NAKSHATRAS.indexOf(String(n || '').trim()); }
 function rashiIdx(r) { return RASHIS.indexOf(String(r || '').trim()); }
+function valueOrPending(value) { return value || 'Pending'; }
 
 function scoreVarna(nak1, nak2) {
   const i1 = nakIdx(nak1); const i2 = nakIdx(nak2);
@@ -150,6 +151,77 @@ function scoreNadi(nak1, nak2) {
   return NADI_GROUPS[i1] === NADI_GROUPS[i2] ? 0 : 8;
 }
 
+function taraName(fromIndex, toIndex) {
+  if (fromIndex === -1 || toIndex === -1) return 'Pending';
+  const names = ['Janma', 'Sampat', 'Vipat', 'Kshema', 'Pratyak', 'Sadhana', 'Naidhana', 'Mitra', 'Parama Mitra'];
+  return names[((toIndex - fromIndex + 27) % 27) % 9] || 'Pending';
+}
+
+function planetRelation(lord1, lord2) {
+  if (!lord1 || !lord2) return 'Pending';
+  if (lord1 === lord2) return 'same lord';
+  if (PLANET_FRIENDSHIPS[lord1]?.friends.includes(lord2)) return 'friend';
+  if (PLANET_FRIENDSHIPS[lord1]?.neutrals.includes(lord2)) return 'neutral';
+  return 'enemy';
+}
+
+function bhakootDistance(fromIndex, toIndex) {
+  if (fromIndex === -1 || toIndex === -1) return 'Pending';
+  return String(((toIndex - fromIndex + 12) % 12) + 1);
+}
+
+export function getGunaMilanFactorDetails(nakshatra1, rashi1, nakshatra2, rashi2, subScores = {}) {
+  const n1 = nakIdx(nakshatra1);
+  const n2 = nakIdx(nakshatra2);
+  const r1 = rashiIdx(rashi1);
+  const r2 = rashiIdx(rashi2);
+  const lord1 = r1 === -1 ? null : RASHI_LORDS[r1];
+  const lord2 = r2 === -1 ? null : RASHI_LORDS[r2];
+
+  return {
+    varna: {
+      userAValue: valueOrPending(VARNA_GROUPS[n1]),
+      userBValue: valueOrPending(VARNA_GROUPS[n2]),
+      matched: Number(subScores.varna) === 1,
+    },
+    vashya: {
+      userAValue: valueOrPending(VASHYA_GROUPS[r1]),
+      userBValue: valueOrPending(VASHYA_GROUPS[r2]),
+      matched: Number(subScores.vashya) === 2,
+    },
+    tara: {
+      userAValue: taraName(n1, n2),
+      userBValue: taraName(n2, n1),
+      matched: Number(subScores.tara) === 3,
+    },
+    yoni: {
+      userAValue: valueOrPending(YONI_ANIMALS[n1]),
+      userBValue: valueOrPending(YONI_ANIMALS[n2]),
+      matched: Number(subScores.yoni) === 4,
+    },
+    grahaMaitri: {
+      userAValue: lord1 ? `${lord1} (${planetRelation(lord1, lord2)})` : 'Pending',
+      userBValue: lord2 ? `${lord2} (${planetRelation(lord2, lord1)})` : 'Pending',
+      matched: Number(subScores.grahaMaitri) === 5,
+    },
+    gana: {
+      userAValue: valueOrPending(GANA_GROUPS[n1]),
+      userBValue: valueOrPending(GANA_GROUPS[n2]),
+      matched: Number(subScores.gana) === 6,
+    },
+    bhakoot: {
+      userAValue: `${valueOrPending(rashi1)} -> ${valueOrPending(rashi2)} (${bhakootDistance(r1, r2)})`,
+      userBValue: `${valueOrPending(rashi2)} -> ${valueOrPending(rashi1)} (${bhakootDistance(r2, r1)})`,
+      matched: Number(subScores.bhakoot) === 7,
+    },
+    nadi: {
+      userAValue: valueOrPending(NADI_GROUPS[n1]),
+      userBValue: valueOrPending(NADI_GROUPS[n2]),
+      matched: Number(subScores.nadi) === 8,
+    },
+  };
+}
+
 /**
  * Calculate Ashtakoota Guna Milan and return a 0-100 astroScore.
  * @param {string} nakshatra1 - Nakshatra of user A
@@ -172,5 +244,10 @@ export function calculateGunaMilan(nakshatra1, rashi1, nakshatra2, rashi2) {
   const gunaTotal = Object.values(subScores).reduce((s, v) => s + v, 0);
   // Normalize to 0-100 (same formula as Python engine)
   const astroScore = Number(((gunaTotal / 36) * 100).toFixed(2));
-  return { gunaTotal, astroScore, subScores };
+  return {
+    gunaTotal,
+    astroScore,
+    subScores,
+    factorDetails: getGunaMilanFactorDetails(nakshatra1, rashi1, nakshatra2, rashi2, subScores),
+  };
 }

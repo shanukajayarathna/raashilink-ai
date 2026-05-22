@@ -70,13 +70,47 @@ function formatLanguageInstruction(language) {
   }
 }
 
+function formatLanguageInstructionClean(language) {
+  switch (language) {
+    case 'si':
+      return 'Sinhala. Write the entire response in Sinhala Unicode script only. Do not use English letters, Singlish, or transliterated Sinhala.';
+    case 'ta':
+      return 'Tamil. Write the entire response in Tamil Unicode script only. Do not use English letters, Tanglish, or transliterated Tamil.';
+    default:
+      return 'English. Write the entire response in professional, clear English.';
+  }
+}
+
 function getUserFirstName(user) {
   return String(user?.personalInfo?.firstName || user?.firstName || 'User').trim() || 'User';
 }
 
+function formatDateDDMMYYYY(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return [
+    String(date.getDate()).padStart(2, '0'),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    date.getFullYear(),
+  ].join('/');
+}
+
+function joinList(value) {
+  return Array.isArray(value) && value.length ? value.filter(Boolean).join(', ') : 'Not specified';
+}
+
+function resolveUserTypeLabel(user) {
+  if (user?.role === 'vendor') return 'Vendor';
+  if (user?.role === 'admin') return 'Admin';
+  if (user?.userType === 'horoscope_seeker') return 'Horoscope seeker';
+  if (user?.userType === 'couple' || user?.weddingProject?.partnerName) return 'Couple / wedding planning user';
+  return 'Partner seeker';
+}
+
 function buildProfileSummary(user) {
   const profileName = `${getUserFirstName(user)} ${user.personalInfo?.lastName || user?.lastName || ''}`.trim();
-  const role = user.role === 'vendor' ? 'Vendor' : user.weddingProject?.partnerName ? 'Couple' : 'Partner';
+  const role = resolveUserTypeLabel(user);
   const age = user.personalInfo?.age || 'Not specified';
   const gender = user.personalInfo?.gender || 'Not specified';
   const location = user.personalInfo?.location || 'Sri Lanka';
@@ -87,24 +121,27 @@ function buildProfileSummary(user) {
   const religion = user.lifestyle?.religion || 'Not specified';
   const diet = user.lifestyle?.diet || 'Not specified';
   const familyStyle = user.lifestyle?.familyValues != null ? `${Math.round(user.lifestyle.familyValues * 100)}% family-oriented` : 'Not specified';
-  const hobbies = Array.isArray(user.lifestyle?.hobbies) ? user.lifestyle.hobbies.join(', ') : 'Not specified';
-  const languages = Array.isArray(user.lifestyle?.languages) ? user.lifestyle.languages.join(', ') : 'Not specified';
+  const hobbies = joinList(user.lifestyle?.hobbies);
+  const languages = joinList(user.lifestyle?.languages);
 
   const preferences = user.preferences || {};
   const seekingGender = user.personalInfo?.seekingGender || 'Not specified';
   const prefAgeMin = preferences.ageRange?.min || 'Not specified';
   const prefAgeMax = preferences.ageRange?.max || 'Not specified';
-  const prefLocations = Array.isArray(preferences.preferredLocations) ? preferences.preferredLocations.join(', ') : 'Not specified';
+  const prefLocations = joinList(preferences.preferredLocations);
+  const prefReligions = joinList(preferences.preferredReligions);
+  const acceptableSigns = joinList(preferences.acceptableZodiacSigns);
 
   const wp = user.weddingProject || {};
   const wpPartnerName = wp.partnerName || null;
-  const wpDate = wp.weddingDate ? new Date(wp.weddingDate).toISOString().slice(0, 10) : null;
+  const wpDate = formatDateDDMMYYYY(wp.weddingDate);
   const wpBudget = wp.budget || null;
   const wpStatus = wp.status || null;
+  const vendor = user.vendorProfile || {};
 
   const lines = [
     `Name: ${profileName}`,
-    `Role: ${role}`,
+    `Account type: ${role}`,
     `Age: ${age}`,
     `Gender: ${gender}`,
     `Marital Status: ${maritalStatus}`,
@@ -119,6 +156,8 @@ function buildProfileSummary(user) {
     `Seeking Partner Gender: ${seekingGender}`,
     `Partner Age Preference: ${prefAgeMin} to ${prefAgeMax}`,
     `Partner Location Preference: ${prefLocations}`,
+    `Partner Religion Preference: ${prefReligions}`,
+    `Preferred Zodiac Signs: ${acceptableSigns}`,
   ];
 
   if (wpPartnerName || wpDate || wpBudget) {
@@ -126,6 +165,14 @@ function buildProfileSummary(user) {
     lines.push(`Wedding Date: ${wpDate || 'Not specified'}`);
     lines.push(`Wedding Budget: ${wpBudget || 'Not specified'}`);
     lines.push(`Wedding Planning Status: ${wpStatus || 'Not specified'}`);
+  }
+
+  if (user.role === 'vendor' || vendor.businessName || vendor.businessCategory) {
+    lines.push(`Vendor Business: ${vendor.businessName || 'Not specified'}`);
+    lines.push(`Vendor Category: ${vendor.businessCategory || 'Not specified'}`);
+    lines.push(`Vendor Verification: ${vendor.verificationStatus || 'Not specified'}`);
+    lines.push(`Vendor Rating: ${vendor.rating != null ? `${vendor.rating}/5 (${vendor.reviewsCount || 0} reviews)` : 'Not specified'}`);
+    lines.push(`Vendor Packages: ${joinList(vendor.packageSummary)}`);
   }
 
   if (horoscopeSummary) {
@@ -148,9 +195,18 @@ function buildHoroscopeSummary(user) {
   const karana = h.karana || null;
   const paksha = h.paksha || null;
   const ayanamsa = h.ayanamsa || null;
+  const gana = h.gana || null;
+  const rajju = h.rajju || null;
+  const nadi = h.nadi || null;
+  const yoni = h.yoni || null;
+  const manglik = h.manglik?.label || (h.manglik?.present != null ? (h.manglik.present ? 'Present' : 'Not present') : null);
+  const chartGrade = h.chartGrade?.label || h.chartGrade || null;
+  const luckyColors = joinList(h.luckyColors);
+  const auspiciousDays = joinList(h.auspiciousDays);
+  const profileFacts = joinList(h.profileFacts);
 
   const dob = birth?.dateOfBirth ? new Date(birth.dateOfBirth) : null;
-  const dobISO = dob && !Number.isNaN(dob.getTime()) ? dob.toISOString().slice(0, 10) : null;
+  const dobDisplay = dob && !Number.isNaN(dob.getTime()) ? formatDateDDMMYYYY(dob) : null;
   const tob = birth?.timeOfBirth || null;
   const knownBirthTime = birth?.knownBirthTime === false ? false : true;
   const pob = birth?.placeOfBirth;
@@ -167,11 +223,20 @@ function buildHoroscopeSummary(user) {
     .join(', ');
 
   const lines = [
-    dobISO ? `Birth: ${dobISO}${tob ? ` ${tob}` : ''}${knownBirthTime ? '' : ' (time unknown/approx)'}` : null,
+    dobDisplay ? `Birth: ${dobDisplay}${tob ? ` ${tob}` : ''}${knownBirthTime ? '' : ' (time unknown/approx)'}` : null,
     pobSummary ? `Place: ${pobSummary}` : null,
     moonSign ? `Moon sign (Rashi): ${moonSign}` : null,
     nakshatra ? `Nakshatra: ${nakshatra}${pada ? ` (Pada ${pada})` : ''}` : null,
+    gana ? `Gana: ${gana}` : null,
+    rajju ? `Rajju: ${rajju}` : null,
+    nadi ? `Nadi: ${nadi}` : null,
+    yoni ? `Yoni: ${yoni}` : null,
     asc ? `Ascendant (Lagna): ${asc}` : null,
+    manglik ? `Manglik: ${manglik}` : null,
+    chartGrade ? `Chart grade: ${chartGrade}` : null,
+    luckyColors !== 'Not specified' ? `Lucky colors: ${luckyColors}` : null,
+    auspiciousDays !== 'Not specified' ? `Auspicious days: ${auspiciousDays}` : null,
+    profileFacts !== 'Not specified' ? `Profile facts: ${profileFacts}` : null,
     tithi ? `Tithi: ${tithi}` : null,
     paksha ? `Paksha: ${paksha}` : null,
     yoga ? `Yoga: ${yoga}` : null,
@@ -208,7 +273,7 @@ function buildSystemPrompt(user, language) {
 
   return `You are RaashiBot, the AI assistant for RaashiLink.AI. Answer the user with kindness, cultural sensitivity, and relevance to Sri Lankan context.
 ${scopeLine}
-Always honor the user's selected language instruction: ${formatLanguageInstruction(language)}.
+Always honor the user's selected language instruction: ${formatLanguageInstructionClean(language)}.
 Always address the user by their first name in every reply, naturally and respectfully. Do NOT append any familial terms, honorifics, or informal suffixes (such as "අයියා", "මල්ලි", "අක්කා", "නංගි", "Aiya", "Malli", "Akka", "Nangi", "brother", "sister" etc.) to the user's name under any circumstances. Always use their clean first name only. User first name: ${firstName}.
 
 Topic Guardrails:
@@ -232,7 +297,7 @@ ${profileSummary}
 ${localDateTimeStr}
 ${realtimeSnapshotText}
 
-Reply strictly following these language rules: ${formatLanguageInstruction(language)} and keep your answer concise, helpful, and friendly.`;
+Reply strictly following these language rules: ${formatLanguageInstructionClean(language)} and keep your answer concise, helpful, and friendly.`;
 }
 
 function buildUserPrompt(message, language) {
@@ -241,6 +306,17 @@ function buildUserPrompt(message, language) {
       ? 'Please answer in Sinhala using Sinhala script characters (සිංහල අකුරු). Do not use English letters.'
       : language === 'ta'
       ? 'Please answer in Tamil using Tamil script characters. Do not use English letters.'
+      : 'Please answer in English.';
+
+  return `${localPrefix}\n\nUser asked: ${message}`;
+}
+
+function buildUserPromptClean(message, language) {
+  const localPrefix =
+    language === 'si'
+      ? 'Please answer in Sinhala script only. Do not use English letters.'
+      : language === 'ta'
+      ? 'Please answer in Tamil script only. Do not use English letters.'
       : 'Please answer in English.';
 
   return `${localPrefix}\n\nUser asked: ${message}`;
@@ -268,7 +344,7 @@ function buildGeminiTranscript(systemPrompt, history = [], userMessage = '', lan
     .join('\n');
 
   const base = systemPrompt || SYSTEM_PROMPTS[language] || SYSTEM_PROMPTS.en;
-  const userPrompt = buildUserPrompt(userMessage, language);
+  const userPrompt = buildUserPromptClean(userMessage, language);
   return `${base}\n\nConversation history:\n${renderedHistory}\n\nUser: ${userPrompt}\nAssistant:`;
 }
 
@@ -284,7 +360,7 @@ async function generateGroqReply({ user, message, language, history = [] }) {
       role: item.role === 'assistant' || item.role === 'model' || item.role === 'bot' ? 'assistant' : 'user',
       content: item.content,
     })),
-    { role: 'user', content: buildUserPrompt(message, language) },
+    { role: 'user', content: buildUserPromptClean(message, language) },
   ];
 
   let text = '';
@@ -400,9 +476,33 @@ function fallbackReply(user, language) {
   return `Hello ${name}! I'm ready to help using your horoscope profile. Your Moon sign is ${sign}. Ask your personal life question (timing, career, relationships, routines, remedies).`;
 }
 
+function fallbackReplyClean(user, language) {
+  const name = getUserFirstName(user);
+  const sign = user?.horoscopeData?.moonSign || user?.horoscopeData?.rashi || user?.horoscopeData?.zodiacSign || 'not generated yet';
+  const nakshatra = user?.horoscopeData?.nakshatra;
+  const ascendant = user?.horoscopeData?.ascendant;
+  const userType = resolveUserTypeLabel(user);
+  const hasBirth =
+    !!(user?.birthData?.dateOfBirth && user?.birthData?.placeOfBirth?.city && user?.birthData?.placeOfBirth?.country);
+
+  if (language === 'si') {
+    return `${name}, මට ඔබගේ RaashiLink පැතිකඩ අනුව උදව් කළ හැකියි. ඔබගේ චන්ද්‍ර රාශිය ${sign}${nakshatra ? `, නැකත ${nakshatra}` : ''}${ascendant ? `, ලග්නය ${ascendant}` : ''} ලෙස පෙනේ. දැන් AI සේවාව සීමිත නිසා කෙටි මාර්ගෝපදේශයක් පමණක් දෙන්නම්: ජාතකය, ගැළපීම, සම්බන්ධතා, විවාහ සැලසුම්, හෝ සුබ වේලාවන් ගැන නිශ්චිත ප්‍රශ්නයක් අසන්න.`;
+  }
+
+  if (language === 'ta') {
+    return `${name}, உங்கள் RaashiLink சுயவிவரத்தின் அடிப்படையில் உதவ முடியும். உங்கள் சந்திர ராசி ${sign}${nakshatra ? `, நட்சத்திரம் ${nakshatra}` : ''}${ascendant ? `, லக்னம் ${ascendant}` : ''} என தெரிகிறது. தற்போது AI சேவை வரம்பில் இருப்பதால் சுருக்கமான வழிகாட்டுதலாக சொல்கிறேன்: ஜாதகம், பொருத்தம், உறவு, திருமண திட்டமிடல், அல்லது சுப நேரம் பற்றி குறிப்பிட்ட கேள்வியை கேளுங்கள்.`;
+  }
+
+  if (!hasBirth) {
+    return `Hello ${name}. I can help with astrology, matchmaking, and wedding planning, but your birth details look incomplete. I can still give general guidance for your ${userType.toLowerCase()} profile. For precise horoscope advice, please add birth date, birth time or mark it unknown, and birth place.`;
+  }
+
+  return `Hello ${name}. I can answer using your ${userType.toLowerCase()} profile. Your Moon sign is ${sign}${nakshatra ? ` and Nakshatra is ${nakshatra}` : ''}${ascendant ? `, with ${ascendant} ascendant` : ''}. Ask about horoscope timing, compatibility, partner traits, wedding planning, remedies, or auspicious dates.`;
+}
+
 export async function generateAssistantReply({ user, message, language = 'en', history = [] }) {
   try {
-    const maybeLocal = buildLocalHoroscopeAnswer({ user, message, language });
+    const maybeLocal = buildLocalHoroscopeAnswerClean({ user, message, language });
     if (maybeLocal) return maybeLocal;
 
     // Ordered list of providers to try: Gemini then Groq
@@ -431,10 +531,10 @@ export async function generateAssistantReply({ user, message, language = 'en', h
       }
     }
 
-    return fallbackReply(user, language);
+    return fallbackReplyClean(user, language);
   } catch (error) {
     logger.error('Critical failure in generateAssistantReply', { error: error.message });
-    return fallbackReply(user, language);
+    return fallbackReplyClean(user, language);
   }
 }
 
@@ -442,6 +542,11 @@ function setSseHeaders(res) {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
+}
+
+function writeSseChunk(res, text) {
+  const encoded = String(text ?? '').replace(/\\/g, '\\\\').replace(/\r?\n/g, '\\n');
+  res.write(`data: ${encoded}\n\n`);
 }
 
 function isPartnerSuitabilityQuestion(text = '') {
@@ -487,6 +592,26 @@ function buildLocalHoroscopeAnswer({ user, message, language }) {
   return parts.join(' ');
 }
 
+function buildLocalHoroscopeAnswerClean({ user, message, language }) {
+  if (!isPartnerSuitabilityQuestion(message)) return '';
+
+  const name = getUserFirstName(user);
+  const moonSign = user?.horoscopeData?.moonSign || user?.horoscopeData?.rashi || null;
+  const nakshatra = user?.horoscopeData?.nakshatra || null;
+  const ascendant = user?.horoscopeData?.ascendant || null;
+  const gana = user?.horoscopeData?.gana || null;
+
+  if (language === 'si') {
+    return `${name}, ඔබට ගැළපෙන සහකරු ගැන කෙටිව කිවහොත්: ${moonSign ? `ඔබගේ චන්ද්‍ර රාශිය ${moonSign}` : 'ඔබගේ චන්ද්‍ර රාශිය තවම පැහැදිලි නැහැ'}${nakshatra ? `, නැකත ${nakshatra}` : ''}${ascendant ? `, ලග්නය ${ascendant}` : ''}${gana ? `, ගණය ${gana}` : ''} ලෙස පෙනේ. ඔබට වගකීමක් ඇති, විවෘතව කතා කරන, පවුලේ වටිනාකම් ගරු කරන, සහ ඔබගේ ජීවන ඉලක්ක සමඟ යන කෙනෙකු වඩා සුදුසුයි. නිශ්චිත ගැළපීම සඳහා අනෙක් පුද්ගලයාගේ උපන් දිනය, වේලාව සහ ස්ථානය සමඟ compatibility check එකක් කරන්න.`;
+  }
+
+  if (language === 'ta') {
+    return `${name}, உங்களுக்கு பொருந்தக்கூடிய துணை பற்றி சுருக்கமாக: ${moonSign ? `உங்கள் சந்திர ராசி ${moonSign}` : 'உங்கள் சந்திர ராசி இன்னும் தெளிவாக இல்லை'}${nakshatra ? `, நட்சத்திரம் ${nakshatra}` : ''}${ascendant ? `, லக்னம் ${ascendant}` : ''}${gana ? `, கணம் ${gana}` : ''} என தெரிகிறது. பொறுப்புணர்வு, திறந்த தொடர்பு, குடும்ப மதிப்புகளுக்கு மரியாதை, மற்றும் உங்கள் வாழ்க்கை இலக்குகளுடன் பொருந்தும் ஒருவர் உங்களுக்கு நல்லதாக இருக்கும். துல்லியமான பொருத்தத்திற்கு மற்றவரின் பிறந்த தேதி, நேரம், இடம் கொண்டு compatibility check செய்யவும்.`;
+  }
+
+  return `Hello ${name}. Based on your available profile${moonSign ? `, Moon sign ${moonSign}` : ''}${nakshatra ? `, Nakshatra ${nakshatra}` : ''}${ascendant ? `, and ${ascendant} ascendant` : ''}, you are likely to do best with a partner who is emotionally steady, direct in communication, respectful of family values, and aligned with your long-term lifestyle goals. For a precise compatibility reading, compare the other person's birth date, time, and place through the compatibility check.`;
+}
+
 async function streamGeminiChat(systemPrompt, history, userMessage, language = 'en', res) {
   const client = getGeminiClient();
   if (!client) {
@@ -513,7 +638,7 @@ async function streamGeminiChat(systemPrompt, history, userMessage, language = '
         '';
 
       if (content) {
-        res.write(`data: ${content}\n\n`);
+        writeSseChunk(res, content);
       }
     }
 
@@ -557,7 +682,7 @@ async function streamChatWithFallback({ user, history, userMessage, language, re
           if (fullText) {
             const chunkSize = 700;
             for (let i = 0; i < fullText.length; i += chunkSize) {
-              res.write(`data: ${fullText.slice(i, i + chunkSize)}\n\n`);
+            writeSseChunk(res, fullText.slice(i, i + chunkSize));
             }
           }
           res.write('data: [DONE]\n\n');
@@ -584,7 +709,7 @@ async function streamChatWithFallback({ user, history, userMessage, language, re
 
         for await (const chunk of stream) {
           const content = chunk.choices[0]?.delta?.content;
-          if (content) res.write(`data: ${content}\n\n`);
+          if (content) writeSseChunk(res, content);
         }
 
         res.write('data: [DONE]\n\n');
@@ -604,17 +729,17 @@ async function streamChatWithFallback({ user, history, userMessage, language, re
 
   if (!res.headersSent) {
     setSseHeaders(res);
-    res.write(`data: ${fallbackReply(user, language)}\n\n`);
+    writeSseChunk(res, fallbackReplyClean(user, language));
     res.write('data: [DONE]\n\n');
     res.end();
   }
 }
 
 export async function streamChat({ user, history, userMessage, language = 'en', res }) {
-  const maybeLocal = buildLocalHoroscopeAnswer({ user, message: userMessage, language });
+  const maybeLocal = buildLocalHoroscopeAnswerClean({ user, message: userMessage, language });
   if (maybeLocal) {
     setSseHeaders(res);
-    res.write(`data: ${maybeLocal}\n\n`);
+    writeSseChunk(res, maybeLocal);
     res.write('data: [DONE]\n\n');
     res.end();
     return;

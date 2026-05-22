@@ -153,7 +153,7 @@ function AppShell() {
               <Route path="/profile" element={<ProtectedRoute><UserProfile /></ProtectedRoute>} />
               <Route path="/profile/edit" element={<ProtectedRoute><EditProfile /></ProtectedRoute>} />
               <Route path="/edit-profile" element={<Navigate to="/profile/edit" replace />} />
-              <Route path="/settings" element={<Navigate to="/profile" replace />} />
+              <Route path="/settings" element={<Navigate to="/profile/edit" replace />} />
               <Route path="/vendors" element={<NonHoroscopeSeekerRoute><VendorMarketplace /></NonHoroscopeSeekerRoute>} />
               <Route path="/vendors/:id" element={<NonHoroscopeSeekerRoute><VendorDetailPage /></NonHoroscopeSeekerRoute>} />
             </Route>

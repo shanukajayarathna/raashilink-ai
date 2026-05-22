@@ -1428,7 +1428,7 @@ export default function UserDashboard() {
             </Stack>
           </MotionBox>
           <IconButton 
-            onClick={() => navigate('/profile?edit=true')}
+            onClick={() => navigate('/profile/edit')}
             sx={{ bgcolor: COLORS.white, boxShadow: '0 4px 12px rgba(0,0,0,0.05)', flexShrink: 0, '&:hover': { bgcolor: alpha(COLORS.secondary, 0.08) } }}
           >
             <Settings sx={{ color: COLORS.primary }} />
@@ -1458,7 +1458,7 @@ export default function UserDashboard() {
           <ProfileCompletionRing
             percentage={data.summary.profileCompletion}
             missingItems={data.summary.missingItems}
-            onNavigate={(tab, path) => path ? navigate(path) : navigate(`/profile?tab=${tab}&edit=true`)}
+            onNavigate={(_tab, path) => path ? navigate(path) : navigate('/profile/edit')}
           />
         </Grid>
         <Grid size={{ xs: 12, md: 4 }}>

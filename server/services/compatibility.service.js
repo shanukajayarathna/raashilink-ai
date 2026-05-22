@@ -9,13 +9,13 @@ import redisClient from '../lib/redis.js';
 import ApiError from '../utils/ApiError.js';
 import logger from '../utils/logger.js';
 import { resolvePythonCommand } from '../utils/pythonRuntime.js';
-import { calculateGunaMilan } from '../utils/gunaMilan.js';
+import { calculateGunaMilan, getGunaMilanFactorDetails } from '../utils/gunaMilan.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const SCORER_PATH = path.resolve(__dirname, '../python/compatibility/scorer.py');
 const CACHE_TTL_SECONDS = 60 * 60 * 24;
-const COMPATIBILITY_VERSION = 4;
+const COMPATIBILITY_VERSION = 8;
 const MANGLIK_HOUSES = new Set([1, 2, 4, 7, 8, 12]);
 
 export function buildCacheKey(userAId, userBId) {
@@ -187,6 +187,25 @@ function calculatePoruthamScore(userA, userB, astroSubScores = {}) {
   return {
     score: poruthamScore,
     components,
+  };
+}
+
+function buildAstroCalculation({
+  gunaTotal,
+  baseAstroScore,
+  poruthamScore = null,
+  manglikDeduction = 0,
+  finalAstroScore,
+}) {
+  return {
+    ashtakootaTotal: Number.isFinite(Number(gunaTotal)) ? Number(Number(gunaTotal).toFixed(2)) : null,
+    ashtakootaMax: 36,
+    ashtakootaScore: Number(Number(baseAstroScore || 0).toFixed(2)),
+    poruthamScore,
+    manglikDeduction,
+    finalAstroScore: Number(Number(finalAstroScore || 0).toFixed(2)),
+    weightedPoints: Math.round(Number(finalAstroScore || 0) * 0.4),
+    maxWeightedPoints: 40,
   };
 }
 
@@ -399,6 +418,8 @@ export async function calculateCompatibility({ userAId, userBId, fastMode = fals
     'horoscopeData.ascendant',
     'horoscopeData.gana',
     'horoscopeData.rajju',
+    'horoscopeData.nadi',
+    'horoscopeData.yoni',
     'horoscopeData.planetaryPositions',
     'personality.openness',
     'personality.conscientiousness',
@@ -429,19 +450,19 @@ export async function calculateCompatibility({ userAId, userBId, fastMode = fals
     throw new ApiError(404, 'One or both users were not found');
   }
 
-  const userAHoroscope = userA.horoscope || (userA.birthData ? {
-    dateOfBirth: userA.birthData.dateOfBirth,
-    timeOfBirth: userA.birthData.timeOfBirth || '12:00',
-    placeOfBirth: userA.birthData.placeOfBirth,
+  const userAHoroscope = userA.horoscope || (userA.horoscopeData?.nakshatra || userA.horoscopeData?.rashi || userA.horoscopeData?.moonSign ? {
+    dateOfBirth: userA.birthData?.dateOfBirth,
+    timeOfBirth: userA.birthData?.timeOfBirth || '12:00',
+    placeOfBirth: userA.birthData?.placeOfBirth,
     nakshatra: userA.horoscopeData?.nakshatra,
     rashi: userA.horoscopeData?.rashi,
     moonSign: userA.horoscopeData?.moonSign,
   } : null);
 
-  const userBHoroscope = userB.horoscope || (userB.birthData ? {
-    dateOfBirth: userB.birthData.dateOfBirth,
-    timeOfBirth: userB.birthData.timeOfBirth || '12:00',
-    placeOfBirth: userB.birthData.placeOfBirth,
+  const userBHoroscope = userB.horoscope || (userB.horoscopeData?.nakshatra || userB.horoscopeData?.rashi || userB.horoscopeData?.moonSign ? {
+    dateOfBirth: userB.birthData?.dateOfBirth,
+    timeOfBirth: userB.birthData?.timeOfBirth || '12:00',
+    placeOfBirth: userB.birthData?.placeOfBirth,
     nakshatra: userB.horoscopeData?.nakshatra,
     rashi: userB.horoscopeData?.rashi,
     moonSign: userB.horoscopeData?.moonSign,
@@ -450,6 +471,17 @@ export async function calculateCompatibility({ userAId, userBId, fastMode = fals
   let astroScore = 50;
   let astroResponse = { totalScore: 18, subScores: {} };
   let astroNotes = [];
+  let gunaFactorDetails = {};
+  let astroCalculation = {
+    ashtakootaTotal: null,
+    ashtakootaMax: 36,
+    ashtakootaScore: 50,
+    poruthamScore: null,
+    manglikDeduction: 0,
+    finalAstroScore: 50,
+    weightedPoints: 20,
+    maxWeightedPoints: 40,
+  };
   const manglikA = deriveManglikStatus(userA);
   const manglikB = deriveManglikStatus(userB);
 
@@ -467,16 +499,30 @@ export async function calculateCompatibility({ userAId, userBId, fastMode = fals
         userB: userBHoroscope,
       });
 
-      const baseAstroScore = normalizeScore(astroResponseRaw.gunaTotal ?? astroResponseRaw.totalScore ?? 18, 36);
+      const gunaTotal = Number(astroResponseRaw.gunaTotal ?? astroResponseRaw.totalScore ?? 18);
+      const baseAstroScore = normalizeScore(gunaTotal, 36);
       astroResponse = {
         ...astroResponseRaw,
         subScores: astroResponseRaw.gunaDetails ?? astroResponseRaw.subScores ?? {},
       };
+      gunaFactorDetails = getGunaMilanFactorDetails(
+        userAHoroscope.nakshatra,
+        userAHoroscope.rashi || userAHoroscope.moonSign,
+        userBHoroscope.nakshatra,
+        userBHoroscope.rashi || userBHoroscope.moonSign,
+        astroResponse.subScores
+      );
 
       const poruthamResult = calculatePoruthamScore(userA, userB, astroResponse.subScores);
       astroScore = poruthamResult
         ? Number((baseAstroScore * 0.8 + poruthamResult.score * 0.2).toFixed(2))
         : baseAstroScore;
+      astroCalculation = buildAstroCalculation({
+        gunaTotal,
+        baseAstroScore,
+        poruthamScore: poruthamResult?.score ?? null,
+        finalAstroScore: astroScore,
+      });
 
       if (poruthamResult) {
         astroResponse.poruthamScore = poruthamResult.score;
@@ -485,6 +531,9 @@ export async function calculateCompatibility({ userAId, userBId, fastMode = fals
 
       if (manglikA.value != null && manglikB.value != null && manglikA.value !== manglikB.value) {
         astroScore = Math.max(0, Number((astroScore - 8).toFixed(2)));
+        astroCalculation.manglikDeduction = 8;
+        astroCalculation.finalAstroScore = astroScore;
+        astroCalculation.weightedPoints = Math.round(astroScore * 0.4);
         astroNotes.push('Manglik mismatch detected, lowering astrological compatibility.');
       }
     } catch (error) {
@@ -493,8 +542,47 @@ export async function calculateCompatibility({ userAId, userBId, fastMode = fals
         userBId: String(userBId),
         message: error.message,
       });
-      astroNotes.push('Astrological engine unavailable, using baseline score.');
-      astroScore = 50;
+      const fallbackGuna = userAHoroscope.nakshatra && (userAHoroscope.rashi || userAHoroscope.moonSign) && userBHoroscope.nakshatra && (userBHoroscope.rashi || userBHoroscope.moonSign)
+        ? calculateGunaMilan(
+            userAHoroscope.nakshatra,
+            userAHoroscope.rashi || userAHoroscope.moonSign,
+            userBHoroscope.nakshatra,
+            userBHoroscope.rashi || userBHoroscope.moonSign
+          )
+        : null;
+
+      if (fallbackGuna) {
+        const poruthamResult = calculatePoruthamScore(userA, userB, fallbackGuna.subScores);
+        const baseAstroScore = fallbackGuna.astroScore;
+        astroScore = poruthamResult
+          ? Number((baseAstroScore * 0.8 + poruthamResult.score * 0.2).toFixed(2))
+          : baseAstroScore;
+        astroResponse = {
+          totalScore: fallbackGuna.gunaTotal,
+          subScores: fallbackGuna.subScores,
+          poruthamScore: poruthamResult?.score,
+          poruthamComponents: poruthamResult?.components ?? [],
+        };
+        gunaFactorDetails = fallbackGuna.factorDetails;
+        astroCalculation = buildAstroCalculation({
+          gunaTotal: fallbackGuna.gunaTotal,
+          baseAstroScore,
+          poruthamScore: poruthamResult?.score ?? null,
+          finalAstroScore: astroScore,
+        });
+        if (manglikA.value != null && manglikB.value != null && manglikA.value !== manglikB.value) {
+          astroScore = Math.max(0, Number((astroScore - 8).toFixed(2)));
+          astroCalculation.manglikDeduction = 8;
+          astroCalculation.finalAstroScore = astroScore;
+          astroCalculation.weightedPoints = Math.round(astroScore * 0.4);
+        }
+        astroNotes.push('Python astrological engine unavailable, using JS Guna Milan fallback.');
+      } else {
+        astroNotes.push('Astrological engine unavailable, using baseline score.');
+        astroScore = 50;
+        astroCalculation.finalAstroScore = 50;
+        astroCalculation.weightedPoints = 20;
+      }
     }
   } else {
     if (!userAHoroscope && !userBHoroscope) {
@@ -545,6 +633,8 @@ export async function calculateCompatibility({ userAId, userBId, fastMode = fals
     explanation,
     bandLabel,
     astroBreakdown: astroResponse.subScores,
+    astroFactorDetails: gunaFactorDetails,
+    astroCalculation,
     userAInsights: {
       gana: userA.horoscopeData?.gana || userA.horoscope?.gana || null,
       manglik: manglikA.label,
@@ -597,6 +687,7 @@ export function calculateCompatibilityFromData(userA, userB) {
   if (manglikA.value != null && manglikB.value != null && manglikA.value !== manglikB.value) {
     astroScore = Math.max(0, Number((astroScore - 8).toFixed(2)));
   }
+  const manglikDeduction = manglikA.value != null && manglikB.value != null && manglikA.value !== manglikB.value ? 8 : 0;
 
   const overallScore = Number(
     (astroScore * 0.4 + personalityScore * 0.25 + lifestyleScore * 0.2 + familyScore * 0.15).toFixed(2)
@@ -614,6 +705,17 @@ export function calculateCompatibilityFromData(userA, userB) {
       ...(gunaResult?.subScores ?? {}),
       poruthamScore: poruthamResult?.score,
       poruthamComponents: poruthamResult?.components ?? [],
+    },
+    astroFactorDetails: gunaResult?.factorDetails ?? {},
+    astroCalculation: {
+      ashtakootaTotal: gunaResult?.gunaTotal ?? null,
+      ashtakootaMax: 36,
+      ashtakootaScore: Number(baseAstroScore.toFixed(2)),
+      poruthamScore: poruthamResult?.score ?? null,
+      manglikDeduction,
+      finalAstroScore: astroScore,
+      weightedPoints: Math.round(astroScore * 0.4),
+      maxWeightedPoints: 40,
     },
     astroNotes: [],
     calculationVersion: COMPATIBILITY_VERSION,
@@ -741,6 +843,9 @@ export async function calculateFullCompatibility(userAId, userBId) {
           lifestyle: result.lifestyleScore,
           family: result.familyScore,
         },
+        astroBreakdown: result.astroBreakdown || {},
+        astroFactorDetails: result.astroFactorDetails || {},
+        astroCalculation: result.astroCalculation || null,
         explanation: result.explanation,
       },
     },

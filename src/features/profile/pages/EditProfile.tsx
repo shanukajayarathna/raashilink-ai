@@ -50,7 +50,7 @@ import { useNavigate } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
 import { RootState } from '@/app/store/store';
 import { logout, updateUser } from '@/features/auth/store/authSlice';
-import { motion } from 'motion/react';
+import { motion } from 'framer-motion';
 import userService from '../services/userService';
 import { buildEditProfileFormData, buildProfileUpdatePayload } from '../utils/profileData';
 
@@ -64,7 +64,7 @@ const COLORS = {
   textSecondary: '#555555',
 };
 
-const MotionPaper = motion(Paper);
+const MotionPaper = motion.create(Paper);
 const SRI_LANKAN_RELIGIONS = ['Buddhist', 'Hindu', 'Muslim', 'Christian', 'Catholic', 'Other'];
 const SRI_LANKAN_ETHNICITIES = [
   'Sinhalese',
@@ -1144,5 +1144,4 @@ export default function EditProfile() {
     </Container>
   );
 }
-
 

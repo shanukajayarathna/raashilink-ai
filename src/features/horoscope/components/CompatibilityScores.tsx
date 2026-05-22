@@ -47,6 +47,9 @@ interface SubScore {
   max: number;
   status: 'success' | 'warning' | 'error';
   description?: string;
+  userAValue?: string | null;
+  userBValue?: string | null;
+  matched?: boolean;
 }
 
 interface Dimension {
@@ -57,6 +60,16 @@ interface Dimension {
   max: number;
   explanation: string;
   subScores?: SubScore[];
+  calculation?: {
+    ashtakootaTotal?: number | null;
+    ashtakootaMax?: number;
+    ashtakootaScore?: number;
+    poruthamScore?: number | null;
+    manglikDeduction?: number;
+    finalAstroScore?: number;
+    weightedPoints?: number;
+    maxWeightedPoints?: number;
+  } | null;
 }
 
 interface CompatibilityScoresProps {
@@ -71,6 +84,7 @@ const PORUTHAM_MEANINGS: Record<string, string> = {
   Rajju: 'Marriage stability and long-term protection.',
   Nadi: 'Health, vitality, and progeny compatibility.',
   Yoni: 'Instinctive, emotional, and physical compatibility.',
+  Gana: 'Nature and behavioural compatibility.',
 };
 
 const ASTRO_FACTOR_MEANINGS: Record<string, string> = {
@@ -82,6 +96,17 @@ const ASTRO_FACTOR_MEANINGS: Record<string, string> = {
   gana: 'Nature and behavioural compatibility.',
   bhakoot: 'Emotional bonding and family prosperity.',
   nadi: 'Health, energy flow, and progeny suitability.',
+};
+
+const ASTRO_FACTOR_LABELS: Record<string, string> = {
+  varna: 'Varna',
+  vashya: 'Vashya',
+  tara: 'Tara',
+  yoni: 'Yoni',
+  grahaMaitri: 'Graha Maitri',
+  gana: 'Gana',
+  bhakoot: 'Bhakoot',
+  nadi: 'Nadi',
 };
 
 const CompatibilityScores: React.FC<CompatibilityScoresProps> = ({ overallScore, dimensions, userA, userB, explanation }) => {
@@ -99,6 +124,12 @@ const CompatibilityScores: React.FC<CompatibilityScoresProps> = ({ overallScore,
     if (score >= 60) return { label: 'GOOD COMPATIBILITY', color: COLORS.secondary };
     if (score >= 40) return { label: 'MODERATE COMPATIBILITY', color: COLORS.warning };
     return { label: 'LOW COMPATIBILITY', color: COLORS.error };
+  };
+
+  const formatNumber = (value: number | null | undefined, decimals = 1) => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return 'Pending';
+    return Number.isInteger(numeric) ? String(numeric) : numeric.toFixed(decimals);
   };
 
   const badge = getStatusBadge(overallScore);
@@ -234,7 +265,7 @@ const CompatibilityScores: React.FC<CompatibilityScoresProps> = ({ overallScore,
           <Typography variant="subtitle2" sx={{ fontWeight: 800, color: COLORS.primary, mb: 1.5 }}>
             Porutham Comparison (Both Sides)
           </Typography>
-          <Grid container spacing={1.25} sx={{ width: '100%', minWidth: 0 }}>
+          <Grid container spacing={1.25} alignItems="stretch" sx={{ width: '100%', minWidth: 0 }}>
             {[
               {
                 label: 'Rajju',
@@ -254,26 +285,46 @@ const CompatibilityScores: React.FC<CompatibilityScoresProps> = ({ overallScore,
                 right: userB.yoni || 'Pending',
                 cautionOnSame: false,
               },
+              {
+                label: 'Gana',
+                left: userA.gana || 'Pending',
+                right: userB.gana || 'Pending',
+                cautionOnSame: false,
+              },
             ].map((row) => {
               const same = row.left !== 'Pending' && row.right !== 'Pending' && row.left === row.right;
               const caution = row.cautionOnSame && same;
               return (
-                <Grid size={{ xs: 12, sm: 4 }} key={row.label}>
-                  <Box sx={{ p: { xs: 1.25, md: 1.5 }, borderRadius: '12px', bgcolor: caution ? `${COLORS.error}10` : `${COLORS.accent}10`, border: '1px solid', borderColor: caution ? `${COLORS.error}66` : `${COLORS.accent}44`, width: '100%', minWidth: 0 }}>
+                <Grid size={{ xs: 12, sm: 6, md: 3 }} key={row.label} sx={{ display: 'flex', minWidth: 0 }}>
+                  <Box sx={{
+                    p: { xs: 1.25, md: 1.5 },
+                    borderRadius: '12px',
+                    bgcolor: caution ? `${COLORS.error}10` : `${COLORS.accent}10`,
+                    border: '1px solid',
+                    borderColor: caution ? `${COLORS.error}66` : `${COLORS.accent}44`,
+                    width: '100%',
+                    minWidth: 0,
+                    minHeight: { xs: 0, sm: 160, md: 176 },
+                    display: 'flex',
+                    flexDirection: 'column',
+                    boxSizing: 'border-box',
+                  }}>
                     <Typography variant="caption" sx={{ display: 'block', fontWeight: 800, color: caution ? COLORS.error : COLORS.accent, mb: 0.5 }}>
                       {row.label.toUpperCase()}
                     </Typography>
-                    <Typography variant="body2" sx={{ fontWeight: 700, color: COLORS.textPrimary, wordBreak: 'break-word' }}>
-                      {userA.name}: <Box component="span" sx={{ color: COLORS.primary }}>{row.left}</Box>
-                    </Typography>
-                    <Typography variant="body2" sx={{ fontWeight: 700, color: COLORS.textPrimary, wordBreak: 'break-word' }}>
-                      {userB.name}: <Box component="span" sx={{ color: COLORS.primary }}>{row.right}</Box>
-                    </Typography>
-                    <Typography variant="caption" sx={{ display: 'block', mt: 0.75, color: COLORS.textSecondary, lineHeight: 1.35 }}>
-                      {PORUTHAM_MEANINGS[row.label]}
-                    </Typography>
-                    <Typography variant="caption" sx={{ color: caution ? COLORS.error : COLORS.textSecondary, fontWeight: caution ? 700 : 400 }}>
-                      {caution ? '⚠ Same value — traditional caution' : 'Compared in overall astrological score'}
+                    <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+                      <Typography variant="body2" sx={{ fontWeight: 700, color: COLORS.textPrimary, overflowWrap: 'anywhere', lineHeight: 1.35 }}>
+                        {userA.name}: <Box component="span" sx={{ color: COLORS.primary }}>{row.left}</Box>
+                      </Typography>
+                      <Typography variant="body2" sx={{ fontWeight: 700, color: COLORS.textPrimary, overflowWrap: 'anywhere', lineHeight: 1.35 }}>
+                        {userB.name}: <Box component="span" sx={{ color: COLORS.primary }}>{row.right}</Box>
+                      </Typography>
+                      <Typography variant="caption" sx={{ display: 'block', mt: 0.75, color: COLORS.textSecondary, lineHeight: 1.35, overflowWrap: 'anywhere' }}>
+                        {PORUTHAM_MEANINGS[row.label]}
+                      </Typography>
+                    </Box>
+                    <Typography variant="caption" sx={{ display: 'block', mt: 1, color: caution ? COLORS.error : COLORS.textSecondary, fontWeight: caution || same ? 700 : 400, lineHeight: 1.3, overflowWrap: 'anywhere' }}>
+                      {caution ? 'Same value - traditional caution' : same ? 'Matching Porutham value' : 'Compared in overall astrological score'}
                     </Typography>
                   </Box>
                 </Grid>
@@ -378,8 +429,58 @@ const CompatibilityScores: React.FC<CompatibilityScoresProps> = ({ overallScore,
                           {dim.score}/{dim.max} points for astrological compatibility
                         </Typography>
                         <Typography variant="caption" sx={{ display: 'block', color: COLORS.textSecondary, lineHeight: 1.5 }}>
-                          This combines Ashtakoota factors such as Varna, Vashya, Tara, Yoni, Graha Maitri, Gana, Bhakoot, and Nadi, plus Porutham checks for Rajju, Nadi, Yoni, and Gana. Manglik mismatch can reduce this astrological score further.
+                          Real Ashtakoota factor values are shown below for both charts, with the matching status and scored points for each koota. Manglik mismatch can reduce the final astrological score further.
                         </Typography>
+                        {(() => {
+                          const calculation = dim.calculation;
+                          const ashtakootaTotal = calculation?.ashtakootaTotal ?? dim.subScores?.reduce((sum, item) => sum + Number(item.score || 0), 0) ?? null;
+                          const ashtakootaMax = calculation?.ashtakootaMax ?? 36;
+                          const ashtakootaScore = calculation?.ashtakootaScore ?? (ashtakootaTotal != null ? (Number(ashtakootaTotal) / ashtakootaMax) * 100 : null);
+                          const poruthamScore = calculation?.poruthamScore;
+                          const manglikDeduction = calculation?.manglikDeduction ?? 0;
+                          const finalAstroScore = calculation?.finalAstroScore ?? (dim.max > 0 ? (dim.score / dim.max) * 100 : null);
+                          const weightedPoints = calculation?.weightedPoints ?? dim.score;
+                          const maxWeightedPoints = calculation?.maxWeightedPoints ?? dim.max;
+
+                          return (
+                            <Box sx={{ mt: 2, display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' }, gap: 1 }}>
+                              {[
+                                {
+                                  label: 'Ashtakoota',
+                                  value: `${formatNumber(ashtakootaTotal)}/${ashtakootaMax}`,
+                                  note: `Normalized to ${formatNumber(ashtakootaScore)}%`,
+                                },
+                                {
+                                  label: 'Porutham blend',
+                                  value: poruthamScore == null ? 'Not applied' : `${formatNumber(poruthamScore)}%`,
+                                  note: poruthamScore == null ? 'Using Ashtakoota score directly' : '80% Ashtakoota + 20% Porutham',
+                                },
+                                {
+                                  label: 'Manglik',
+                                  value: manglikDeduction > 0 ? `-${formatNumber(manglikDeduction)}%` : 'No deduction',
+                                  note: manglikDeduction > 0 ? 'Mismatch adjustment applied' : 'No mismatch adjustment',
+                                },
+                                {
+                                  label: 'Final points',
+                                  value: `${formatNumber(weightedPoints, 0)}/${maxWeightedPoints}`,
+                                  note: `${formatNumber(finalAstroScore)}% x ${maxWeightedPoints} points`,
+                                },
+                              ].map((item) => (
+                                <Box key={item.label} sx={{ p: 1.25, borderRadius: '10px', bgcolor: COLORS.background, minWidth: 0 }}>
+                                  <Typography variant="caption" sx={{ display: 'block', color: COLORS.textSecondary, fontWeight: 800, lineHeight: 1.2 }}>
+                                    {item.label}
+                                  </Typography>
+                                  <Typography variant="body2" sx={{ color: COLORS.primary, fontWeight: 900, lineHeight: 1.3, overflowWrap: 'anywhere' }}>
+                                    {item.value}
+                                  </Typography>
+                                  <Typography variant="caption" sx={{ display: 'block', color: COLORS.textSecondary, lineHeight: 1.25, overflowWrap: 'anywhere' }}>
+                                    {item.note}
+                                  </Typography>
+                                </Box>
+                              ))}
+                            </Box>
+                          );
+                        })()}
                       </Paper>
                     </Box>
                   )}
@@ -387,14 +488,39 @@ const CompatibilityScores: React.FC<CompatibilityScoresProps> = ({ overallScore,
                   {dim.subScores && (
                     <Grid container spacing={2}>
                       {dim.subScores.map((sub, sIdx) => (
-                        <Grid size={{ xs: 6, sm: 4, md: 3 }} key={sIdx}>
-                          <Box sx={{ p: 2, border: '1px solid', borderColor: COLORS.background, borderRadius: '12px', textAlign: 'center', height: '100%' }}>
-                            <Typography variant="caption" sx={{ display: 'block', color: COLORS.textSecondary, fontWeight: 700, mb: 0.5 }}>
-                              {sub.name}
-                            </Typography>
-                            <Typography variant="body2" sx={{ fontWeight: 800, color: COLORS.primary }}>
+                        <Grid size={{ xs: 12, sm: 6, md: 3 }} key={sIdx}>
+                          <Box sx={{ p: 2, border: '1px solid', borderColor: COLORS.background, borderRadius: '12px', textAlign: 'left', height: '100%' }}>
+                            <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
+                              <Typography variant="caption" sx={{ display: 'block', color: COLORS.textSecondary, fontWeight: 800 }}>
+                                {ASTRO_FACTOR_LABELS[sub.name] || sub.name}
+                              </Typography>
+                              {dim.id === 'astro' && (
+                                <Chip
+                                  size="small"
+                                  label={sub.matched ? 'Match' : Number(sub.score) > 0 ? 'Partial' : 'No match'}
+                                  sx={{
+                                    height: 20,
+                                    fontSize: '10px',
+                                    fontWeight: 800,
+                                    bgcolor: sub.matched ? `${COLORS.success}16` : Number(sub.score) > 0 ? `${COLORS.warning}18` : `${COLORS.error}12`,
+                                    color: sub.matched ? COLORS.success : Number(sub.score) > 0 ? COLORS.warning : COLORS.error,
+                                  }}
+                                />
+                              )}
+                            </Stack>
+                            <Typography variant="body2" sx={{ fontWeight: 800, color: COLORS.primary, mb: 1 }}>
                               {sub.score}/{sub.max} {sub.score === sub.max && <CheckCircle sx={{ fontSize: 12, color: COLORS.success, ml: 0.5 }} />}
                             </Typography>
+                            {dim.id === 'astro' && (sub.userAValue || sub.userBValue) && (
+                              <Box sx={{ mb: 1 }}>
+                                <Typography variant="caption" sx={{ display: 'block', color: COLORS.textPrimary, fontWeight: 700, lineHeight: 1.35, overflowWrap: 'anywhere' }}>
+                                  {userA.name}: <Box component="span" sx={{ color: COLORS.primary }}>{sub.userAValue || 'Pending'}</Box>
+                                </Typography>
+                                <Typography variant="caption" sx={{ display: 'block', color: COLORS.textPrimary, fontWeight: 700, lineHeight: 1.35, overflowWrap: 'anywhere' }}>
+                                  {userB.name}: <Box component="span" sx={{ color: COLORS.primary }}>{sub.userBValue || 'Pending'}</Box>
+                                </Typography>
+                              </Box>
+                            )}
                             {dim.id === 'astro' && ASTRO_FACTOR_MEANINGS[sub.name] && (
                               <Typography variant="caption" sx={{ display: 'block', mt: 0.75, color: COLORS.textSecondary, lineHeight: 1.35 }}>
                                 {ASTRO_FACTOR_MEANINGS[sub.name]}

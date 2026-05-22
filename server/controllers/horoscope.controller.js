@@ -1222,6 +1222,16 @@ function buildCompatibilityPayload(currentUser, partner, result) {
   const userBNadi = resolvePoruthamValue(partner.horoscopeData?.nadi, deriveNadiFromNakshatra(userBNakshatra));
   const userAYoni = resolvePoruthamValue(currentUser.horoscopeData?.yoni, deriveYoniFromNakshatra(userANakshatra));
   const userBYoni = resolvePoruthamValue(partner.horoscopeData?.yoni, deriveYoniFromNakshatra(userBNakshatra));
+  const userAGana =
+    result.userAInsights?.gana ||
+    currentUser.horoscopeData?.gana ||
+    deriveGanaFromNakshatra(userANakshatra) ||
+    'Pending';
+  const userBGana =
+    result.userBInsights?.gana ||
+    partner.horoscopeData?.gana ||
+    deriveGanaFromNakshatra(userBNakshatra) ||
+    'Pending';
 
   return {
     overallScore: result.overallScore,
@@ -1232,14 +1242,12 @@ function buildCompatibilityPayload(currentUser, partner, result) {
     explanation: result.explanation,
     bandLabel: result.bandLabel,
     astroBreakdown: result.astroBreakdown,
+    astroFactorDetails: result.astroFactorDetails || {},
+    astroCalculation: result.astroCalculation || null,
     userA: {
       name: currentUser.name,
       photo: currentUser.profilePic || currentUser.photos?.[0]?.url || null,
-      gana:
-        result.userAInsights?.gana ||
-        currentUser.horoscopeData?.gana ||
-        deriveGanaFromNakshatra(currentUser.horoscopeData?.nakshatra || currentUser.horoscope?.nakshatra) ||
-        'Pending',
+      gana: userAGana,
       manglik: result.userAInsights?.manglik || deriveManglikLabelFromUser(currentUser),
       rajju: userARajju,
       nadi: userANadi,
@@ -1254,11 +1262,7 @@ function buildCompatibilityPayload(currentUser, partner, result) {
     userB: {
       name: partner.name,
       photo: partner.profilePic || partner.photos?.[0]?.url || null,
-      gana:
-        result.userBInsights?.gana ||
-        partner.horoscopeData?.gana ||
-        deriveGanaFromNakshatra(partner.horoscopeData?.nakshatra || partner.horoscope?.nakshatra) ||
-        'Pending',
+      gana: userBGana,
       manglik: result.userBInsights?.manglik || deriveManglikLabelFromUser(partner),
       rajju: userBRajju,
       nadi: userBNadi,
@@ -1277,6 +1281,7 @@ function buildCompatibilityPayload(currentUser, partner, result) {
         score: Math.round(result.astroScore * 0.4),
         max: 40,
         explanation: `${result.explanation} Includes Porutham factors (Rajju, Nadi, Yoni, Gana) in the astrological calculation.`,
+        calculation: result.astroCalculation || null,
         subScores: Object.entries(result.astroBreakdown || {})
           .filter(([name, score]) => Number.isFinite(Number(score)) && !['poruthamScore'].includes(name))
           .map(([name, score]) => ({
@@ -1293,6 +1298,9 @@ function buildCompatibilityPayload(currentUser, partner, result) {
               bhakoot: 7,
               nadi: 8,
             }[name] || 0,
+          userAValue: result.astroFactorDetails?.[name]?.userAValue || null,
+          userBValue: result.astroFactorDetails?.[name]?.userBValue || null,
+          matched: Boolean(result.astroFactorDetails?.[name]?.matched),
           status: Number(score) > 0 ? 'success' : 'warning',
         })),
       },
@@ -1333,6 +1341,11 @@ function buildCompatibilityPayload(currentUser, partner, result) {
         userA: userAYoni,
         userB: userBYoni,
         same: userAYoni !== 'Pending' && userBYoni !== 'Pending' && userAYoni === userBYoni,
+      },
+      gana: {
+        userA: userAGana,
+        userB: userBGana,
+        same: userAGana !== 'Pending' && userBGana !== 'Pending' && userAGana === userBGana,
       },
     },
   };
@@ -1413,13 +1426,16 @@ async function persistMatchResult(userAId, userBId, result) {
     {
       $set: {
         compatibilityScore: result.overallScore,
-        calculationVersion: Number(result.calculationVersion || 4),
+        calculationVersion: Number(result.calculationVersion || 8),
         dimensionScores: {
           astro: result.astroScore,
           personality: result.personalityScore,
           lifestyle: result.lifestyleScore,
           family: result.familyScore,
         },
+        astroBreakdown: result.astroBreakdown || {},
+        astroFactorDetails: result.astroFactorDetails || {},
+        astroCalculation: result.astroCalculation || null,
         explanation: result.explanation,
       },
     },
@@ -1491,7 +1507,12 @@ export const calculateCompatibility = asyncHandler(async (req, res) => {
   const [first, second] = [String(userAId), String(userBId)].sort();
   const existingMatch = forceRefresh ? null : await Match.findOne({ userAId: first, userBId: second }).lean();
 
-  if (existingMatch && Number(existingMatch.calculationVersion || 1) >= 4) {
+  if (
+    existingMatch &&
+    Number(existingMatch.calculationVersion || 1) >= 8 &&
+    existingMatch.astroCalculation &&
+    existingMatch.astroCalculation.poruthamScore != null
+  ) {
     // Return cached DB result
     const explanationText = (existingMatch.explanation || '').toUpperCase();
     const result = {
@@ -1508,7 +1529,9 @@ export const calculateCompatibility = asyncHandler(async (req, res) => {
           : explanationText.includes('MODERATE')
             ? 'MODERATE'
             : 'LOW',
-      astroBreakdown: {}, // Not stored, can be empty
+      astroBreakdown: existingMatch.astroBreakdown || {},
+      astroFactorDetails: existingMatch.astroFactorDetails || {},
+      astroCalculation: existingMatch.astroCalculation || null,
     };
     return res.status(200).json({
       success: true,
